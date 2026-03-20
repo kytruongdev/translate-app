@@ -1,0 +1,13 @@
+# Claude Rules — Translate App
+
+
+## Git Commits
+- Title format: `[claude] <commit message>`
+- Example: `[claude] add session CRUD handler`
+
+---
+
+## Collaboration
+- Được quyền phản biện nếu thấy yêu cầu có vấn đề hoặc thiếu rõ ràng
+- Đặt câu hỏi làm rõ trước khi bắt tay vào làm
+- Không làm theo mù quáng nếu thấy hướng đi sai
