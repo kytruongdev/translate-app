@@ -1,0 +1,5 @@
+.DS_Store
+*.db
+# API keys — copy from config/keys.go.example
+src/translate-app/backend/config/keys.go
+src/translate-app/frontend/node_modules
