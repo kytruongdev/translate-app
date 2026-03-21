@@ -1,0 +1,116 @@
+/* MTD-Geraldyne font from mockup/fonts */
+@font-face {
+  font-family: 'MTD Geraldyne';
+  src: url('../assets/fonts/MTD-Geraldyne.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* M3 tokens — aligned with mockup/mockup.v1.html */
+:root {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --sidebar: #f5f5f5;
+  --active: #ebebeb;
+  --input-bg: #f0f0f0;
+  --card-bg: #fafafa;
+  --text: #1a1a1a;
+  --text-secondary: #5c5c5c;
+  --text-tertiary: #8c8c8c;
+  --primary: #1a1a1a;
+  --primary-on: #ffffff;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-elev1: 0 1px 2px rgba(0, 0, 0, 0.06), 0 10px 24px rgba(0, 0, 0, 0.06);
+  --shadow-elev2: 0 2px 6px rgba(0, 0, 0, 0.08), 0 16px 40px rgba(0, 0, 0, 0.08);
+  --accent: #0ea5e9;
+  --avatar-user-bg: linear-gradient(135deg, #ff9a9e 0%, #fad0c4 50%, #fecfef 100%);
+  --avatar-assistant-bg: linear-gradient(135deg, #89f7fe 0%, #a1e3e2 50%, #d1fdff 100%);
+  --avatar-fg: #ffffff;
+  --bubble-user-bg: linear-gradient(
+    135deg,
+    rgba(255, 154, 158, 0.14) 0%,
+    rgba(254, 207, 239, 0.1) 60%,
+    rgba(250, 208, 196, 0.12) 100%
+  );
+  --bubble-assistant-bg: linear-gradient(
+    135deg,
+    rgba(137, 247, 254, 0.14) 0%,
+    rgba(161, 227, 226, 0.1) 55%,
+    rgba(209, 253, 255, 0.12) 100%
+  );
+  --panel-src-bg: linear-gradient(180deg, rgba(137, 247, 254, 0.14) 0%, rgba(255, 255, 255, 0) 60%);
+  --panel-dest-bg: linear-gradient(180deg, rgba(255, 154, 158, 0.12) 0%, rgba(255, 255, 255, 0) 60%);
+  --r-full: 28px;
+  --r-large: 16px;
+  --r-medium: 12px;
+  --r-small: 8px;
+}
+
+[data-theme='dark'] {
+  --bg: #0f172a;
+  --surface: #0f172a;
+  --sidebar: #1e293b;
+  --active: #334155;
+  --input-bg: #1e293b;
+  --card-bg: #1e293b;
+  --text: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-tertiary: #64748b;
+  --primary: #f1f5f9;
+  --primary-on: #0f172a;
+  --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-elev1: 0 2px 8px rgba(0, 0, 0, 0.45), 0 18px 46px rgba(0, 0, 0, 0.35);
+  --shadow-elev2: 0 4px 14px rgba(0, 0, 0, 0.5), 0 26px 64px rgba(0, 0, 0, 0.42);
+  --accent: #38bdf8;
+  --avatar-user-bg: linear-gradient(135deg, #f472b6 0%, #fb7185 50%, #fbcfe8 100%);
+  --avatar-assistant-bg: linear-gradient(135deg, #22d3ee 0%, #67e8f9 50%, #a5f3fc 100%);
+  --bubble-user-bg: linear-gradient(
+    135deg,
+    rgba(244, 114, 182, 0.2) 0%,
+    rgba(251, 113, 133, 0.14) 55%,
+    rgba(251, 207, 232, 0.16) 100%
+  );
+  --bubble-assistant-bg: linear-gradient(
+    135deg,
+    rgba(34, 211, 238, 0.2) 0%,
+    rgba(103, 232, 249, 0.14) 55%,
+    rgba(165, 243, 252, 0.16) 100%
+  );
+  --panel-src-bg: linear-gradient(180deg, rgba(34, 211, 238, 0.1) 0%, rgba(15, 23, 42, 0) 60%);
+  --panel-dest-bg: linear-gradient(180deg, rgba(244, 114, 182, 0.1) 0%, rgba(15, 23, 42, 0) 60%);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+/* Chuỗi flex giống mockup — .layout flex:1 lấp chiều cao cửa sổ */
+body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  transition:
+    background 0.2s var(--ease),
+    color 0.2s var(--ease);
+}
+
+#root {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}

@@ -1,0 +1,255 @@
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { WailsService } from '@/services/wailsService'
+import { MessageMarkdown } from '@/components/MessageMarkdown'
+import { CardExportPopover, CardRetranslatePopover } from '@/components/MessageCardPopovers'
+import type { TranslationStyle } from '@/types/session'
+
+export type PanelMode = 'bilingual' | 'dest' | 'src'
+
+const IconExport = () => (
+  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width={18} height={18} aria-hidden>
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M4 16v4a2 2 0 002 2h12a2 2 0 002-2v-4M8 12l4 4 4-4M12 8v8"
+    />
+  </svg>
+)
+
+const IconRetranslate = () => (
+  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width={18} height={18} aria-hidden>
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+    />
+  </svg>
+)
+
+const IconCopy = () => (
+  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width={18} height={18} aria-hidden>
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+    />
+  </svg>
+)
+
+const IconClose = () => (
+  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width={18} height={18} aria-hidden>
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+  </svg>
+)
+
+const IconFullscreen = () => (
+  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width={18} height={18} aria-hidden>
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"
+    />
+  </svg>
+)
+
+export function TranslationFullscreenModal({
+  open,
+  onClose,
+  messageId,
+  initialMode,
+  src,
+  dest,
+  streaming,
+  panelSrcHead,
+  panelDestHead,
+  footer,
+  initialStyle,
+  modelLabel,
+  onExport,
+  onRetranslateConfirm,
+  retranslateDisabled,
+}: {
+  open: boolean
+  onClose: () => void
+  messageId: string
+  initialMode: PanelMode
+  src: string
+  dest: string
+  streaming: boolean
+  panelSrcHead: string
+  panelDestHead: string
+  footer: string
+  initialStyle: TranslationStyle
+  modelLabel: string
+  onExport: (format: 'pdf' | 'docx') => void
+  onRetranslateConfirm: (style: TranslationStyle) => void
+  retranslateDisabled?: boolean
+}) {
+  const [mode, setMode] = useState<PanelMode>(initialMode)
+  const [copied, setCopied] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
+  const [retranslateOpen, setRetranslateOpen] = useState(false)
+  const exportBtnRef = useRef<HTMLButtonElement>(null)
+  const retranslateBtnRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (open) setMode(initialMode)
+  }, [open, initialMode])
+
+  useEffect(() => {
+    if (!open) {
+      setExportOpen(false)
+      setRetranslateOpen(false)
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, onClose])
+
+  if (!open) return null
+
+  const onCopy = () => {
+    void WailsService.copyTranslation(messageId)
+      .then(() => {
+        setCopied(true)
+        window.setTimeout(() => setCopied(false), 900)
+      })
+      .catch(() => {})
+  }
+
+  return createPortal(
+    <>
+      <div className="fullscreen-backdrop open" onClick={onClose} aria-hidden />
+      <div className="fullscreen-modal open" role="dialog" aria-modal="true" aria-label="Xem toàn màn hình">
+        <div className="modal-body">
+          <div className="fullscreen-topbar">
+            <div className="card-topbar card-topbar--in-modal">
+              <div className="card-topbar-left">
+                <div className="card-inline-title" />
+              </div>
+              <div className="card-topbar-center">
+                <div className="view-toggle" role="tablist" aria-label="Chế độ xem">
+                  <button
+                    type="button"
+                    role="tab"
+                    className={mode === 'bilingual' ? 'active' : ''}
+                    onClick={() => setMode('bilingual')}
+                  >
+                    Song ngữ
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    className={mode === 'dest' ? 'active' : ''}
+                    onClick={() => setMode('dest')}
+                  >
+                    Chỉ bản dịch
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    className={mode === 'src' ? 'active' : ''}
+                    onClick={() => setMode('src')}
+                  >
+                    Chỉ nguồn
+                  </button>
+                </div>
+              </div>
+              <div className="card-topbar-right">
+                <div className="card-inline-actions">
+                  <button
+                    ref={exportBtnRef}
+                    type="button"
+                    className="btn-icon"
+                    aria-label="Export"
+                    disabled={streaming}
+                    onClick={() => {
+                      setRetranslateOpen(false)
+                      setExportOpen((v) => !v)
+                    }}
+                  >
+                    <IconExport />
+                  </button>
+                  <button
+                    ref={retranslateBtnRef}
+                    type="button"
+                    className="btn-icon"
+                    aria-label="Dịch lại"
+                    disabled={streaming || retranslateDisabled}
+                    onClick={() => {
+                      setExportOpen(false)
+                      setRetranslateOpen((v) => !v)
+                    }}
+                  >
+                    <IconRetranslate />
+                  </button>
+                  <button type="button" className="btn-icon" aria-label="Sao chép bản dịch" onClick={onCopy}>
+                    {copied ? '✓' : <IconCopy />}
+                  </button>
+                  <button type="button" className="btn-icon modal-close" aria-label="Đóng" onClick={onClose}>
+                    <IconClose />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="fullscreen-content">
+            <div className="bilingual-view" data-mode={mode}>
+              <div className="translation-panel src">
+                <div className="panel-head">{panelSrcHead}</div>
+                <div className="panel-body">
+                  <MessageMarkdown content={src} />
+                </div>
+              </div>
+              <div className="translation-panel dest">
+                <div className="panel-head">{panelDestHead}</div>
+                <div className="panel-body">
+                  {streaming && !dest ? (
+                    <div className="stream-skeleton" aria-busy="true" aria-label="Đang dịch">
+                      <span className="stream-skeleton-line medium" />
+                      <span className="stream-skeleton-line short" />
+                      <span className="stream-skeleton-line medium" />
+                    </div>
+                  ) : streaming && dest ? (
+                    <div className="message-md panel-body-text stream-dest-plain">{dest}</div>
+                  ) : (
+                    <MessageMarkdown content={dest} />
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="fullscreen-footer">{footer}</div>
+      </div>
+      <CardExportPopover
+        open={exportOpen}
+        anchorRef={exportBtnRef}
+        onClose={() => setExportOpen(false)}
+        onExport={onExport}
+      />
+      <CardRetranslatePopover
+        open={retranslateOpen}
+        anchorRef={retranslateBtnRef}
+        onClose={() => setRetranslateOpen(false)}
+        initialStyle={initialStyle}
+        modelLabel={modelLabel}
+        onConfirm={onRetranslateConfirm}
+      />
+    </>,
+    document.body,
+  )
+}
+
+export { IconExport, IconRetranslate, IconCopy, IconFullscreen }

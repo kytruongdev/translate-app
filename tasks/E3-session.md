@@ -8,7 +8,7 @@
 
 > **Epic:** E3 | **Type:** Story | **Size:** M
 
-**Status:** `Todo`
+**Status:** `Done` *(sidebar: Ghim + `groupSessionsByDay` trong `App.tsx`; `SessionRow`; không dùng `MemoryRouter` / route `/chat/:id` như spec)*
 
 **User Story:**
 > As a user, I want to see my sessions organized by date in the sidebar, so that I can quickly find recent translations.
@@ -78,7 +78,7 @@
 
 > **Epic:** E3 | **Type:** Story | **Size:** M
 
-**Status:** `Todo`
+**Status:** `Partial` *(Go: 1 tx session + user + assistant, stream async; IPC `CreateSessionAndSendResult` `{ sessionId, messageId }` — khác spec cũ chỉ `messageId` string; FE: gọi API + `setActiveSession` + `loadSessions` — **chưa** `appendSession` optimistic / `MemoryRouter` / `useTranslation` như checklist)*
 
 **User Story:**
 > As a user, when I send my first message, I want a new session to be created automatically and my message to start translating immediately, so that I don't have to manually manage sessions.
@@ -165,7 +165,7 @@ async function handleFirstSend(content: string, opts: SendOptions) {
 
 > **Epic:** E3 | **Type:** Story | **Size:** S
 
-**Status:** `Todo`
+**Status:** `Done` *(`SessionRow` + `ChatSessionHeader`: contenteditable / menu “Đổi tên”, `WailsService.renameSession` + `sessionStore`; blur/header có thể khác chi tiết spec Esc/blur)*
 
 **User Story:**
 > As a user, I want to rename a session either from the sidebar menu or by clicking the title in the header, so that I can organize my translations with meaningful names.
@@ -240,7 +240,7 @@ function cancelEdit() {
 
 > **Epic:** E3 | **Type:** Story | **Size:** S
 
-**Status:** `Todo`
+**Status:** `Done` *(menu Ghim/Bỏ ghim + `updateStatus` + reload sessions; nhóm Ghim trong sidebar)*
 
 **User Story:**
 > As a user, I want to pin important sessions to the top of the sidebar, so that I can quickly access frequently used translations.

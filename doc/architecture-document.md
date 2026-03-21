@@ -1035,7 +1035,7 @@ func New(settings *model.Settings, keys *config.APIKeys) (AIProvider, error) {
 | Method | Parameters | Return | Mô tả |
 |--------|-----------|--------|-------|
 | `GetSessions()` | — | `[]Session` | Lấy sessions với `status NOT IN ('deleted', 'archived')`, sorted: pinned trước → nhóm theo ngày (Hôm nay / 1 ngày trước / 2 ngày trước / Cũ hơn) → theo updated_at DESC |
-| `CreateSessionAndSend(req CreateSessionAndSendRequest)` | req | `string` | Tạo session mới + gửi message đầu tiên trong 1 atomic call; trả về messageId |
+| `CreateSessionAndSend(req CreateSessionAndSendRequest)` | req | `CreateSessionAndSendResult` | Tạo session mới + gửi message đầu tiên trong 1 atomic call; trả về `{ sessionId, messageId }` (`messageId` = assistant đang stream) |
 | `RenameSession(id, title string)` | id, title | `error` | Đổi tên — trigger từ sidebar inline edit HOẶC header title click |
 | `UpdateSessionStatus(id, status string)` | id, status | `error` | Pin/Unpin: status = "pinned"\|"active" |
 
@@ -1086,7 +1086,7 @@ func New(settings *model.Settings, keys *config.APIKeys) (AIProvider, error) {
 
 | Event Name | Payload | Khi nào emit |
 |-----------|---------|-------------|
-| `translation:start` | `{ messageId: string }` | AI bắt đầu generate — FE show skeleton |
+| `translation:start` | `{ messageId: string, sessionId: string }` | AI bắt đầu generate — FE show skeleton + biết session (đặc biệt sau CreateSessionAndSend) |
 | `translation:chunk` | `{ chunk: string }` | Mỗi streaming token từ AI |
 | `translation:done` | `{ message: Message }` | Translation hoàn tất |
 | `translation:error` | `{ error: string }` | Lỗi trong quá trình dịch |
@@ -1099,6 +1099,12 @@ func New(settings *model.Settings, keys *config.APIKeys) (AIProvider, error) {
 ### 7.3 Request/Response Types
 
 ```typescript
+// CreateSessionAndSendResult — sau khi commit DB (stream bất đồng bộ)
+interface CreateSessionAndSendResult {
+  sessionId: string
+  messageId: string   // assistant message id — map với translation:start
+}
+
 // CreateSessionAndSendRequest — tạo session + gửi message đầu tiên (atomic)
 interface CreateSessionAndSendRequest {
   title?: string           // FE gen từ content trước khi gọi CreateSessionAndSend:

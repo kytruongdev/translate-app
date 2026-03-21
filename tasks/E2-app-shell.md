@@ -8,7 +8,7 @@
 
 > **Epic:** E2 | **Type:** Story | **Size:** M
 
-**Status:** `Todo`
+**Status:** `Done` *(`App.tsx`: `.app-shell` + `nav-drawer` + `main` + start/chat theo `activeSessionId`; **không** dùng `MemoryRouter` / `AppShell.tsx` / route `/chat/:id` như spec — điều hướng bằng state)*
 
 **User Story:**
 > As a user, I want to see a consistent layout with a sidebar and main content area, so that I can navigate between sessions and translations easily.
@@ -63,7 +63,7 @@
 
 > **Epic:** E2 | **Type:** Story | **Size:** S
 
-**Status:** `Todo`
+**Status:** `Done` *(`useUIStore.sidebarCollapsed`, nút menu header, `.nav-drawer.collapsed` trong `shell.css` / `mockup-override.css`; ẩn Ghim / label khi collapsed)*
 
 **User Story:**
 > As a user, I want to collapse the sidebar to have more space for reading translations, so that I can focus on the content.
@@ -95,7 +95,7 @@
 
 > **Epic:** E2 | **Type:** Story | **Size:** S
 
-**Status:** `Todo`
+**Status:** `Partial` *(`StartHello` + `ChatInputBar` khi `activeSessionId == null`; Phiên mới → `setActiveSession(null)`; **không** `StartPage.tsx` / `InputArea.tsx` / route `/start`; nút **đính kèm** có UI nhưng **chưa** nối E6)*
 
 **User Story:**
 > As a user, when I open the app or click "Phiên mới", I want to see a welcoming Start Page with an input area, so that I can immediately start translating.
@@ -137,7 +137,7 @@
 
 > **Epic:** E2 | **Type:** Story | **Size:** S
 
-**Status:** `Todo`
+**Status:** `Partial` *(`useEffect`: `loadSettings()` + `loadSessions()` khi mount; theme qua `loadSettings` → `applyTheme`; **chưa** gate “không render đến khi xong / timeout 3s”, **chưa** toast khi `GetSessions` fail, **không** restore `activeSession` sau restart — mở app về start nếu chưa chọn phiên)*
 
 **User Story:**
 > As a user, when I open the app, I want to see my previous sessions loaded in the sidebar and the app ready to use, so that I can continue where I left off.

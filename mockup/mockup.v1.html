@@ -354,14 +354,22 @@
       border-top-color: rgba(255,255,255,.08);
       border-bottom-color: rgba(255,255,255,.08);
     }
-    /* Hover topic trong day-group: khác màu so với nền section để nhìn thấy rõ */
-    .sidebar-group.day-group .session-item:hover {
-      background: var(--input-bg);
+    /* day-group: thẻ --surface trên nền section --active — cả hover VÀ .active (nếu chỉ .session-item.active thì nền = --active trùng section khi hover nhóm → mất highlight) */
+    .sidebar-group.day-group .session-item:hover,
+    .sidebar-group.day-group .session-item.active {
+      z-index: 1;
+      background: var(--surface);
       box-shadow: var(--shadow-elev1);
+    }
+    .sidebar-group.day-group .session-item:hover {
       transform: translateY(-1px);
     }
-    [data-theme="dark"] .sidebar-group.day-group .session-item:hover {
+    [data-theme="dark"] .sidebar-group.day-group .session-item:hover,
+    [data-theme="dark"] .sidebar-group.day-group .session-item.active {
       background: color-mix(in srgb, var(--card-bg) 60%, var(--active));
+    }
+    [data-theme="dark"] .sidebar-group.day-group .session-item:hover {
+      transform: translateY(-1px);
     }
     .sidebar-footer {
       padding: 12px 12px 16px;
