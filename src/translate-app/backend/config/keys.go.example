@@ -1,0 +1,16 @@
+package config
+
+type APIKeys struct {
+	GeminiKey string
+	OpenAIKey string
+}
+
+// Keys — copy this file to keys.go and replace placeholders (keys.go is gitignored).
+//
+// Gemini: nếu log/API trả 429 RESOURCE_EXHAUSTED / "quota exceeded" / "limit: 0" trên free tier,
+// cần bật billing trên Google Cloud, đợi reset quota, tạo API key project khác, hoặc dùng
+// Model AI → Offline (Ollama) trong app. Xem: https://ai.google.dev/gemini-api/docs/rate-limits
+var Keys = APIKeys{
+	GeminiKey:  "YOUR_GEMINI_API_KEY",
+	OpenAIKey:  "sk-REPLACE-ME",
+}

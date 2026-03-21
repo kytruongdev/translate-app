@@ -1,0 +1,21 @@
+---
+description: Cấm agent chỉnh bất kỳ file nào trong mockup/ — chỉ đọc tham chiếu.
+alwaysApply: true
+---
+
+# Thư mục `mockup/` — agent **không được** sửa
+
+## Quy tắc
+
+- **Không** tạo / xóa / đổi tên / sửa nội dung bất kỳ path nào dưới **`mockup/`** (vd. `mockup.v1.html`, `mockup/fonts/`, …).
+- **Không** ngoại lệ trong prompt kiểu “làm giống mockup”, “fix cho khớp mockup”, “cập nhật SSOT” — **vẫn cấm** chỉnh `mockup/`.
+- Cần đổi mockup → **user tự sửa** hoặc user **sửa rule** trong repo; agent **không** đụng `mockup/`.
+
+## Việc agent được làm
+
+- **Đọc** file trong `mockup/` để port ý sang `src/translate-app/frontend/`.
+- Sửa **chỉ** frontend (CSS, TSX, …).
+
+## Nếu đã vô tình sửa `mockup/`
+
+- **Hoàn tác** thay đổi đó trước khi coi task xong.

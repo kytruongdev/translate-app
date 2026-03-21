@@ -8,7 +8,7 @@
 
 > **Epic:** E7 | **Type:** Story | **Size:** M
 
-**Status:** `Todo`
+**Status:** `Partial` *(FE: `CardExportPopover` + `WailsService.exportMessage` từ `ChatMessage` / fullscreen; **BE:** `handler.ExportMessage` → `not implemented` — chưa generate file / SaveFileDialog)*
 
 **User Story:**
 > As a user, I want to export a single translated message to PDF or DOCX, so that I can save and share the translation.
@@ -91,7 +91,7 @@ export default function ExportMenu({ messageId, anchorRect, onClose }: ExportMen
 
 > **Epic:** E7 | **Type:** Story | **Size:** M
 
-**Status:** `Todo`
+**Status:** `Todo` *(phụ thuộc E6 file translation; BE `ExportFile` = `not implemented`)*
 
 **User Story:**
 > As a user, I want to export a complete file translation to PDF or DOCX, so that I can save the full translated document.
@@ -139,7 +139,7 @@ func (c *controller) ExportFile(ctx context.Context, fileId, format string) (str
 
 > **Epic:** E7 | **Type:** Story | **Size:** M
 
-**Status:** `Todo`
+**Status:** `Todo` *(BE `ExportSession` → `not implemented`; **chưa** UI export session-level trong app)*
 
 **User Story:**
 > As a user, I want to export all translations in a session to a single file, so that I can save the complete conversation history.
@@ -196,7 +196,7 @@ func (c *controller) ExportSession(ctx context.Context, id, format string) (stri
 
 > **Epic:** E7 | **Type:** Story | **Size:** S
 
-**Status:** `Todo`
+**Status:** `Done` *(FE gọi `CopyTranslation(messageId)` → Go `ClipboardSetText` / Wails clipboard; icon ✓ ~1s; **khác** spec “chỉ client DOM + navigator.clipboard” — chủ động dùng IPC cho webview)*
 
 **User Story:**
 > As a user, I want to copy a translation to my clipboard with a single click, so that I can paste it elsewhere quickly.

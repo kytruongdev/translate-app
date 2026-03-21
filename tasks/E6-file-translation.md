@@ -8,7 +8,7 @@
 
 > **Epic:** E6 | **Type:** Story | **Size:** M
 
-**Status:** `Todo`
+**Status:** `Todo` *(BE `OpenFileDialog` / `ReadFileInfo` = `not implemented`; **chưa** nối UI đính kèm trong `ChatInputBar`)*
 
 **User Story:**
 > As a user, I want to attach a PDF or DOCX file via a file picker or drag-and-drop, so that I can start a file translation.

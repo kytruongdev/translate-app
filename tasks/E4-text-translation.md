@@ -2,13 +2,15 @@
 
 > Tham chiếu: Section 5.4 (LangChip), 5.5 (file input), 5.6 (input detection), 5.7 (events), 5.8 (display types), 9.1 (prompts), 10.2 (flow)
 
+**Tiến độ implement (cursor, 2026-03-22):** Luồng **dịch thật** end-to-end OK. **Done:** US-020, US-021, US-026. **Partial:** US-022, US-023, US-024, US-025 (chi tiết từng ticket).
+
 ---
 
 ### US-020 — Language Selection (LangChip)
 
 > **Epic:** E4 | **Type:** Story | **Size:** M
 
-**Status:** `Todo`
+**Status:** `Done` *(`ChatInputBar` + popover `TARGET_LANG_OPTIONS`, `SaveSettings` / `lastTargetLang`; không tách file `LangChip.tsx` riêng)*
 
 **User Story:**
 > As a user, I want to select the target language before sending a message, so that my text gets translated to the language I need.
@@ -89,7 +91,7 @@ export default function LangChip() {
 
 > **Epic:** E4 | **Type:** Story | **Size:** S
 
-**Status:** `Todo`
+**Status:** `Done` *(`ChatInputBar` + popover `STYLE_OPTIONS`, `defaultStyle` qua `saveSettings`; gửi kèm `SendMessage` / `CreateSessionAndSend`)*
 
 **User Story:**
 > As a user, I want to choose a translation style (Casual / Business / Academic) before sending, so that the translation tone matches my needs.
@@ -137,7 +139,7 @@ export default function StyleChip() {
 
 > **Epic:** E4 | **Type:** Story | **Size:** S
 
-**Status:** `Todo`
+**Status:** `Partial` *(có `detectLang` trong `utils/languageDetect.ts`; `displayMode` tạm theo độ dài text trong `App.tsx`; chưa `structureDetect`, paste/turndown, `lastInputMode`)*
 
 **User Story:**
 > As a user, when I type or paste text, I want the app to automatically detect the language and content structure, so that the translation is displayed in the best format without me having to configure anything.
@@ -196,7 +198,7 @@ function processClipboard(e: ClipboardEvent): { content: string; isStructured: b
 
 > **Epic:** E4 | **Type:** Story | **Size:** M
 
-**Status:** `Todo`
+**Status:** `Partial` *(phiên đã mở: optimistic user + khóa gửi; Start Page: preview `StartOutgoingPreview` trong lúc `CreateSessionAndSend`; skeleton pulse khi chờ chunk assistant; **chưa** skeleton state machine đầy đủ / restore input mọi edge case)*
 
 **User Story:**
 > As a user, when I click Send, I want to see my message appear immediately in the chat feed while the translation is being prepared, so that the app feels responsive.
@@ -285,7 +287,7 @@ async function handleSend() {
 
 > **Epic:** E4 | **Type:** Story | **Size:** L
 
-**Status:** `Todo`
+**Status:** `Partial` *(BE emit `translation:start` (có `sessionId`) / chunk string / done `Message` / error string; FE `streamStatus` + append chunk + `finalizeStream`; có `scrollFeedToBottom` sau một số bước gửi/tải; chưa skeleton M3 đầy đủ, payload chunk là string, **chưa** retry UI)*
 
 **User Story:**
 > As a user, when I send a message, I want to see the translation appear word by word as it's being generated, so that I don't have to stare at a loading spinner.
@@ -322,7 +324,8 @@ func (c *controller) streamTranslation(ctx context.Context, sessionID, msgID str
     runtime.EventsEmit(ctx, "translation:start", map[string]string{"messageId": msgID})
 
     provider := c.getProvider(req.Provider, req.Model)
-    go provider.TranslateStream(ctx, req.Content, req.SourceLang, req.TargetLang, req.Style, events)
+    preserveMD := req.DisplayMode == model.DisplayModeBilingual
+    go provider.TranslateStream(ctx, req.Content, req.SourceLang, req.TargetLang, req.Style, preserveMD, events)
 
     var fullText strings.Builder
     for ev := range events {
@@ -380,7 +383,7 @@ export function useTranslation() {
 
 > **Epic:** E4 | **Type:** Story | **Size:** L
 
-**Status:** `Todo`
+**Status:** `Partial` *(`ChatMessage`: bubble / `TranslationCardView`, copy trên card, markdown một phần; **có** popover retranslate + `reply-quote` / `retranslated` / footer “Bản dịch lại”; **chưa** export PDF/DOCX thật (BE `ExportMessage` stub), skeleton/retry đúng checklist)*
 
 **User Story:**
 > As a user, I want short text to appear as a bubble and long/structured text to appear as a formatted bilingual card, so that the layout matches the content type.
@@ -457,7 +460,7 @@ function formatFooter(msg: Message, isRetranslate: boolean): string {
 
 > **Epic:** E4 | **Type:** Story | **Size:** M
 
-**Status:** `Todo`
+**Status:** `Done` *(`onFeedScroll` + `loadMoreMessages`, giữ scroll khi prepend, indicator `chat-load-more`; ngưỡng scroll ~120px thay vì 100px trong spec)*
 
 **User Story:**
 > As a user, when I scroll up in a session with many messages, I want older messages to load automatically, so that I can see the full history without it all loading at once.

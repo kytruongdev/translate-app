@@ -1,5 +1,36 @@
 # Cursor Rules — Translate App
 
+## Monorepo layout (`src/translate-app/`)
+
+- **`backend/`** và **`frontend/`** là **hai thư mục anh em** — khớp `doc/architecture-document.md` §6.1. **Không** đặt source React trong `backend/frontend/` (chỉ có **`backend/dist/`** = output Vite để `//go:embed all:dist` trong Go; `embed` không được tham chiếu `..` ra ngoài module).
+- Module Go + Wails: **`src/translate-app/backend/`** (`go.mod` = `translate-app`). Lệnh: `wails dev` / `wails build` / `make …` chạy từ đây.
+- `wails.json`: `frontend:dir` → `../frontend`, `assetdir` → `dist`.
+- Tài liệu bàn giao: **`handoff/`** (xem `handoff/README.md`). Tasks: **`tasks/`**; kiến trúc/IPC/schema: **`doc/architecture-document.md`**.
+
+## UI · Thư mục **`mockup/`** — **read-only cho agent**
+
+- **Không bao giờ** chỉnh sửa, thêm, xóa hay đổi tên bất kỳ file nào trong **`mockup/`** (kể cả `mockup.v1.html`, assets mockup, v.v.). **Chỉ đọc** để đối chiếu (selector, token, layout).
+- Mọi thay đổi giao diện app → **`src/translate-app/frontend/`** (vd. `mockup-override.css`, `shell.css`, `chat-mockup.css`, components). **Không** “đồng bộ ngược” vào `mockup/`.
+- Mâu thuẫn giữa lời user và nội dung trong `mockup/` → **hỏi lại** hoặc làm theo mô tả user trên frontend; **không** sửa mockup.
+- Nhắc thêm: **`.cursor/rules/no-edit-mockup-html.mdc`** (`alwaysApply`).
+- **`doc/BRD.md`** + **`doc/architecture-document.md`**: nghiệp vụ / IPC.
+
+## Wails IPC & TypeScript bindings
+
+- Struct được bind qua Wails nằm trong package **`handler`** (`internal/handler`) → bindings generate tại **`frontend/wailsjs/go/handler/App`** (không còn `wailsjs/go/main/App`). FE gọi qua `services/wailsService.ts` import đúng path đó.
+- **Không** dùng `time.Time` trên field JSON/IPC của `model` gửi qua bridge (Wails TS generator báo `Not found: time.Time`). Dùng **`string` RFC3339** cho timestamp (`createdAt`, `updatedAt`, …).
+
+## Go — clean architecture (đang dùng)
+
+- **`internal/bridge`**: DTO IPC dùng chung **controller ↔ handler** (tránh controller import `handler` và import cycle).
+- **`internal/gateway`**: **một package duy nhất** cho `AIProvider` + `gemini_provider.go` / `ollama_provider.go` / `openai_provider.go`. **Không** tách `gateway/gemini` làm subpackage import lại `gateway` (sẽ **import cycle**).
+- **`internal/controller`**, **`internal/handler`**, **`internal/repository`**, **`internal/infra/db`**: giữ phân lớp như hiện tại; DI trong `main.go`.
+- **sqlc**: queries ở `internal/repository/sqlc/queries/`, code generate vào **`internal/repository/sqlcgen/`** (trong task có thể ghi `sqlc/` — cùng mục đích). Sau sửa SQL: `make sqlc` từ `backend/`.
+- **Go toolchain**: đang target **Go 1.23**; nâng `modernc.org/sqlite` / `google.golang.org/genai` bản mới có thể yêu cầu Go cao hơn — kiểm tra trước khi `go get -u`.
+
+## Config & secrets
+
+- API keys: **`src/translate-app/backend/config/keys.go`** — có thể gitignore khi có key thật; mẫu **`config/keys.go.example`**.
 
 ## Git Commits
 - Title format: `[cursor] <commit message>`
