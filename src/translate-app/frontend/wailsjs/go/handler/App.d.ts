@@ -5,6 +5,8 @@ import {model} from '../models';
 
 export function CopyTranslation(arg1:string):Promise<string>;
 
+export function CreateEmptySession(arg1:string,arg2:string,arg3:string):Promise<string>;
+
 export function CreateSessionAndSend(arg1:bridge.CreateSessionAndSendRequest):Promise<bridge.CreateSessionAndSendResult>;
 
 export function ExportFile(arg1:string,arg2:string):Promise<string>;

@@ -20,4 +20,34 @@ func TestBuildTranslationSystemPrompt_Markdown(t *testing.T) {
 	if !strings.Contains(p, "Markdown") {
 		t.Fatal("expected markdown preservation")
 	}
+	if !strings.Contains(p, "CRITICAL OUTPUT LANGUAGE") {
+		t.Fatal("expected output-language guard for markdown mode")
+	}
+	if !strings.Contains(p, "MONOLINGUAL OUTPUT") || !strings.Contains(p, "Chinese characters") {
+		t.Fatal("expected monolingual / anti-Chinese-script guard for non-zh target")
+	}
+}
+
+func TestBuildTranslationSystemPrompt_EnglishSourceBranch(t *testing.T) {
+	p := BuildTranslationSystemPrompt("en", "vi", "academic", false)
+	if !strings.Contains(p, "source text is in English") || !strings.Contains(p, "Vietnamese") {
+		t.Fatalf("unexpected en→vi prompt: %s", p)
+	}
+}
+
+func TestSourceLangForTranslate(t *testing.T) {
+	if SourceLangForTranslate("Xin chào thế giới") != "vi" {
+		t.Fatal("expected vi for Vietnamese text")
+	}
+	if SourceLangForTranslate("Hello world") != "auto" {
+		t.Fatal("expected auto for short ASCII")
+	}
+	longEn := "The Ministry of Education and Training has not yet taken many organizing measures at the university level. " +
+		"Higher education lecturers need additional knowledge about human rights and relevant law."
+	if SourceLangForTranslate(longEn) != "en" {
+		t.Fatal("expected en for long Latin-only prose")
+	}
+	if SourceLangForTranslate(longEn+" 人") != "auto" {
+		t.Fatal("expected auto when chunk contains Han script")
+	}
 }

@@ -1,4 +1,4 @@
-.PHONY: dev build sqlc migrate tidy seed-sample
+.PHONY: dev build sqlc migrate tidy seed-sample reset-data
 
 # Run from this directory (backend = Wails module root).
 dev:
@@ -19,3 +19,7 @@ tidy:
 # Chèn session + tin nhắn demo (idempotent). Đóng app trước khi chạy nếu bị lock DB.
 seed-sample:
 	go run ./cmd/seed-sample
+
+# Xóa SQLite + thư mục file dịch (UserConfigDir/TranslateApp). Đóng app trước.
+reset-data:
+	@bash scripts/reset-user-data.sh

@@ -12,6 +12,11 @@ func (a *App) CreateSessionAndSend(req CreateSessionAndSendRequest) (CreateSessi
 	return a.ctrl.Session.CreateSessionAndSend(a.appCtx(), req)
 }
 
+// CreateEmptySession creates a session with no messages (file upload from start view).
+func (a *App) CreateEmptySession(title string, targetLang string, style string) (string, error) {
+	return a.ctrl.Message.CreateEmptySession(a.appCtx(), title, targetLang, style)
+}
+
 // RenameSession updates session title.
 func (a *App) RenameSession(id string, title string) error {
 	return a.ctrl.Session.RenameSession(a.appCtx(), id, title)

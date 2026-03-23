@@ -98,6 +98,39 @@ func (c *controller) CreateSessionAndSend(ctx context.Context, req bridge.Create
 	return bridge.CreateSessionAndSendResult{SessionID: sessionID, MessageID: assistantID}, nil
 }
 
+// CreateEmptySession creates a session with no messages (e.g. attach file from start view before TranslateFile).
+func (c *controller) CreateEmptySession(ctx context.Context, title, targetLang, style string) (string, error) {
+	if strings.TrimSpace(targetLang) == "" {
+		return "", fmt.Errorf("empty targetLang")
+	}
+	_, st, err := c.resolveProvider(ctx, "", "")
+	if err != nil {
+		return "", err
+	}
+	styleEff := effectiveStyle(style, st.DefaultStyle)
+	modelUsed := resolveModelUsed(st, "", "")
+
+	sessionID := uuid.New().String()
+	t := strings.TrimSpace(title)
+	if t == "" {
+		t = "Phiên dịch"
+	}
+
+	sess := &model.Session{
+		ID:         sessionID,
+		Title:      truncateRunes(t, 80),
+		Status:     model.SessionStatusActive,
+		TargetLang: targetLang,
+		Style:      string(styleEff),
+		Model:      modelUsed,
+	}
+	if err := c.reg.Session().Create(ctx, sess); err != nil {
+		return "", err
+	}
+	_ = c.reg.Settings().Upsert(ctx, "last_target_lang", targetLang)
+	return sessionID, nil
+}
+
 // SendMessage inserts user + assistant messages in the existing session and starts translation.
 func (c *controller) SendMessage(ctx context.Context, req bridge.SendRequest) (string, error) {
 	content := strings.TrimSpace(req.Content)

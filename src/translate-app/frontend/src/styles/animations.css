@@ -41,3 +41,14 @@
     opacity: 0.35;
   }
 }
+
+/* Skeleton line view giả — vệt sáng trượt (transform, thấy rõ dù chỉ hiện vài chục ms) */
+@keyframes session-skel-line-sweep {
+  0% {
+    transform: translateX(-130%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+

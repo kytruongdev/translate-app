@@ -12,6 +12,7 @@ import (
 type FileRepo interface {
 	Insert(ctx context.Context, f *model.File) error
 	UpdateStatus(ctx context.Context, id, status, errMsg string) error
+	UpdateExtracted(ctx context.Context, id, sourcePath string, charCount, pageCount int) error
 	UpdateTranslated(ctx context.Context, id, sourcePath, translatedPath string, charCount, pageCount int, modelUsed string) error
 	GetByID(ctx context.Context, id string) (*model.File, error)
 }
@@ -48,6 +49,16 @@ func (r *fileRepo) UpdateStatus(ctx context.Context, id, status, errMsg string) 
 		ErrorMsg:  sqlNullStr(errMsg),
 		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
 		ID:        id,
+	})
+}
+
+func (r *fileRepo) UpdateExtracted(ctx context.Context, id, sourcePath string, charCount, pageCount int) error {
+	return r.q.UpdateFileExtracted(ctx, sqlcgen.UpdateFileExtractedParams{
+		SourcePath: sqlNullStr(sourcePath),
+		CharCount:  sqlNullInt64(charCount),
+		PageCount:  sqlNullInt64(pageCount),
+		UpdatedAt:  time.Now().UTC().Format(time.RFC3339),
+		ID:         id,
 	})
 }
 

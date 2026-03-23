@@ -23,7 +23,7 @@ func New(reg repository.Registry, keys *config.APIKeys) *Controllers {
 	return &Controllers{
 		Session:  session.New(reg, msg),
 		Message:  msg,
-		File:     file.New(reg),
+		File:     file.New(reg, keys),
 		Settings: settings.New(reg),
 	}
 }

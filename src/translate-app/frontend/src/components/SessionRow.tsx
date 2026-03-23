@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import type { Session } from '@/types/session'
 import { useSessionStore } from '@/stores/session/sessionStore'
 import { useUIStore } from '@/stores/ui/uiStore'
@@ -102,7 +103,7 @@ export function SessionRow({ sess, active }: { sess: Session; active: boolean })
     }
     await updateStatus(sess.id, 'archived')
     setSessionMenuOpenId(null)
-    if (active) setActiveSession(null)
+    if (active) flushSync(() => setActiveSession(null))
     await loadSessions()
   }
 
@@ -140,7 +141,11 @@ export function SessionRow({ sess, active }: { sess: Session; active: boolean })
         <button
           type="button"
           className="session-item-main"
-          onClick={() => setActiveSession(sess.id)}
+          onClick={() => {
+            flushSync(() => {
+              setActiveSession(sess.id)
+            })
+          }}
         >
           <div className="session-item-content">
             <div className="session-item-title">{sess.title || 'Không tiêu đề'}</div>

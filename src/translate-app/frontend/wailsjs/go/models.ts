@@ -79,6 +79,7 @@ export namespace bridge {
 	export class FileRequest {
 	    sessionId: string;
 	    filePath: string;
+	    targetLang?: string;
 	    style?: string;
 	    provider?: string;
 	    model?: string;
@@ -91,6 +92,7 @@ export namespace bridge {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.sessionId = source["sessionId"];
 	        this.filePath = source["filePath"];
+	        this.targetLang = source["targetLang"];
 	        this.style = source["style"];
 	        this.provider = source["provider"];
 	        this.model = source["model"];

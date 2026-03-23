@@ -11,7 +11,7 @@
 > - ✅ **[Added]** Section 5.11 Session Title Rename UX — sidebar (Enter/Esc only) vs header (blur auto-save)
 > - ✅ **[Decision]** `DeleteSession` → **V2**, bỏ khỏi V1 IPC + dropdown menu; dropdown chỉ còn 2 actions
 > - ✅ **[Decision]** `activeProvider` V1 chỉ 2 values: `'gemini'` (Online) / `'ollama'` (Offline) — 'openai' reserved V2
-> - ✅ **[Fixed]** File page limit `{N}` → 100 trang
+> - ✅ **[Fixed]** File page limit `{N}` → 200 trang
 > - ✅ **[Fixed]** Session grouping: xác nhận labels (Hôm nay / 1 ngày trước / 2 ngày trước / Cũ hơn)
 > - ✅ **[Decision]** Không có `fileStore` Zustand — file translation state là **local useState** trong `useFileTranslation` hook
 > - ✅ **[Decision]** RetranslatePopover: **không có targetLang dropdown** — retranslate giữ nguyên ngôn ngữ đích của message gốc, chỉ đổi Style và Model
@@ -1684,7 +1684,7 @@ API key không hợp lệ. Vui lòng liên hệ admin.
 Không có kết nối mạng. Vui lòng thử lại.
 Đã vượt quá giới hạn API. Thử lại sau {N} giây.
 File này là PDF scan, không thể trích xuất văn bản.
-Tệp quá lớn (tối đa 100 trang).
+Tệp quá lớn (tối đa 200 trang).
 Đã xảy ra lỗi. Vui lòng thử lại.
 ```
 

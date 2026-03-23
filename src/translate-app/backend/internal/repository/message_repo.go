@@ -13,6 +13,7 @@ type MessageRepo interface {
 	Insert(ctx context.Context, msg *model.Message) error
 	ListByCursor(ctx context.Context, sessionID string, cursor, limit int) ([]model.Message, error)
 	UpdateTranslated(ctx context.Context, id, translated string, tokens int) error
+	UpdateOriginalContent(ctx context.Context, id, original string) error
 	GetByID(ctx context.Context, id string) (*model.Message, error)
 }
 
@@ -87,6 +88,14 @@ func (r *messageRepo) UpdateTranslated(ctx context.Context, id, translated strin
 		Tokens:            sql.NullInt64{Int64: int64(tokens), Valid: true},
 		UpdatedAt:         time.Now().UTC().Format(time.RFC3339),
 		ID:                id,
+	})
+}
+
+func (r *messageRepo) UpdateOriginalContent(ctx context.Context, id, original string) error {
+	return r.q.UpdateMessageOriginalContent(ctx, sqlcgen.UpdateMessageOriginalContentParams{
+		OriginalContent: original,
+		UpdatedAt:       time.Now().UTC().Format(time.RFC3339),
+		ID:              id,
 	})
 }
 

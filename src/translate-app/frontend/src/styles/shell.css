@@ -410,7 +410,7 @@
   display: none;
   position: absolute;
   top: 0;
-  left: calc(100% + 8px);
+  left: calc(100% - 1px);
   min-width: 160px;
   background: var(--surface);
   border-radius: 12px;
@@ -905,6 +905,8 @@
 .start-view .chat-input-area {
   flex-shrink: 0;
   width: 100%;
+  position: relative;
+  z-index: 2; /* luôn nhận click trên cùng so với vùng hello (tránh cảm giác nút Send không hoạt động) */
 }
 
 .chat-input-area {
@@ -928,7 +930,141 @@
   background: var(--input-bg);
   border-radius: var(--r-large);
   box-shadow: none;
-  transition: background 0.2s var(--ease);
+  transition:
+    background 0.2s var(--ease),
+    box-shadow 0.2s var(--ease),
+    outline-color 0.2s var(--ease);
+}
+
+.chat-input-row .input-wrap.is-file-dragover {
+  outline: 2px dashed color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 2px;
+  background: color-mix(in srgb, var(--accent) 6%, var(--input-bg));
+}
+
+.file-drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  border-radius: var(--r-large);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* E6 — file preview chip above textarea */
+.file-attachment {
+  padding: 8px 12px 0;
+  flex-shrink: 0;
+}
+
+.file-attachment[data-invalid='true'] .file-attachment-main {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.file-attachment[data-loading='true'] .file-attachment-sub {
+  font-style: italic;
+  opacity: 0.9;
+}
+
+.file-attachment-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--r-medium);
+  /* Nổi khỏi nền ô nhập (--input-bg): dùng surface / trắng hơn + viền rõ */
+  border: 1px solid color-mix(in srgb, var(--text) 14%, transparent);
+  background: var(--surface);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.05),
+    0 0 0 1px color-mix(in srgb, var(--text) 4%, transparent);
+}
+
+[data-theme='dark'] .file-attachment-main {
+  background: color-mix(in srgb, var(--input-bg) 72%, rgb(255 255 255) 28%);
+  border-color: color-mix(in srgb, var(--text) 18%, transparent);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.35),
+    0 0 0 1px color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.file-attachment-icon {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--text) 7%, var(--surface));
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .file-attachment-icon {
+  background: color-mix(in srgb, var(--text) 14%, transparent);
+}
+
+.file-attachment-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.file-attachment-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-attachment-sub {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.file-attachment-remove {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--text-secondary);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s var(--ease);
+}
+
+.file-attachment-remove:hover {
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+  color: var(--text);
+}
+
+.file-attachment-error {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--accent);
+  line-height: 1.35;
+}
+
+.file-pick-error {
+  margin: 0 12px 8px;
+  font-size: 12px;
+  color: var(--accent);
+  line-height: 1.35;
 }
 
 .chat-input-row .input-wrap:focus-within {
@@ -1021,7 +1157,8 @@
 
 .input-chip {
   border: none;
-  background: transparent;
+  /* Xám nhạt đậm hơn nền ô nhập một nấc — không trắng lố */
+  background: color-mix(in srgb, var(--text) 4.5%, var(--input-bg));
   color: var(--text-secondary);
   font-family: inherit;
   font-size: 13px;
@@ -1032,18 +1169,44 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
   transition:
     background 0.15s var(--ease),
-    color 0.15s var(--ease);
+    color 0.15s var(--ease),
+    box-shadow 0.15s var(--ease);
 }
 
 .input-chip:hover {
-  background: rgba(0, 0, 0, 0.06);
+  background: color-mix(in srgb, var(--text) 7.5%, var(--input-bg));
   color: var(--text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.input-chip.is-open {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.08),
+    0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+[data-theme='dark'] .input-chip {
+  /* Trộn chữ sáng vào input-bg — nổi hơn nền ô nhập (surface làm nút tối/chìm) */
+  background: color-mix(in srgb, var(--text) 12%, var(--input-bg));
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
 }
 
 [data-theme='dark'] .input-chip:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: color-mix(in srgb, var(--text) 18%, var(--input-bg));
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+[data-theme='dark'] .input-chip.is-open {
+  box-shadow:
+    0 1px 4px rgba(0, 0, 0, 0.55),
+    0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 .input-chip svg {
@@ -1056,20 +1219,37 @@
   height: 34px;
   border: none;
   border-radius: 50%;
-  background: transparent;
+  background: color-mix(in srgb, var(--text) 4.5%, var(--input-bg));
   color: var(--text-secondary);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
   transition:
     background 0.15s var(--ease),
-    color 0.15s var(--ease);
+    color 0.15s var(--ease),
+    box-shadow 0.15s var(--ease);
 }
 
 .btn-attach:hover {
-  background: var(--active);
+  background: color-mix(in srgb, var(--text) 7.5%, var(--input-bg));
   color: var(--text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme='dark'] .btn-attach {
+  background: color-mix(in srgb, var(--text) 12%, var(--input-bg));
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+[data-theme='dark'] .btn-attach:hover {
+  background: color-mix(in srgb, var(--text) 18%, var(--input-bg));
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(255, 255, 255, 0.12);
 }
 
 .btn-attach svg {
@@ -1121,6 +1301,15 @@
   font-style: italic;
 }
 
+/* Màn start: banner lỗi gửi file / text — cùng style chat */
+.start-send-banner {
+  max-width: 560px;
+  margin-left: auto;
+  margin-right: auto;
+  margin-bottom: 12px;
+  text-align: left;
+}
+
 .chat-error-banner {
   padding: 8px 12px;
   border-radius: var(--r-small);
@@ -1128,3 +1317,4 @@
   color: var(--text);
   font-size: 13px;
 }
+

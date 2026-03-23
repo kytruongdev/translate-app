@@ -85,11 +85,11 @@ func runMigrations(db *sql.DB) error {
 func seedSettings(db *sql.DB) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	defaults := map[string]string{
-		"theme":              "system",
-		"active_provider":    "gemini",
-		"active_model":       "gemini-2.0-flash",
-		"active_style":       "casual",
-		"last_target_lang":   "en-US",
+		"theme":            "system",
+		"active_provider":  "ollama",
+		"active_model":     "qwen2.5:7b",
+		"active_style":     "casual",
+		"last_target_lang": "en-US",
 	}
 	for k, v := range defaults {
 		if _, err := db.Exec(

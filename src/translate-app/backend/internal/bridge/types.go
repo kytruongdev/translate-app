@@ -33,11 +33,12 @@ type SendRequest struct {
 
 // FileRequest — file translation.
 type FileRequest struct {
-	SessionID string `json:"sessionId"`
-	FilePath  string `json:"filePath"`
-	Style     string `json:"style,omitempty"`
-	Provider  string `json:"provider,omitempty"`
-	Model     string `json:"model,omitempty"`
+	SessionID  string `json:"sessionId"`
+	FilePath   string `json:"filePath"`
+	TargetLang string `json:"targetLang,omitempty"` // bắt buộc từ UI; cập nhật session để khớp ngôn ngữ đích đang chọn
+	Style      string `json:"style,omitempty"`
+	Provider   string `json:"provider,omitempty"`
+	Model      string `json:"model,omitempty"`
 }
 
 // FileInfo — ReadFileInfo response.

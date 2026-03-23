@@ -12,8 +12,8 @@ type Settings struct {
 func SettingsFromKV(kv map[string]string) Settings {
 	s := Settings{
 		Theme:            "system",
-		ActiveProvider:   "gemini",
-		ActiveModel:      "gemini-2.0-flash",
+		ActiveProvider:   "ollama",
+		ActiveModel:      "qwen2.5:7b",
 		DefaultStyle:     StyleCasual,
 		LastTargetLang:   "en-US",
 	}

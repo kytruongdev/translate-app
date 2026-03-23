@@ -2,6 +2,19 @@ import { create } from 'zustand'
 import type { Message } from '@/types/session'
 import { WailsService } from '@/services/wailsService'
 
+/**
+ * Số tin mỗi lần gọi GetMessages (BE: ORDER BY display_order DESC).
+ * Lần đầu (cursor=0): chunk mới nhất; loadMore dùng nextCursor → tin cũ hơn.
+ */
+const MESSAGE_PAGE_SIZE = 20
+
+/** Một frame sau IPC — loadMore: prepend tin cũ mượt hơn */
+function yieldToPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => resolve())
+  })
+}
+
 export type StreamStatus = 'idle' | 'pending' | 'streaming' | 'error'
 
 /** Toàn bộ state + action (dùng type cho selector Zustand). */
@@ -9,6 +22,8 @@ export interface MessageStore {
   messages: Record<string, Message[]>
   cursors: Record<string, number>
   hasMore: Record<string, boolean>
+  /** Đã hoàn tất lần loadMessages đầu cho phiên (kể cả lỗi) — dùng cho skeleton feed, không phụ thuộc state React. */
+  sessionFeedReady: Record<string, boolean>
   streamStatus: StreamStatus
   streamingText: string
   loadMessages: (sessionId: string) => Promise<void>
@@ -25,24 +40,33 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
   messages: {},
   cursors: {},
   hasMore: {},
+  sessionFeedReady: {},
   streamStatus: 'idle',
   streamingText: '',
 
   loadMessages: async (sessionId) => {
-    const page = await WailsService.getMessages(sessionId, 0, 50)
-    const sorted = [...page.messages].sort((a, b) => a.displayOrder - b.displayOrder)
-    set((s) => ({
-      messages: { ...s.messages, [sessionId]: sorted },
-      cursors: { ...s.cursors, [sessionId]: page.nextCursor },
-      hasMore: { ...s.hasMore, [sessionId]: page.hasMore },
-    }))
+    try {
+      const page = await WailsService.getMessages(sessionId, 0, MESSAGE_PAGE_SIZE)
+      const sorted = [...page.messages].sort((a, b) => a.displayOrder - b.displayOrder)
+      set((s) => ({
+        messages: { ...s.messages, [sessionId]: sorted },
+        cursors: { ...s.cursors, [sessionId]: page.nextCursor },
+        hasMore: { ...s.hasMore, [sessionId]: page.hasMore },
+        sessionFeedReady: { ...s.sessionFeedReady, [sessionId]: true },
+      }))
+    } catch {
+      set((s) => ({
+        sessionFeedReady: { ...s.sessionFeedReady, [sessionId]: true },
+      }))
+    }
   },
 
   loadMoreMessages: async (sessionId) => {
     const cur = get().cursors[sessionId] ?? 0
     if (!cur) return
-    const page = await WailsService.getMessages(sessionId, cur, 50)
+    const page = await WailsService.getMessages(sessionId, cur, MESSAGE_PAGE_SIZE)
     const older = [...page.messages].sort((a, b) => a.displayOrder - b.displayOrder)
+    await yieldToPaint()
     set((s) => {
       const existing = s.messages[sessionId] ?? []
       const merged = [...older, ...existing].sort((a, b) => a.displayOrder - b.displayOrder)
@@ -66,6 +90,7 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
         ...s.messages,
         [sessionId]: [...(s.messages[sessionId] ?? []), msg].sort((a, b) => a.displayOrder - b.displayOrder),
       },
+      sessionFeedReady: { ...s.sessionFeedReady, [sessionId]: true },
     })),
 
   removeMessage: (sessionId, messageId) =>

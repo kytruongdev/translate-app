@@ -225,6 +225,30 @@
   scroll-padding-bottom: 160px;
 }
 
+/* key={sessionId}: remount block tin theo phiên — bỏ hàng loạt ChatMessage cũ một lần, đỡ đơ khi đổi phiên */
+.chat-feed-session {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Virtual list: thay flex gap giữa các tin bằng gap của @tanstack/react-virtual */
+.chat-feed-virtual-row {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.chat-feed-virtual-row--user {
+  align-items: flex-end;
+}
+
+.chat-feed-virtual-row--assistant {
+  align-items: flex-start;
+}
+
 .chat-load-more {
   text-align: center;
   font-size: 12px;
@@ -310,6 +334,58 @@
   background: var(--bubble-assistant-bg);
   color: var(--text);
   border-bottom-left-radius: 4px;
+  /* 0 = đích nội suy khi tắt streaming — tránh nhảy đột ngột từ min-width/min-height lớn về “xin chào” ngắn */
+  min-width: 0;
+  min-height: 0;
+  transition:
+    min-width 0.44s cubic-bezier(0.33, 1, 0.18, 1),
+    min-height 0.4s cubic-bezier(0.33, 1, 0.18, 1),
+    box-shadow 0.2s var(--ease);
+}
+
+/* Đang dịch (bubble): chiều ngang tối thiểu + lớp tint pulse — không quét sáng ngang */
+.chat-msg.assistant .chat-bubble.chat-bubble--streaming {
+  position: relative;
+  overflow: hidden;
+  min-width: 100px;
+  min-height: 3rem;
+}
+
+.chat-msg.assistant .chat-bubble.chat-bubble--streaming::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  animation: stream-skeleton-shimmer 1.35s ease-in-out infinite;
+}
+
+[data-theme='dark'] .chat-msg.assistant .chat-bubble.chat-bubble--streaming::after {
+  background: color-mix(in srgb, var(--accent) 11%, transparent);
+}
+
+/* Vùng nội dung nổi trên lớp shine */
+.chat-msg.assistant .chat-bubble.chat-bubble--streaming > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Chờ chunk đầu: giữ chiều cao nhẹ, không skeleton */
+.assistant-bubble-stream-placeholder {
+  min-height: 1.25rem;
+  min-width: 4rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-msg.assistant .chat-bubble {
+    transition: box-shadow 0.2s var(--ease);
+  }
+
+  .chat-msg.assistant .chat-bubble.chat-bubble--streaming::after {
+    animation: none;
+    opacity: 0.2;
+  }
 }
 
 .chat-msg .chat-bubble:hover {
@@ -353,6 +429,12 @@
   font-size: 14px;
   font-weight: 500;
   color: var(--text);
+}
+
+/* Tên tệp dài: không ép một dòng như nhãn “Văn bản đã dán” */
+.chat-msg.user.user-file-attachment .text-upload-bubble .preview-title {
+  white-space: normal;
+  word-break: break-word;
 }
 
 .chat-msg.user.user-text-upload .chat-msg-body > .chat-lang-label {
@@ -413,6 +495,164 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
+}
+
+/* View giả load phiên: 2 skeleton line trong bubble (shimmer rất nhẹ) */
+.session-loading-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+}
+
+.chat-msg--session-loading-preview {
+  animation: none;
+}
+
+.chat-msg--session-loading-preview .chat-bubble.session-loading-bubble {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 3.15rem;
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Bubble ôm skeleton — fit-content; không stretch ngang để khỏi giãn full chat-msg-body */
+.chat-msg--session-loading-preview.user .chat-bubble.session-loading-bubble {
+  align-items: flex-end;
+  width: fit-content;
+  max-width: min(20rem, 85vw);
+  min-width: 0;
+}
+
+.chat-msg--session-loading-preview.assistant .chat-bubble.session-loading-bubble {
+  align-items: flex-start;
+  width: fit-content;
+  max-width: min(20rem, 85vw);
+  min-width: 0;
+}
+
+.session-loading-skel-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: max-content;
+  max-width: 100%;
+  /* Dòng 1 cố định (responsive); dòng 2 = 2/3 dòng 1 */
+  --skel-line1: min(7.25rem, 62vw);
+}
+
+.chat-msg--session-loading-preview.user .session-loading-skel-wrap {
+  align-items: flex-end;
+}
+
+.chat-msg--session-loading-preview.assistant .session-loading-skel-wrap {
+  align-items: flex-start;
+}
+
+/* Chỉ grayscale (var(--text)): vệt sáng trượt = chuyển sắc độ, không thêm màu accent */
+.chat-msg--session-loading-preview .session-loading-skel-line {
+  display: block;
+  height: 7px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.chat-msg--session-loading-preview .session-loading-skel-line:first-child {
+  width: var(--skel-line1);
+  max-width: 100%;
+}
+
+.chat-msg--session-loading-preview .session-loading-skel-line.session-loading-skel-line--second {
+  width: calc(var(--skel-line1) * 2 / 3);
+  max-width: 100%;
+}
+
+.chat-msg--session-loading-preview.user .session-loading-skel-line {
+  background: color-mix(in srgb, var(--text) 11%, transparent);
+}
+
+.chat-msg--session-loading-preview.assistant .session-loading-skel-line {
+  /* Nền bubble trắng — nền line hơi đậm hơn để vệt grayscale thấy rõ */
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+}
+
+.chat-msg--session-loading-preview .session-loading-skel-line::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: 55%;
+  border-radius: inherit;
+  /* Chỉ thay đổi độ đậm của cùng một họ màu chữ */
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--text) 8%, transparent) 28%,
+    color-mix(in srgb, var(--text) 22%, transparent) 50%,
+    color-mix(in srgb, var(--text) 8%, transparent) 72%,
+    transparent 100%
+  );
+  animation: session-skel-line-sweep 1.55s ease-in-out infinite;
+  animation-delay: 0s;
+  will-change: transform;
+}
+
+.chat-msg--session-loading-preview.assistant .session-loading-skel-line::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--text) 6%, transparent) 28%,
+    color-mix(in srgb, var(--text) 20%, transparent) 50%,
+    color-mix(in srgb, var(--text) 6%, transparent) 72%,
+    transparent 100%
+  );
+}
+
+[data-theme='dark'] .chat-msg--session-loading-preview.user .session-loading-skel-line {
+  background: color-mix(in srgb, var(--text) 16%, transparent);
+}
+
+[data-theme='dark'] .chat-msg--session-loading-preview.assistant .session-loading-skel-line {
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+}
+
+[data-theme='dark'] .chat-msg--session-loading-preview .session-loading-skel-line::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--text) 14%, transparent) 28%,
+    color-mix(in srgb, var(--text) 36%, transparent) 50%,
+    color-mix(in srgb, var(--text) 14%, transparent) 72%,
+    transparent 100%
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-msg--session-loading-preview .session-loading-skel-line::after {
+    display: none;
+  }
+
+  .chat-msg--session-loading-preview.user .session-loading-skel-line {
+    background: color-mix(in srgb, var(--text) 12%, transparent);
+  }
+
+  .chat-msg--session-loading-preview.assistant .session-loading-skel-line {
+    background: color-mix(in srgb, var(--text) 10%, transparent);
+  }
+
+  [data-theme='dark'] .chat-msg--session-loading-preview.user .session-loading-skel-line {
+    background: color-mix(in srgb, var(--text) 18%, transparent);
+  }
+
+  [data-theme='dark'] .chat-msg--session-loading-preview.assistant .session-loading-skel-line {
+    background: color-mix(in srgb, var(--text) 14%, transparent);
+  }
 }
 
 .card-footer-outside {
@@ -545,6 +785,8 @@
   display: flex;
   justify-content: flex-end;
   min-width: 0;
+  position: relative;
+  z-index: 6;
 }
 
 .card-inline-title {
@@ -585,6 +827,7 @@
   pointer-events: auto;
 }
 
+/* Segment kiểu “rãnh lõm + thumb trượt”: track inset, nút idle trong suốt, .active = pill nổi */
 .view-toggle {
   display: flex;
   flex-wrap: nowrap;
@@ -593,10 +836,14 @@
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-x: contain;
-  background: var(--input-bg);
+  align-items: stretch;
+  gap: 2px;
+  background: var(--view-toggle-track-bg);
   border-radius: var(--r-small);
   padding: 3px;
   scrollbar-width: thin;
+  /* Inset mỏng — lõm nhẹ, không highlight mép (tránh viền dày) */
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.09);
 }
 
 .view-toggle::-webkit-scrollbar {
@@ -617,10 +864,15 @@
   color: var(--text-secondary);
   font-family: inherit;
   font-size: 12px;
+  font-weight: 400;
   cursor: pointer;
+  position: relative;
+  z-index: 0;
+  box-shadow: none;
   transition:
-    background 0.15s var(--ease),
-    color 0.15s var(--ease);
+    background 0.2s var(--ease),
+    color 0.15s var(--ease),
+    box-shadow 0.2s var(--ease);
 }
 
 .view-toggle button:focus,
@@ -628,14 +880,26 @@
   outline: none;
 }
 
-.view-toggle button:hover {
+.view-toggle button:hover:not(.active) {
+  background: transparent;
   color: var(--text);
 }
 
+[data-theme='dark'] .view-toggle {
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.38);
+}
+
 .view-toggle button.active {
-  background: var(--active);
+  z-index: 1;
+  background: var(--surface);
   color: var(--text);
-  font-weight: 500;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme='dark'] .view-toggle button.active {
+  background: color-mix(in srgb, var(--text) 6%, var(--card-bg));
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
 }
 
 /* Popover Dịch lại: full width, grid 3 cột — tránh 2-col compact ép segment + scrollbar */
@@ -889,6 +1153,310 @@
 
 .fullscreen-modal.open {
   display: flex;
+  flex-direction: column;
+}
+
+/* ─── Epic: file dài — thanh buffer + skeleton ─── */
+.translation-fs-buffer-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  padding: 0 20px 8px;
+  margin: 0;
+}
+
+/* Tiến độ dịch file: thanh 2px ngay dưới tiêu đề Nguồn/Bản dịch (rail full-width) */
+.bilingual-head-separator {
+  height: 0;
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+  grid-area: rail;
+  align-self: stretch;
+}
+
+/* Thanh = viền: chỉ track chiếm chiều cao hàng grid; % absolute phía trên track (không đẩy line xa tiêu đề). */
+.bilingual-file-edge-rail {
+  grid-area: rail;
+  align-self: stretch;
+  justify-self: stretch;
+  flex-shrink: 0;
+  width: 100%;
+  min-height: 0;
+  padding: 0 2px 0 2px;
+  display: block;
+  overflow: visible;
+  position: relative;
+  z-index: 2;
+}
+
+.bilingual-file-edge-track-shell {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+/* Căn phải, phía trên line — chừa khoảng vừa đủ (không như hàng flex cũ, cũng không dính sát) */
+.bilingual-file-edge-pct {
+  position: absolute;
+  right: 2px;
+  bottom: calc(100% + 5px);
+  min-width: 2.25rem;
+  text-align: right;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+
+.bilingual-file-edge-track {
+  width: 100%;
+  height: 2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--text) 9%, transparent);
+  overflow: visible;
+  position: relative;
+  /* Gradient chỉ cho thanh — đốm accent tĩnh (tránh 2 lớp animate lệch frame / size khác nhau) */
+  --file-edge-grad: linear-gradient(
+    90deg,
+    var(--accent, #0ea5e9) 0%,
+    #22d3ee 14%,
+    #38bdf8 28%,
+    #6366f1 46%,
+    #a78bfa 58%,
+    #22d3ee 76%,
+    var(--accent, #0ea5e9) 100%
+  );
+}
+
+/* Thanh: gradient trượt; đốm accent cố định (một animation — không “đuổi” màu tách lớp) */
+.bilingual-file-edge-fill {
+  height: 100%;
+  min-width: 0;
+  border-radius: inherit;
+  overflow: visible;
+  position: relative;
+}
+
+.bilingual-file-edge-fill::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 50%;
+  width: 7.5px;
+  height: 7.5px;
+  margin-right: -3.75px;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  background: var(--accent, #0ea5e9);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.bilingual-file-edge-fill:not(.bilingual-file-edge-fill--indeterminate) {
+  background: var(--file-edge-grad);
+  background-size: 420% 100%;
+  background-position: 0% 0;
+  animation: bilingual-edge-flow 2.5s linear infinite;
+  transition: width 0.38s cubic-bezier(0.33, 1, 0.25, 1);
+}
+
+.bilingual-file-edge-fill--indeterminate {
+  background: var(--file-edge-grad);
+  background-size: 420% 100%;
+  background-position: 0% 0;
+  width: 34% !important;
+  transition: none;
+  animation:
+    bilingual-edge-indeterminate 1.15s ease-in-out infinite,
+    bilingual-edge-flow 1.6s linear infinite;
+}
+
+@keyframes bilingual-edge-flow {
+  0% {
+    background-position: 0% 0;
+  }
+  100% {
+    background-position: 100% 0;
+  }
+}
+
+@keyframes bilingual-edge-indeterminate {
+  0% {
+    transform: translateX(-102%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bilingual-file-edge-fill:not(.bilingual-file-edge-fill--indeterminate) {
+    animation: none;
+    background: var(--accent, #0ea5e9);
+    background-size: 100% 100%;
+    background-position: 0 0;
+  }
+
+  .bilingual-file-edge-fill--indeterminate {
+    animation: none;
+    transform: translateX(0);
+    width: 36% !important;
+    background: var(--accent, #0ea5e9);
+    background-size: 100% 100%;
+    background-position: 0 0;
+  }
+
+}
+
+/* Ngay dưới tiêu đề cột Nguồn / Bản dịch */
+.translation-panel-progress {
+  flex-shrink: 0;
+  padding: 0 12px 8px;
+  margin: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 7%, transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--text) 3%, transparent) 0%,
+    transparent 100%
+  );
+}
+
+/* Token panel là gradient — dùng background, không dùng background-color */
+.translation-panel.src .translation-panel-progress {
+  background: var(--panel-src-bg);
+}
+
+.translation-panel.dest .translation-panel-progress {
+  background: var(--panel-dest-bg);
+}
+
+.translation-panel-progress-inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.translation-fs-buffer-track {
+  flex: 1;
+  min-width: 0;
+  height: 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  overflow: hidden;
+}
+
+.translation-fs-buffer-track--panel {
+  flex: 1;
+  min-height: 3px;
+}
+
+.translation-fs-buffer-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent, #0ea5e9);
+  transition: width 0.35s cubic-bezier(0.33, 1, 0.25, 1);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent, #0ea5e9) 45%, transparent);
+}
+
+.translation-fs-buffer-fill--indeterminate {
+  width: 35% !important;
+  animation: translation-fs-buffer-shimmer 1.1s ease-in-out infinite;
+}
+
+@keyframes translation-fs-buffer-shimmer {
+  0% {
+    transform: translateX(-100%);
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(320%);
+    opacity: 0.85;
+  }
+}
+
+.translation-fs-buffer-pct {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  min-width: 2.5rem;
+  text-align: right;
+}
+
+.translation-fs-buffer-pct--panel {
+  font-size: 11px;
+  min-width: 2.25rem;
+}
+
+/* Phân tách bằng khoảng trắng — không kẻ đường giữa đã dịch và skeleton */
+.translation-fs-dest-tail {
+  margin-top: 16px;
+  padding-top: 0;
+  border-top: none;
+}
+
+.translation-fs-skeleton-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/*
+ * Skeleton: phải trộn với màu ĐẶC (--card-bg / --surface).
+ * --panel-dest-bg là linear-gradient → color-mix(..., var(--panel-dest-bg)) INVALID → nền mất,
+ * chỉ còn inset box-shadow → trông như “pill rỗng chỉ có viền”.
+ */
+.translation-fs-skel-line {
+  display: block;
+  width: 100%;
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--text) 11%, var(--card-bg)) 0%,
+    color-mix(in srgb, var(--text) 20%, var(--card-bg)) 50%,
+    color-mix(in srgb, var(--text) 11%, var(--card-bg)) 100%
+  );
+  background-size: 200% 100%;
+  animation: translation-fs-skel-shine 1.4s ease-in-out infinite;
+}
+
+.translation-fs-skel-line.short {
+  width: 55%;
+}
+
+.translation-fs-skel-line.medium {
+  width: 82%;
+}
+
+@keyframes translation-fs-skel-shine {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .translation-fs-buffer-fill--indeterminate,
+  .translation-fs-skel-line {
+    animation: none;
+  }
+
+  .translation-fs-buffer-fill {
+    transition: none;
+  }
 }
 
 @keyframes modal-panel-enter {
@@ -911,6 +1479,8 @@
 .fullscreen-modal .fullscreen-topbar {
   padding: 16px 16px 10px;
   background: transparent;
+  position: relative;
+  z-index: 8;
 }
 
 .fullscreen-modal .card-inline-actions .btn-icon {
@@ -932,22 +1502,45 @@
   padding: 0 24px 24px;
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  /* Cuộn trong từng cột .panel-body — không cuộn cả khối */
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .fullscreen-modal .bilingual-view {
+  flex: 1;
+  min-height: 0;
   max-height: none !important;
-  height: auto;
-  /* Trong modal: nội dung cao theo text, cuộn ở .fullscreen-content — không khóa chiều cao như thẻ trong feed */
-  grid-template-rows: minmax(0, auto);
+  overflow: hidden;
+  grid-template-rows: auto auto minmax(0, 1fr);
 }
 
 .fullscreen-modal .translation-panel {
+  min-height: 0;
   max-height: none;
 }
 
 .fullscreen-modal .translation-panel .panel-body {
   max-height: none !important;
+}
+
+/* Fullscreen file dài: markdown từng chunk + content-visibility — tránh mount toàn bộ react-markdown một lúc */
+.fullscreen-modal .lazy-md-stack {
+  min-height: 0;
+}
+
+.fullscreen-modal .lazy-md-chunk {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 480px;
+}
+
+.fullscreen-modal .lazy-md-sentinel {
+  height: 4px;
+  width: 100%;
+  flex-shrink: 0;
+  pointer-events: none;
+  visibility: hidden;
 }
 
 .fullscreen-modal .fullscreen-footer {
@@ -958,13 +1551,68 @@
   border-top: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
 }
 
-/* Layout chung (feed + modal). Chiều cao feed do .translation-card-expandable điều khiển. */
+/* Layout chung: 2 tiêu đề | rail (line / progress) | 2 body — feed + modal */
 .bilingual-view {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: auto;
   gap: 0;
   min-height: 140px;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-areas:
+    'src-head dest-head'
+    'rail rail'
+    'src-body dest-body';
+}
+
+.bilingual-view[data-mode='bilingual'] {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-areas:
+    'src-head dest-head'
+    'rail rail'
+    'src-body dest-body';
+}
+
+.bilingual-view[data-mode='dest'] {
+  grid-template-columns: 1fr;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-areas:
+    'dest-head'
+    'rail'
+    'dest-body';
+}
+
+.bilingual-view[data-mode='src'] {
+  grid-template-columns: 1fr;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-areas:
+    'src-head'
+    'rail'
+    'src-body';
+}
+
+.translation-panel--bilingual-head.src {
+  grid-area: src-head;
+}
+
+.translation-panel--bilingual-head.dest {
+  grid-area: dest-head;
+}
+
+.translation-panel--bilingual-body.src {
+  grid-area: src-body;
+}
+
+.translation-panel--bilingual-body.dest {
+  grid-area: dest-body;
+}
+
+.bilingual-view[data-mode='dest'] .translation-panel.src {
+  display: none;
+}
+
+.bilingual-view[data-mode='src'] .translation-panel.dest {
+  display: none;
 }
 
 /* Feed: thu gọn / mở rộng thay vì scrollbar trong thẻ */
@@ -979,28 +1627,31 @@
   min-height: 0;
 }
 
+/* max-height khi collapsible do JS đo scrollHeight — transition mượt mở/thu */
 .translation-card-expandable[data-collapsible='true'] .bilingual-view {
-  transition: max-height 0.45s cubic-bezier(0.33, 1, 0.25, 1);
+  transition: max-height 0.58s cubic-bezier(0.33, 1, 0.18, 1);
+}
+
+.translation-card.is-streaming .translation-card-expandable[data-collapsible='true'] .bilingual-view {
+  transition: none;
 }
 
 .translation-card-expandable[data-collapsible='false'] .bilingual-view {
   max-height: none;
   height: auto;
   overflow: visible;
-  grid-template-rows: auto;
+  grid-template-rows: auto auto minmax(0, auto);
 }
 
+/* Mở rộng: hàng nội dung theo chiều cao thật (auto) — 1fr + max-height JS làm nội dung không “nở” đủ như trước */
 .translation-card-expandable[data-collapsible='true'][data-expanded='true'] .bilingual-view {
-  max-height: min(5600px, 96vh);
-  height: auto;
-  overflow: visible;
-  grid-template-rows: auto;
+  grid-template-rows: auto auto minmax(0, auto);
+  min-height: 0;
+  overflow: hidden;
 }
 
 .translation-card-expandable[data-collapsible='true'][data-expanded='false'] .bilingual-view {
-  max-height: min(240px, 42vh);
-  overflow: hidden;
-  grid-template-rows: minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
 }
 
 /* Lớp phủ “mờ” dưới cùng: không phải filter blur — là gradient từ trong suốt → nền thẻ để gợi ý còn nội dung.
@@ -1021,7 +1672,7 @@
     var(--card-bg) 100%
   );
   opacity: 0;
-  transition: opacity 0.32s ease;
+  transition: opacity 0.45s cubic-bezier(0.33, 1, 0.25, 1);
 }
 
 .translation-card-expandable[data-collapsible='true'][data-expanded='false'] .translation-card-expandable-main::after {
@@ -1036,6 +1687,17 @@
   flex-shrink: 0;
   background: var(--card-bg);
   border-top: 1px solid color-mix(in srgb, var(--text) 6%, transparent);
+  transition: border-color 0.35s ease;
+}
+
+.translation-card-heavy-inline-hint {
+  margin: 0;
+  max-width: 42em;
+  padding: 4px 8px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-secondary);
 }
 
 [data-theme='dark'] .translation-card-expand-controls {
@@ -1050,17 +1712,20 @@
   padding: 7px 16px;
   border: none;
   border-radius: 999px;
-  background: var(--input-bg);
+  /* Xám đậm hơn nền thẻ một nấc — không trắng */
+  background: color-mix(in srgb, var(--text) 5.5%, var(--card-bg));
   color: var(--text-secondary);
   font-family: inherit;
   font-size: 13px;
   font-weight: 500;
   line-height: 1.25;
   cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
   transition:
     background 0.18s var(--ease),
     color 0.18s var(--ease),
-    transform 0.2s var(--ease-out);
+    transform 0.2s var(--ease-out),
+    box-shadow 0.18s var(--ease);
 }
 
 .translation-card-expand-btn-label {
@@ -1086,8 +1751,23 @@
 }
 
 .translation-card-expand-btn:hover {
-  background: var(--active);
+  background: color-mix(in srgb, var(--text) 9%, var(--card-bg));
   color: var(--text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.09);
+}
+
+[data-theme='dark'] .translation-card-expand-btn {
+  background: color-mix(in srgb, var(--text) 14%, var(--card-bg));
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+[data-theme='dark'] .translation-card-expand-btn:hover {
+  background: color-mix(in srgb, var(--text) 20%, var(--card-bg));
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(255, 255, 255, 0.12);
 }
 
 .translation-card-expand-btn:focus-visible {
@@ -1107,22 +1787,6 @@
   .translation-card-expand-btn-chevron {
     transition: none;
   }
-}
-
-.bilingual-view[data-mode='dest'] {
-  grid-template-columns: 1fr;
-}
-
-.bilingual-view[data-mode='dest'] .translation-panel:not(.dest) {
-  display: none;
-}
-
-.bilingual-view[data-mode='src'] {
-  grid-template-columns: 1fr;
-}
-
-.bilingual-view[data-mode='src'] .translation-panel.dest {
-  display: none;
 }
 
 .translation-panel {
@@ -1152,11 +1816,29 @@
   box-shadow: 0 12px 22px rgba(0, 0, 0, 0.32);
 }
 
+/* Rail active: giữ shadow mềm (chiều sâu như mockup), không dùng vạch 1px — progress line đã là mép dưới head */
+.bilingual-view[data-file-rail='active'] .panel-head {
+  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.04);
+  padding-bottom: 7px;
+}
+
+[data-theme='dark'] .bilingual-view[data-file-rail='active'] .panel-head {
+  box-shadow: 0 12px 22px rgba(0, 0, 0, 0.32);
+}
+
+/* Viền progress sát mép nội dung: bớt padding-top body để không “2 lớp” khoảng trống */
+.bilingual-view[data-file-rail='active'] .translation-panel--bilingual-body .panel-body {
+  padding-top: 8px;
+}
+
 .translation-panel .panel-body {
   flex: 1;
   min-height: 0;
   overflow-x: auto;
-  overflow-y: visible;
+  /* Song ngữ: scrollbar riêng nguồn / đích khi ô có chiều cao bị giới hạn (fullscreen, thẻ mở rộng) */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   padding: 12px 14px;
   font-size: 14px;
   line-height: 1.6;
@@ -1178,7 +1860,8 @@
 }
 
 /* Stream buffer: cùng typography .message-md, không parse markdown từng chunk */
-.stream-dest-plain {
+.stream-dest-plain,
+.stream-src-plain {
   margin: 0;
 }
 
@@ -1221,6 +1904,16 @@
 
 .message-md p {
   margin: 0.45em 0;
+}
+
+/* Ảnh từ Markdown (DOCX INCLUDEPICTURE → ![](url)): giới hạn kích thước, lazy load ở component */
+.message-md img,
+.message-md-img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0.75rem 0;
+  border-radius: var(--r-small, 6px);
 }
 
 .message-md ul,
@@ -1352,12 +2045,21 @@
   transition: background 0.15s var(--ease);
 }
 
-.btn-icon:hover {
+.btn-icon:hover:not(:disabled) {
   background: rgba(0, 0, 0, 0.08);
 }
 
-[data-theme='dark'] .btn-icon:hover {
+[data-theme='dark'] .btn-icon:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.12);
+}
+
+.btn-icon:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+[data-theme='dark'] .btn-icon:disabled {
+  opacity: 0.45;
 }
 
 .btn-icon:focus,
@@ -1476,6 +2178,140 @@
 .translation-card .card-inline-actions .btn-icon[data-tooltip]:focus-visible::before {
   opacity: 1;
   visibility: visible;
+}
+
+/* Bọc nút disabled (copy tài liệu lớn) — hover trên vùng nút vẫn đọc được tooltip */
+.assistant-bubble-actions .btn-icon-tooltip-host[data-tooltip],
+.translation-card .card-inline-actions .btn-icon-tooltip-host[data-tooltip],
+.fullscreen-modal .card-inline-actions .btn-icon-tooltip-host[data-tooltip] {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.translation-card .card-inline-actions .btn-icon-tooltip-host[data-tooltip],
+.fullscreen-modal .card-inline-actions .btn-icon-tooltip-host[data-tooltip] {
+  width: 34px;
+  height: 34px;
+}
+
+.assistant-bubble-actions .btn-icon-tooltip-host[data-tooltip] {
+  width: 32px;
+  height: 32px;
+}
+
+/* Nút disabled không ăn hover (tránh vòng xám); hover = lên host → tooltip */
+.btn-icon-tooltip-host .btn-icon:disabled {
+  pointer-events: none;
+}
+
+.btn-icon-tooltip-host:has(.btn-icon:disabled) {
+  cursor: not-allowed;
+}
+
+.assistant-bubble-actions .btn-icon-tooltip-host[data-tooltip]::before {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  translate: -50% 0;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(17, 24, 39, 0.92);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
+  max-width: min(300px, 88vw);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.18),
+    0 2px 6px rgba(0, 0, 0, 0.12);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  z-index: 200;
+  transition:
+    opacity 0.12s var(--ease),
+    visibility 0.12s var(--ease);
+}
+
+.translation-card .card-inline-actions .btn-icon-tooltip-host[data-tooltip]::before,
+.fullscreen-modal .card-inline-actions .btn-icon-tooltip-host[data-tooltip]::before {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 8px);
+  bottom: auto;
+  left: 50%;
+  translate: -50% 0;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(17, 24, 39, 0.92);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
+  max-width: min(300px, 88vw);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.18),
+    0 2px 6px rgba(0, 0, 0, 0.12);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  z-index: 200;
+  transition:
+    opacity 0.12s var(--ease),
+    visibility 0.12s var(--ease);
+}
+
+/*
+ * Tooltip đa dòng: width cố định để wrap đúng; toolbar bên phải — canh phải (::before đang left:50%)
+ * để khối mở về trái, không tràn mép phải modal / thẻ (overflow hidden).
+ */
+.btn-icon-tooltip-host[data-tooltip-multiline]::before {
+  white-space: normal;
+  text-align: left;
+  overflow: visible;
+  box-sizing: border-box;
+}
+
+.translation-card .card-inline-actions .btn-icon-tooltip-host[data-tooltip-multiline]::before,
+.fullscreen-modal .card-inline-actions .btn-icon-tooltip-host[data-tooltip-multiline]::before {
+  left: auto;
+  right: 0;
+  translate: none;
+  width: min(260px, calc(100vw - 56px));
+  max-width: min(260px, calc(100vw - 56px));
+  z-index: 4000;
+}
+
+.assistant-bubble-actions .btn-icon-tooltip-host[data-tooltip-multiline]::before {
+  left: auto;
+  right: 0;
+  translate: none;
+  width: min(260px, calc(100vw - 40px));
+  max-width: min(260px, calc(100vw - 40px));
+}
+
+.assistant-bubble-actions .btn-icon-tooltip-host[data-tooltip]:hover::before,
+.assistant-bubble-actions .btn-icon-tooltip-host[data-tooltip]:focus-within::before,
+.translation-card .card-inline-actions .btn-icon-tooltip-host[data-tooltip]:hover::before,
+.translation-card .card-inline-actions .btn-icon-tooltip-host[data-tooltip]:focus-within::before,
+.fullscreen-modal .card-inline-actions .btn-icon-tooltip-host[data-tooltip]:hover::before,
+.fullscreen-modal .card-inline-actions .btn-icon-tooltip-host[data-tooltip]:focus-within::before {
+  opacity: 1;
+  visibility: visible;
+}
+
+[data-theme='dark'] .assistant-bubble-actions .btn-icon-tooltip-host[data-tooltip]::before,
+[data-theme='dark'] .translation-card .card-inline-actions .btn-icon-tooltip-host[data-tooltip]::before,
+[data-theme='dark'] .fullscreen-modal .card-inline-actions .btn-icon-tooltip-host[data-tooltip]::before {
+  background: rgba(15, 23, 42, 0.92);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.5),
+    0 2px 8px rgba(0, 0, 0, 0.35);
 }
 
 [data-theme='dark'] .assistant-bubble-actions .btn-icon[data-tooltip]::before,

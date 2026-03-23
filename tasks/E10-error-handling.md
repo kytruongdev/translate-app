@@ -114,7 +114,7 @@ func (c *controller) streamTranslation(ctx context.Context, sessionID, msgID str
   - Nút × để clear, không cho gửi
 
 **File quá lớn:**
-- [ ] `pageCount > 100` → FE hiện error inline: "Tệp quá lớn (tối đa 100 trang)"
+- [ ] `pageCount > 200` → FE hiện error inline: "Tệp quá lớn (tối đa 200 trang)"
   - Không cho gửi
 
 **File format không hợp lệ (drag-drop):**
