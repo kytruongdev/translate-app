@@ -39,7 +39,7 @@ import {
   IconCopy as IconCopyCard,
   IconFullscreen,
 } from '@/components/TranslationFullscreenModal'
-import { LazyChunkedPlainText } from '@/components/LazyChunkedMarkdown'
+import { LazyChunkedMarkdown, LazyChunkedPlainText } from '@/components/LazyChunkedMarkdown'
 
 const IconCopySmall = () => (
   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width={18} height={18} aria-hidden>
@@ -254,6 +254,8 @@ function TranslationCardView({
     <div className="panel-body" ref={srcPanelScrollRef}>
       {streaming && heavyInlineNoExpand ? (
         <LazyChunkedPlainText content={src} scrollRootRef={srcPanelScrollRef} />
+      ) : heavyInlineNoExpand ? (
+        <LazyChunkedMarkdown content={src} scrollRootRef={srcPanelScrollRef} />
       ) : (
         <MemoMessageMarkdown content={src} />
       )}
@@ -286,6 +288,8 @@ function TranslationCardView({
         </>
       ) : streaming && dest ? (
         <StreamingPlainDest text={dest} />
+      ) : heavyInlineNoExpand ? (
+        <LazyChunkedMarkdown content={dest} scrollRootRef={srcPanelScrollRef} />
       ) : (
         <MessageMarkdown content={dest} />
       )}
@@ -811,15 +815,23 @@ function ChatMessageImpl({
 }
 
 function chatMessagePropsEqual(a: ChatMessageProps, b: ChatMessageProps): boolean {
+  const mId = a.m.id
+  // Chỉ re-render nếu CHÍNH tin này (hoặc cặp user của nó) đang/vừa liên quan streaming.
+  // Không so sánh streamingAssistantId global — tránh toàn bộ list re-render khi stream bắt đầu/kết thúc.
+  const prevStreaming =
+    a.streamingAssistantId === mId ||
+    (a.m.role === 'user' && a.nextAssistant?.id === a.streamingAssistantId)
+  const nextStreaming =
+    b.streamingAssistantId === mId ||
+    (b.m.role === 'user' && b.nextAssistant?.id === b.streamingAssistantId)
+  if (prevStreaming || nextStreaming) return false
+
   return (
     a.m === b.m &&
-    a.streamingAssistantId === b.streamingAssistantId &&
-    a.fileTranslateProgress === b.fileTranslateProgress &&
-    a.nextAssistant === b.nextAssistant &&
     a.precedingUserContent === b.precedingUserContent &&
-    a.retranslateQuoteAssistant === b.retranslateQuoteAssistant &&
     a.retranslateFollowUp === b.retranslateFollowUp &&
-    a.onRetranslate === b.onRetranslate
+    a.retranslateQuoteAssistant === b.retranslateQuoteAssistant &&
+    a.nextAssistant === b.nextAssistant
   )
 }
 

@@ -1,3 +1,4 @@
+import { memo, useEffect, useRef } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { RefObject } from 'react'
 import type { Message } from '@/types/session'
@@ -14,16 +15,16 @@ type Props = {
   scrollElementRef: RefObject<HTMLElement | null>
 }
 
-/** Ước lượng ban đầu (px); hàng đo thật qua measureElement */
-const ESTIMATE_ROW = 156
 const ROW_GAP = 16
-const OVERSCAN = 10
+/** Session nhỏ: render hết → scrollbar ổn định. Session lớn: giới hạn DOM node. */
+const SMALL_SESSION_THRESHOLD = 150
+const OVERSCAN_LARGE = 8
 
 /**
  * Chỉ mount tin trong / gần viewport — giảm mạnh lag khi session có hàng trăm tin sau load-more.
  * Căn trái/phải giữ đúng bubble user / assistant (flex align-items).
  */
-export function ChatMessageVirtualList({
+function ChatMessageVirtualListImpl({
   messages,
   assistantById,
   streamingAssistantId,
@@ -32,21 +33,60 @@ export function ChatMessageVirtualList({
   scrollElementRef,
 }: Props) {
   const count = messages.length
+  const initialScrollDone = useRef(false)
+  const spacerRef = useRef<HTMLDivElement>(null)
+
+  // Session nhỏ: overscan = count → render hết → đo thật hết → scrollbar không nhảy.
+  // Session lớn: overscan nhỏ để tránh quá nhiều DOM node.
+  const overscan = count <= SMALL_SESSION_THRESHOLD ? count : OVERSCAN_LARGE
 
   const virtualizer = useVirtualizer({
     count,
     getScrollElement: () => scrollElementRef.current,
-    estimateSize: () => ESTIMATE_ROW,
-    overscan: OVERSCAN,
+    estimateSize: (index) => {
+      const m = messages[index]
+      if (!m) return 160
+      if (m.displayMode === 'bilingual') return 480
+      const len = (m.translatedContent || m.originalContent || '').length
+      if (len > 400) return 200
+      return 100
+    },
+    overscan,
     gap: ROW_GAP,
     getItemKey: (index) => messages[index]?.id ?? index,
     useFlushSync: false,
   })
 
+  // Lần đầu tiên có tin: scroll xuống cuối.
+  // Virtualizer dùng estimated size → scrollToIndex chỉ đưa gần đúng.
+  // ResizeObserver theo dõi spacer: mỗi lần item được đo thật + height cập nhật → re-snap.
+  // Dừng sau 1.5s (đủ để tất cả item visible được đo xong).
+  useEffect(() => {
+    if (count === 0 || initialScrollDone.current) return
+    initialScrollDone.current = true
+
+    const el = scrollElementRef.current
+    const spacer = spacerRef.current
+    if (!el || !spacer) return
+
+    virtualizer.scrollToIndex(count - 1, { align: 'end' })
+
+    let done = false
+    const snap = () => { if (!done) el.scrollTop = el.scrollHeight }
+
+    snap()
+    const ro = new ResizeObserver(snap)
+    ro.observe(spacer)
+    const timer = window.setTimeout(() => { done = true; ro.disconnect() }, 1500)
+    return () => { done = true; ro.disconnect(); window.clearTimeout(timer) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [count])
+
   if (count === 0) return null
 
   return (
     <div
+      ref={spacerRef}
       className="chat-feed-virtual-spacer"
       style={{
         height: virtualizer.getTotalSize(),
@@ -100,3 +140,6 @@ export function ChatMessageVirtualList({
     </div>
   )
 }
+
+/** memo: ngăn re-render khi App.tsx update state không liên quan (draft, feedHeaderElevated, v.v.) */
+export const ChatMessageVirtualList = memo(ChatMessageVirtualListImpl)
