@@ -22,7 +22,7 @@ func (q *Queries) GetMaxDisplayOrder(ctx context.Context, sessionID string) (int
 }
 
 const getMessageById = `-- name: GetMessageById :one
-SELECT id, session_id, role, display_order, display_mode, original_content, translated_content, file_id, source_lang, target_lang, style, model_used, original_message_id, tokens, created_at, updated_at FROM messages WHERE id = ? LIMIT 1
+SELECT m.id, m.session_id, m.role, m.display_order, m.display_mode, m.original_content, m.translated_content, m.file_id, m.source_lang, m.target_lang, m.style, m.model_used, m.original_message_id, m.tokens, m.created_at, m.updated_at, COALESCE(f.file_size, 0) AS file_size FROM messages m LEFT JOIN files f ON f.id = m.file_id WHERE m.id = ? LIMIT 1
 `
 
 func (q *Queries) GetMessageById(ctx context.Context, id string) (Message, error) {
@@ -45,15 +45,16 @@ func (q *Queries) GetMessageById(ctx context.Context, id string) (Message, error
 		&i.Tokens,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.FileSize,
 	)
 	return i, err
 }
 
 const getMessagesBySessionCursor = `-- name: GetMessagesBySessionCursor :many
-SELECT id, session_id, role, display_order, display_mode, original_content, translated_content, file_id, source_lang, target_lang, style, model_used, original_message_id, tokens, created_at, updated_at FROM messages
-WHERE session_id = ?1
-  AND (?2 = 0 OR display_order < ?3)
-ORDER BY display_order DESC
+SELECT m.id, m.session_id, m.role, m.display_order, m.display_mode, m.original_content, m.translated_content, m.file_id, m.source_lang, m.target_lang, m.style, m.model_used, m.original_message_id, m.tokens, m.created_at, m.updated_at, COALESCE(f.file_size, 0) AS file_size FROM messages m LEFT JOIN files f ON f.id = m.file_id
+WHERE m.session_id = ?1
+  AND (?2 = 0 OR m.display_order < ?3)
+ORDER BY m.display_order DESC
 LIMIT ?4
 `
 
@@ -95,6 +96,7 @@ func (q *Queries) GetMessagesBySessionCursor(ctx context.Context, arg GetMessage
 			&i.Tokens,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.FileSize,
 		); err != nil {
 			return nil, err
 		}

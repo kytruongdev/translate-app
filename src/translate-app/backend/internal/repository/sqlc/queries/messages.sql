@@ -1,9 +1,11 @@
 -- Trang đầu (cursor=0): N tin mới nhất. cursor>0: display_order < cursor → các tin cũ hơn, vẫn DESC.
 -- name: GetMessagesBySessionCursor :many
-SELECT * FROM messages
-WHERE session_id = sqlc.arg(session_id)
-  AND (sqlc.arg(cursor) = 0 OR display_order < sqlc.arg(cursor_before))
-ORDER BY display_order DESC
+SELECT m.*, COALESCE(f.file_size, 0) AS file_size
+FROM messages m
+LEFT JOIN files f ON f.id = m.file_id
+WHERE m.session_id = sqlc.arg(session_id)
+  AND (sqlc.arg(cursor) = 0 OR m.display_order < sqlc.arg(cursor_before))
+ORDER BY m.display_order DESC
 LIMIT sqlc.arg(row_limit);
 
 -- name: GetMaxDisplayOrder :one
@@ -27,4 +29,7 @@ SET original_content = ?, updated_at = ?
 WHERE id = ?;
 
 -- name: GetMessageById :one
-SELECT * FROM messages WHERE id = ? LIMIT 1;
+SELECT m.*, COALESCE(f.file_size, 0) AS file_size
+FROM messages m
+LEFT JOIN files f ON f.id = m.file_id
+WHERE m.id = ? LIMIT 1;

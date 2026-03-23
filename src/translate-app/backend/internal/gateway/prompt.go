@@ -129,21 +129,26 @@ func BuildTranslationSystemPrompt(sourceLang, targetLocale, style string, preser
 				"Output ONLY the translated text, no explanations."
 		}
 	} else {
-		// unknown — let model detect source language
+		// unknown source — model detects language automatically.
+		// OUTPUT CONSTRAINT is explicit: regardless of what language the model detects,
+		// the entire output must be in the target language (no source-language passthrough).
+		outputConstraint := "Your output MUST be entirely in " + target + " — translate everything, " +
+			"including any embedded foreign-language passages or citations."
 		switch styleNorm {
 		case "business":
-			base = "You are a professional translator. Detect the language of the text and translate it\n" +
+			base = "You are a professional translator. Identify the source language of the text and translate it\n" +
 				"to " + target + " in a formal, clear, and professional tone suitable for business communication.\n" +
-				"Preserve technical terms. Output ONLY the translated text, no explanations."
+				"Preserve technical terms. " + outputConstraint + "\n" +
+				"Output ONLY the translated text, no explanations."
 		case "academic":
-			base = "You are a scholarly translator. Detect the language of the text and translate it\n" +
+			base = "You are a scholarly translator. Identify the source language of the text and translate it\n" +
 				"to " + target + " with precision and rigor, using domain-appropriate terminology.\n" +
-				"Maintain logical structure and formal register.\n" +
+				"Maintain logical structure and formal register. " + outputConstraint + "\n" +
 				"Output ONLY the translated text, no explanations."
 		default:
-			base = "You are a translator. Detect the language of the text and translate it to " + target + "\n" +
+			base = "You are a translator. Identify the source language of the text and translate it to " + target + "\n" +
 				"naturally and conversationally, as if explaining to a friend.\n" +
-				"Use everyday language, avoid stiff phrasing.\n" +
+				"Use everyday language, avoid stiff phrasing. " + outputConstraint + "\n" +
 				"Output ONLY the translated text, no explanations."
 		}
 	}

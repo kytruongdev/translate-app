@@ -18,6 +18,8 @@ type Controller interface {
 	TranslateFile(ctx context.Context, req bridge.FileRequest) error
 	GetFileContent(ctx context.Context, fileID string) (*bridge.FileContent, error)
 	ExportFile(ctx context.Context, fileID, format string) (string, error)
+	// RunRetranslateContent re-runs the chunked pipeline on already-extracted markdown (retranslate flow).
+	RunRetranslateContent(ctx context.Context, p RetranslateContentParams)
 }
 
 type controller struct {

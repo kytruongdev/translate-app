@@ -24,6 +24,7 @@ import {
   styleLabel,
   userMessageShowPastedPlaceholder,
 } from '@/utils/messageDisplay'
+import { formatFileSize } from '@/utils/formatFileSize'
 import { MessageMarkdown } from '@/components/MessageMarkdown'
 import { CardExportPopover, CardRetranslatePopover } from '@/components/MessageCardPopovers'
 import {
@@ -69,14 +70,14 @@ const IconPastedDoc = () => (
   </svg>
 )
 
-/** Paperclip — cùng kích thước / hàng với icon “Văn bản đã dán” (20×20, không khung). */
+/** Document icon — cùng kích thước / hàng với icon “Văn bản đã dán” (20×20, không khung). */
 const IconUserAttachmentFile = () => (
   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width={20} height={20} aria-hidden>
     <path
       strokeLinecap="round"
       strokeLinejoin="round"
       strokeWidth={2}
-      d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"
+      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
     />
   </svg>
 )
@@ -149,7 +150,16 @@ function UserPastedLongTextBubble({ meta }: { meta: string }) {
   )
 }
 
-function UserFileAttachmentBubble({ fileName, meta }: { fileName: string; meta: string }) {
+function UserFileAttachmentBubble({
+  fileName,
+  meta,
+  fileSize,
+}: {
+  fileName: string
+  meta: string
+  fileSize?: number
+}) {
+  const sizeLabel = fileSize && fileSize > 0 ? ` · ${formatFileSize(fileSize)}` : ''
   return (
     <>
       <div
@@ -162,7 +172,7 @@ function UserFileAttachmentBubble({ fileName, meta }: { fileName: string; meta: 
           <span className="preview-title">{fileName}</span>
         </div>
       </div>
-      <div className="chat-lang-label">{meta}</div>
+      <div className="chat-lang-label">{meta}{sizeLabel}</div>
     </>
   )
 }
@@ -174,6 +184,8 @@ export type RetranslatePayload = {
   sourceLang: string
   targetLang: string
   style: TranslationStyle
+  fileId?: string
+  fileDisplayContent?: string
 }
 
 /** Heuristic: đủ dài để mặc định thu gọn + nút Mở rộng (tránh kéo thẻ quá cao trong feed). */
@@ -340,7 +352,7 @@ function TranslationCardView({
     return () => ro.disconnect()
   }, [collapsible, heavyInlineNoExpand, m.id, src, dest, streaming, mode, bodyExpanded])
 
-  const canRetranslate = Boolean(precedingUserContent?.trim() && onRetranslate)
+  const canRetranslate = Boolean(src.trim() && onRetranslate)
 
   const panelSrcHead = `Nguồn · ${langShortLabel(m.sourceLang || 'auto')}`
   const panelDestHead = `Bản dịch · ${langShortLabel(m.targetLang || 'en-US')}`
@@ -372,14 +384,16 @@ function TranslationCardView({
   }, [collapsible, collapsedCapPx, streaming, bodyExpanded, bilingualScrollHeight, heavyInlineNoExpand])
 
   const runRetranslate = async (style: TranslationStyle) => {
-    if (!precedingUserContent?.trim() || !onRetranslate) return
+    if (!src.trim() || !onRetranslate) return
     await onRetranslate({
-      sourceContent: precedingUserContent.trim(),
+      sourceContent: src.trim(),
       assistantMessageId: m.id,
       displayMode: m.displayMode,
       sourceLang: m.sourceLang,
       targetLang: m.targetLang,
       style,
+      fileId: m.fileId ?? undefined,
+      fileDisplayContent: m.fileId ? (precedingUserContent ?? undefined) : undefined,
     })
   }
 
@@ -709,7 +723,7 @@ function ChatMessageImpl({
             U
           </div>
           <div className="chat-msg-body">
-            <UserFileAttachmentBubble fileName={fileAttachName} meta={userMeta} />
+            <UserFileAttachmentBubble fileName={fileAttachName} meta={userMeta} fileSize={m.fileSize} />
           </div>
         </div>
       )
@@ -796,7 +810,10 @@ function ChatMessageImpl({
           <BubbleActions messageId={m.id} heavyInlineNoExpand={bubbleHeavyInline} />
           <div className={`chat-bubble assistant${streaming ? ' chat-bubble--streaming' : ''}`}>
             {streaming && !destText ? (
-              <div className="assistant-bubble-stream-placeholder" aria-busy="true" aria-label="Đang dịch" />
+              <div className="assistant-bubble-stream-placeholder" aria-busy="true" aria-label="Đang dịch">
+                <span className="assistant-bubble-skel-line" />
+                <span className="assistant-bubble-skel-line" />
+              </div>
             ) : streaming && destText ? (
               <StreamingPlainDest text={destText} />
             ) : (

@@ -93,6 +93,7 @@ func messageFromRow(r sqlcgen.Message) (model.Message, error) {
 		ModelUsed:         nullStr(r.ModelUsed),
 		OriginalMessageID: orig,
 		Tokens:            tokens,
+		FileSize:          r.FileSize,
 		CreatedAt:         r.CreatedAt,
 		UpdatedAt:         r.UpdatedAt,
 	}, nil

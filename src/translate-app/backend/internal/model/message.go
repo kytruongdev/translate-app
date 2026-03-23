@@ -37,6 +37,7 @@ type Message struct {
 	ModelUsed           string           `json:"modelUsed"`
 	OriginalMessageID   *string          `json:"originalMessageId"`
 	Tokens              int              `json:"tokens"`
+	FileSize            int64            `json:"fileSize"`
 	CreatedAt           string           `json:"createdAt"` // RFC3339
 	UpdatedAt           string           `json:"updatedAt"`
 }

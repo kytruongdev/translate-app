@@ -7,6 +7,7 @@ import (
 
 	"translate-app/config"
 	"translate-app/internal/bridge"
+	"translate-app/internal/controller/file"
 	"translate-app/internal/model"
 	"translate-app/internal/repository"
 )
@@ -23,16 +24,17 @@ type Controller interface {
 }
 
 type controller struct {
-	reg  repository.Registry
-	keys *config.APIKeys
+	reg      repository.Registry
+	keys     *config.APIKeys
+	fileCtrl file.Controller
 }
 
 // New constructs a message controller.
-func New(reg repository.Registry, keys *config.APIKeys) Controller {
+func New(reg repository.Registry, keys *config.APIKeys, fileCtrl file.Controller) Controller {
 	if keys == nil {
 		keys = &config.APIKeys{}
 	}
-	return &controller{reg: reg, keys: keys}
+	return &controller{reg: reg, keys: keys, fileCtrl: fileCtrl}
 }
 
 func (c *controller) GetMessages(ctx context.Context, sessionID string, cursor, limit int) (*bridge.MessagesPage, error) {

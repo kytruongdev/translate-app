@@ -20,15 +20,19 @@ type CreateSessionAndSendRequest struct {
 
 // SendRequest — subsequent messages.
 type SendRequest struct {
-	SessionID         string            `json:"sessionId"`
-	Content           string            `json:"content"`
-	DisplayMode       model.DisplayMode `json:"displayMode"`
-	SourceLang        string            `json:"sourceLang"`
-	TargetLang        string            `json:"targetLang"`
-	Style             string            `json:"style,omitempty"`
-	OriginalMessageID string            `json:"originalMessageId,omitempty"`
-	Provider          string            `json:"provider,omitempty"`
-	Model             string            `json:"model,omitempty"`
+	SessionID          string            `json:"sessionId"`
+	Content            string            `json:"content"`
+	DisplayMode        model.DisplayMode `json:"displayMode"`
+	SourceLang         string            `json:"sourceLang"`
+	TargetLang         string            `json:"targetLang"`
+	Style              string            `json:"style,omitempty"`
+	OriginalMessageID  string            `json:"originalMessageId,omitempty"`
+	Provider           string            `json:"provider,omitempty"`
+	Model              string            `json:"model,omitempty"`
+	// File retranslate: copy fileId to new assistant message + emit file:source for auto-fullscreen.
+	FileID             string            `json:"fileId,omitempty"`
+	// File retranslate: stored as user message originalContent for bilingualFileTitle display ("📎 filename.ext").
+	FileDisplayContent string            `json:"fileDisplayContent,omitempty"`
 }
 
 // FileRequest — file translation.

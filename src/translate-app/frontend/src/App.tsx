@@ -507,7 +507,7 @@ export default function App() {
         const maxOrder = list.reduce((a, msg) => Math.max(a, msg.displayOrder), 0)
         const optimistic = buildOptimisticUserMessage({
           sessionId,
-          content: p.sourceContent,
+          content: p.fileDisplayContent ?? p.sourceContent,
           displayMode: p.displayMode,
           sourceLang: p.sourceLang,
           targetLang: p.targetLang,
@@ -527,6 +527,8 @@ export default function App() {
             originalMessageId: p.assistantMessageId,
             provider: activeProvider,
             model: activeModel,
+            fileId: p.fileId,
+            fileDisplayContent: p.fileDisplayContent,
           })
           await loadMessages(sessionId)
           scrollFeedToBottom()
