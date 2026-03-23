@@ -6,7 +6,7 @@ import { WailsService } from '@/services/wailsService'
  * Số tin mỗi lần gọi GetMessages (BE: ORDER BY display_order DESC).
  * Lần đầu (cursor=0): chunk mới nhất; loadMore dùng nextCursor → tin cũ hơn.
  */
-const MESSAGE_PAGE_SIZE = 20
+const MESSAGE_PAGE_SIZE = 60
 
 /** Một frame sau IPC — loadMore: prepend tin cũ mượt hơn */
 function yieldToPaint(): Promise<void> {
@@ -69,9 +69,10 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
     await yieldToPaint()
     set((s) => {
       const existing = s.messages[sessionId] ?? []
-      const merged = [...older, ...existing].sort((a, b) => a.displayOrder - b.displayOrder)
+      // older luôn có displayOrder nhỏ hơn existing (cursor guarantee) → không cần sort lại toàn bộ
+      const combined = [...older, ...existing]
       const seen = new Set<string>()
-      const dedup = merged.filter((m) => {
+      const dedup = combined.filter((m) => {
         if (seen.has(m.id)) return false
         seen.add(m.id)
         return true
@@ -110,6 +111,23 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
 
   finalizeStream: async (sessionId) => {
     set({ streamStatus: 'idle', streamingText: '' })
-    await get().loadMessages(sessionId)
+    // Upsert thay vì replace: giữ nguyên toàn bộ tin đã load từ load-more,
+    // chỉ cập nhật / thêm các tin trong page mới nhất.
+    try {
+      const page = await WailsService.getMessages(sessionId, 0, MESSAGE_PAGE_SIZE)
+      const incoming = [...page.messages].sort((a, b) => a.displayOrder - b.displayOrder)
+      set((s) => {
+        const existing = s.messages[sessionId] ?? []
+        const byId = new Map(existing.map((m) => [m.id, m]))
+        for (const m of incoming) byId.set(m.id, m)
+        const merged = [...byId.values()].sort((a, b) => a.displayOrder - b.displayOrder)
+        return {
+          messages: { ...s.messages, [sessionId]: merged },
+          sessionFeedReady: { ...s.sessionFeedReady, [sessionId]: true },
+        }
+      })
+    } catch {
+      // best-effort — streamingText đã clear, UI vẫn hiển thị text đã stream
+    }
   },
 }))
