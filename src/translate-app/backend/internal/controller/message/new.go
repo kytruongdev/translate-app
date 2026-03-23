@@ -16,6 +16,8 @@ type Controller interface {
 	GetMessages(ctx context.Context, sessionID string, cursor, limit int) (*bridge.MessagesPage, error)
 	SendMessage(ctx context.Context, req bridge.SendRequest) (string, error)
 	CreateSessionAndSend(ctx context.Context, req bridge.CreateSessionAndSendRequest) (bridge.CreateSessionAndSendResult, error)
+	// CreateEmptySession creates a session row with no messages (e.g. file translation from start view).
+	CreateEmptySession(ctx context.Context, title, targetLang, style string) (string, error)
 	// CopyTranslationText returns trimmed translated text for an assistant message (clipboard set in handler).
 	CopyTranslationText(ctx context.Context, messageID string) (string, error)
 }
@@ -35,7 +37,7 @@ func New(reg repository.Registry, keys *config.APIKeys) Controller {
 
 func (c *controller) GetMessages(ctx context.Context, sessionID string, cursor, limit int) (*bridge.MessagesPage, error) {
 	if limit <= 0 {
-		limit = 50
+		limit = 20 // khớp FE MESSAGE_PAGE_SIZE — trang đầu = tin mới nhất (ListByCursor DESC)
 	}
 	rows, err := c.reg.Message().ListByCursor(ctx, sessionID, cursor, limit)
 	if err != nil {

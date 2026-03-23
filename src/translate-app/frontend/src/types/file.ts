@@ -1,3 +1,6 @@
+/** Giới hạn số trang cho một lần dịch file — đồng bộ BE `internal/controller/file/translate.go` (`maxFilePages`). */
+export const MAX_FILE_PAGE_COUNT = 200
+
 export interface FileAttachment {
   id: string
   sessionId: string

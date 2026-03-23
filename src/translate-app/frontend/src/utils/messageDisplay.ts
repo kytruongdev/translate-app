@@ -3,6 +3,31 @@ import type { Message, TranslationStyle } from '@/types/session'
 /** Ngưỡng “văn bản dài”: song ngữ, placeholder dán, v.v. */
 export const LONG_TEXT_THRESHOLD = 1000
 
+/**
+ * File dịch: nguồn dài hơn ngưỡng này thì trong feed không cho “Mở rộng” inline —
+ * chỉ hướng dẫn dùng toàn màn hình (tránh DOM nặng / cuộn kép).
+ */
+export const HEAVY_FILE_INLINE_CHAR_THRESHOLD = 28_000
+
+export function isHeavyFileBilingualInline(m: { fileId: string | null }, sourceText: string): boolean {
+  return Boolean(m.fileId && sourceText.length >= HEAVY_FILE_INLINE_CHAR_THRESHOLD)
+}
+
+/** Tin user đính kèm file: backend ghi `originalContent` dạng `📎 tên.ext`. */
+const FILE_ATTACH_LINE = /^📎\s*(.+)$/u
+
+export function parseFileAttachmentDisplayName(originalContent: string): string | null {
+  const t = originalContent.trim()
+  const m = t.match(FILE_ATTACH_LINE)
+  if (!m?.[1]) return null
+  const name = m[1].trim()
+  return name || null
+}
+
+/** Tooltip khi tắt copy — cùng điều kiện `isHeavyFileBilingualInline` (gợi ý fullscreen / export). */
+export const LARGE_DOCUMENT_COPY_DISABLED_TOOLTIP =
+  'Chức năng sao chép không khả dụng với tài liệu lớn. Vui lòng sử dụng chức năng Export'
+
 export function styleLabel(style: TranslationStyle | ''): string {
   if (style === 'business') return 'Business'
   if (style === 'academic') return 'Academic'
@@ -42,6 +67,8 @@ export function assistantMessageIsLongForm(
  */
 export function userMessageShowPastedPlaceholder(m: Message, pairedAssistantLongForm: boolean): boolean {
   if (m.role !== 'user') return false
+  // Tin đính kèm file: không dùng nhãn “Văn bản đã dán”.
+  if (m.fileId) return false
   return (
     pairedAssistantLongForm ||
     m.displayMode === 'bilingual' ||

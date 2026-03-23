@@ -6,6 +6,10 @@ export function CopyTranslation(arg1) {
   return window['go']['handler']['App']['CopyTranslation'](arg1);
 }
 
+export function CreateEmptySession(arg1, arg2, arg3) {
+  return window['go']['handler']['App']['CreateEmptySession'](arg1, arg2, arg3);
+}
+
 export function CreateSessionAndSend(arg1) {
   return window['go']['handler']['App']['CreateSessionAndSend'](arg1);
 }

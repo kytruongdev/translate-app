@@ -86,6 +86,31 @@ func (q *Queries) InsertFile(ctx context.Context, arg InsertFileParams) error {
 	return err
 }
 
+const updateFileExtracted = `-- name: UpdateFileExtracted :exec
+UPDATE files
+SET source_path = ?, char_count = ?, page_count = ?, updated_at = ?
+WHERE id = ?
+`
+
+type UpdateFileExtractedParams struct {
+	SourcePath sql.NullString `json:"source_path"`
+	CharCount  sql.NullInt64  `json:"char_count"`
+	PageCount  sql.NullInt64  `json:"page_count"`
+	UpdatedAt  string         `json:"updated_at"`
+	ID         string         `json:"id"`
+}
+
+func (q *Queries) UpdateFileExtracted(ctx context.Context, arg UpdateFileExtractedParams) error {
+	_, err := q.db.ExecContext(ctx, updateFileExtracted,
+		arg.SourcePath,
+		arg.CharCount,
+		arg.PageCount,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	return err
+}
+
 const updateFileStatus = `-- name: UpdateFileStatus :exec
 UPDATE files SET status = ?, error_msg = ?, updated_at = ? WHERE id = ?
 `

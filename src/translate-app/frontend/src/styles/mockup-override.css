@@ -336,13 +336,13 @@
   display: block;
 }
 
-/* Cầu vô hình để chuột qua khe 8px giữa popover và submenu không làm mất :hover */
+/* Cầu hover mỏng — mockup: submenu left = popover.right - 1px (sát, hơi chồng mép) */
 .config-menu-item-wrap::after {
   content: '';
   position: absolute;
-  left: 100%;
+  left: calc(100% - 1px);
   top: 0;
-  width: 14px;
+  width: 6px;
   height: 100%;
   min-height: 44px;
   z-index: 891;
@@ -351,7 +351,7 @@
 .config-submenu {
   display: none;
   position: absolute;
-  left: calc(100% + 8px);
+  left: calc(100% - 1px);
   top: 0;
   background: var(--surface);
   border: 1px solid rgba(0, 0, 0, 0.08);
@@ -420,6 +420,9 @@
 .start-view .chat-input-area {
   flex-shrink: 0;
   width: 100%;
+  position: relative;
+  z-index: 4;
+  isolation: isolate;
 }
 
 .start-subtext {

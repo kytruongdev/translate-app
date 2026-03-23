@@ -12,5 +12,10 @@ UPDATE files
 SET source_path = ?, translated_path = ?, status = ?, char_count = ?, page_count = ?, model_used = ?, updated_at = ?
 WHERE id = ?;
 
+-- name: UpdateFileExtracted :exec
+UPDATE files
+SET source_path = ?, char_count = ?, page_count = ?, updated_at = ?
+WHERE id = ?;
+
 -- name: GetFileById :one
 SELECT * FROM files WHERE id = ? LIMIT 1;

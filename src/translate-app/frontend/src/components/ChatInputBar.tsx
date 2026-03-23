@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
+import { CanResolveFilePaths, ResolveFilePaths } from '../../wailsjs/runtime/runtime'
 import { useSettingsStore } from '@/stores/settings/settingsStore'
 import { useUIStore } from '@/stores/ui/uiStore'
 import { STYLE_OPTIONS, TARGET_LANG_OPTIONS } from '@/constants/inputOptions'
 import type { TranslationStyle } from '@/types/session'
+import type { PendingFilePick } from '@/types/ipc'
+import { FileAttachment } from '@/components/FileAttachment'
 
 const IconAttach = () => (
   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
@@ -34,19 +37,38 @@ export function ChatInputBar({
   setDraft,
   onSend,
   busy,
+  attachDisabled,
+  pendingFile,
+  filePickError,
+  attachmentValidationError,
+  onAttachClick,
+  onClearPendingFile,
+  onUserChoseFilePath,
+  onNotifyPickError,
 }: {
   draft: string
   setDraft: (v: string) => void
   onSend: () => void
   busy: boolean
+  /** Mặc định: dùng `busy` — truyền riêng (vd. chỉ `sending`) để vẫn bấm đính kèm khi đang stream */
+  attachDisabled?: boolean
+  pendingFile: PendingFilePick | null
+  filePickError: string | null
+  attachmentValidationError: string | null
+  onAttachClick: () => void
+  onClearPendingFile: () => void
+  onUserChoseFilePath: (path: string) => Promise<void>
+  onNotifyPickError: (message: string) => void
 }) {
   const defaultStyle = useSettingsStore((s) => s.defaultStyle)
   const saveSettings = useSettingsStore((s) => s.saveSettings)
   const activeTargetLang = useUIStore((s) => s.activeTargetLang)
 
   const [popover, setPopover] = useState<Popover>(null)
+  const [fileDragOver, setFileDragOver] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const textFieldRef = useRef<HTMLTextAreaElement>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
   /** Line + shadow chỉ khi cuộn giữa chừng — ẩn ở đầu (scrollTop≈0) và ở cuối (thumb chạm đáy). */
   const [footerScrollDivider, setFooterScrollDivider] = useState(false)
 
@@ -86,6 +108,80 @@ export function ChatInputBar({
     TARGET_LANG_OPTIONS.find((o) => o.value === activeTargetLang) ?? TARGET_LANG_OPTIONS[0]
   const langChip = `Dịch · ${langOpt?.chip ?? activeTargetLang}`
 
+  const blockAttach = attachDisabled ?? busy
+
+  const canSendFile =
+    Boolean(pendingFile) && !pendingFile?.loading && attachmentValidationError == null
+  const canSubmit = Boolean(draft.trim() || canSendFile) && !busy
+
+  /** Enter gửi kể cả khi focus không nằm trong textarea (vd. sau khi bấm đính kèm). */
+  const trySubmitOnEnter = useCallback(
+    (e: KeyboardEvent) => {
+      const isEnter = e.key === 'Enter' || e.code === 'NumpadEnter'
+      if (!isEnter || e.shiftKey) return
+      if (e.nativeEvent.isComposing) return
+      if (busy || !canSubmit) return
+      const t = e.target as HTMLElement | null
+      if (!t) return
+      if (t.closest('.input-popover')) return
+      if (t.closest('button.file-attachment-remove')) return
+      if (t.closest('.btn-attach')) return
+      if (t.closest('.input-chip')) return
+      /* Để Enter trên nút gửi kích hoạt click mặc định — tránh double / chặn nhầm */
+      if (t.closest('.btn-send-icon')) return
+      e.preventDefault()
+      e.stopPropagation()
+      onSend()
+    },
+    [busy, canSubmit, onSend],
+  )
+
+  const onDragOver = useCallback((e: DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!blockAttach) setFileDragOver(true)
+  }, [blockAttach])
+
+  const onDragLeave = useCallback((e: DragEvent) => {
+    e.preventDefault()
+    if (!wrapRef.current?.contains(e.relatedTarget as Node)) {
+      setFileDragOver(false)
+    }
+  }, [])
+
+  const onDrop = useCallback(
+    async (e: DragEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      setFileDragOver(false)
+      if (blockAttach) return
+      const files = Array.from(e.dataTransfer.files)
+      if (files.length === 0) return
+      const f = files[0]
+      let path: string | undefined
+      if (CanResolveFilePaths()) {
+        ResolveFilePaths(files)
+        path = (f as File & { path?: string }).path
+      }
+      const nameLower = f.name.toLowerCase()
+      const ref = (path ?? f.name).toLowerCase()
+      if (!ref.endsWith('.pdf') && !ref.endsWith('.docx')) {
+        onNotifyPickError('Chỉ hỗ trợ PDF và DOCX')
+        return
+      }
+      if (!path) {
+        if (nameLower.endsWith('.pdf') || nameLower.endsWith('.docx')) {
+          onNotifyPickError('Không lấy được đường dẫn tệp — hãy dùng nút đính kèm hoặc bản build Wails')
+        } else {
+          onNotifyPickError('Chỉ hỗ trợ PDF và DOCX')
+        }
+        return
+      }
+      await onUserChoseFilePath(path)
+    },
+    [blockAttach, onNotifyPickError, onUserChoseFilePath],
+  )
+
   const pickStyle = useCallback(
     async (v: TranslationStyle) => {
       await saveSettings({ defaultStyle: v })
@@ -103,9 +199,38 @@ export function ChatInputBar({
   )
 
   return (
-    <div className="chat-input-area" ref={rootRef}>
+    <div
+      className="chat-input-area"
+      ref={rootRef}
+      onKeyDownCapture={trySubmitOnEnter}
+    >
       <div className="chat-input-row">
-        <div className="input-wrap">
+        <div
+          ref={wrapRef}
+          className={`input-wrap${fileDragOver ? ' is-file-dragover' : ''}`}
+          onDragEnter={onDragOver}
+          onDragOver={onDragOver}
+          onDragLeave={onDragLeave}
+          onDrop={(e: DragEvent) => void onDrop(e)}
+        >
+          {fileDragOver && (
+            <div className="file-drop-overlay" aria-hidden>
+              Thả file vào đây
+            </div>
+          )}
+          {pendingFile && (
+            <FileAttachment
+              fileInfo={pendingFile.info}
+              onRemove={onClearPendingFile}
+              error={attachmentValidationError ?? undefined}
+              loading={pendingFile.loading}
+            />
+          )}
+          {filePickError && !pendingFile && (
+            <p className="file-pick-error" role="alert">
+              {filePickError}
+            </p>
+          )}
           <textarea
             ref={textFieldRef}
             className="text-field"
@@ -115,11 +240,12 @@ export function ChatInputBar({
             onChange={(e) => setDraft(e.target.value)}
             onScroll={updateFooterScrollDivider}
             onKeyDown={(e) => {
-              // Mockup: Enter gửi, Shift+Enter xuống hàng (mockup.v1.html ~3307–3308)
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                if (!busy && draft.trim()) onSend()
-              }
+              const isEnter = e.key === 'Enter' || e.code === 'NumpadEnter'
+              if (!isEnter || e.shiftKey) return
+              if (e.nativeEvent.isComposing) return
+              if (!canSubmit) return
+              e.preventDefault()
+              onSend()
             }}
           />
           <div
@@ -127,7 +253,13 @@ export function ChatInputBar({
             data-scroll-divider={footerScrollDivider ? 'true' : 'false'}
           >
             <div className="input-controls" aria-label="Tuỳ chọn nhập">
-              <button type="button" className="btn-attach" aria-label="Đính kèm file">
+              <button
+                type="button"
+                className="btn-attach"
+                aria-label="Đính kèm file"
+                disabled={blockAttach}
+                onClick={() => onAttachClick()}
+              >
                 <IconAttach />
               </button>
               <div className="input-chip-wrap">
@@ -189,7 +321,7 @@ export function ChatInputBar({
               <button
                 type="button"
                 className="btn-send-icon"
-                disabled={!draft.trim() || busy}
+                disabled={!canSubmit}
                 aria-label="Gửi"
                 onClick={() => onSend()}
               >

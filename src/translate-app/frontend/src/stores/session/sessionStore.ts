@@ -5,16 +5,23 @@ import { WailsService } from '@/services/wailsService'
 export interface SessionStore {
   sessions: Session[]
   activeSessionId: string | null
+  /**
+   * Vừa đổi sang một phiên chat (id khác trước đó): UI feed chỉ hiện view giả,
+   * chưa mount ChatMessage — tránh khựng khi quay lại phiên đã cache nhưng list dài.
+   */
+  sessionTransitionPending: boolean
   loadSessions: () => Promise<void>
   appendSession: (session: Session) => void
   renameSession: (id: string, title: string) => Promise<void>
   updateStatus: (id: string, status: SessionStatus) => Promise<void>
   setActiveSession: (id: string | null) => void
+  clearSessionTransition: () => void
 }
 
 export const useSessionStore = create<SessionStore>((set, get) => ({
   sessions: [],
   activeSessionId: null,
+  sessionTransitionPending: false,
 
   loadSessions: async () => {
     const sessions = (await WailsService.getSessions()) as Session[]
@@ -35,5 +42,15 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     await get().loadSessions()
   },
 
-  setActiveSession: (id) => set({ activeSessionId: id }),
+  setActiveSession: (id) => {
+    const prev = get().activeSessionId
+    const openingChat = id != null && id !== ''
+    const changed = id !== prev
+    set({
+      activeSessionId: id,
+      sessionTransitionPending: openingChat && changed,
+    })
+  },
+
+  clearSessionTransition: () => set({ sessionTransitionPending: false }),
 }))

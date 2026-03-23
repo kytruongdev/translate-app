@@ -2,24 +2,35 @@ import {
   memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type MouseEvent,
 } from 'react'
 import type { Message, TranslationStyle } from '@/types/session'
+import type { FileProgress } from '@/types/file'
 import { WailsService } from '@/services/wailsService'
 import { useSettingsStore } from '@/stores/settings/settingsStore'
+import { useUIStore } from '@/stores/ui/uiStore'
 import { useMessageStore, type MessageStore } from '@/stores/message/messageStore'
 import {
   assistantMessageIsLongForm,
   formatMessageFooterTime,
+  isHeavyFileBilingualInline,
   langShortLabel,
+  LARGE_DOCUMENT_COPY_DISABLED_TOOLTIP,
+  parseFileAttachmentDisplayName,
   styleLabel,
   userMessageShowPastedPlaceholder,
 } from '@/utils/messageDisplay'
 import { MessageMarkdown } from '@/components/MessageMarkdown'
 import { CardExportPopover, CardRetranslatePopover } from '@/components/MessageCardPopovers'
+import {
+  FileJobBilingualEdgeRail,
+  fileJobDestTailMinPx,
+  fileJobShowPartialDestTail,
+} from '@/components/FileJobPanelProgressStrip'
 import {
   TranslationFullscreenModal,
   type PanelMode,
@@ -28,6 +39,7 @@ import {
   IconCopy as IconCopyCard,
   IconFullscreen,
 } from '@/components/TranslationFullscreenModal'
+import { LazyChunkedPlainText } from '@/components/LazyChunkedMarkdown'
 
 const IconCopySmall = () => (
   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width={18} height={18} aria-hidden>
@@ -53,6 +65,18 @@ const IconPastedDoc = () => (
       strokeLinejoin="round"
       strokeWidth={2}
       d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+    />
+  </svg>
+)
+
+/** Paperclip — cùng kích thước / hàng với icon “Văn bản đã dán” (20×20, không khung). */
+const IconUserAttachmentFile = () => (
+  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width={20} height={20} aria-hidden>
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"
     />
   </svg>
 )
@@ -125,6 +149,24 @@ function UserPastedLongTextBubble({ meta }: { meta: string }) {
   )
 }
 
+function UserFileAttachmentBubble({ fileName, meta }: { fileName: string; meta: string }) {
+  return (
+    <>
+      <div
+        className="text-upload-bubble"
+        role="status"
+        aria-label={`Đã gửi tệp ${fileName}`}
+      >
+        <div className="preview-row">
+          <IconUserAttachmentFile />
+          <span className="preview-title">{fileName}</span>
+        </div>
+      </div>
+      <div className="chat-lang-label">{meta}</div>
+    </>
+  )
+}
+
 export type RetranslatePayload = {
   sourceContent: string
   assistantMessageId: string
@@ -159,6 +201,7 @@ function TranslationCardView({
   precedingUserContent,
   isRetranslated,
   onRetranslate,
+  fileTranslateProgress,
 }: {
   m: Message
   destDisplay: string
@@ -167,6 +210,7 @@ function TranslationCardView({
   /** Mockup: `.translation-card.retranslated` */
   isRetranslated?: boolean
   onRetranslate?: (p: RetranslatePayload) => Promise<void>
+  fileTranslateProgress?: FileProgress | null
 }) {
   const [mode, setMode] = useState<PanelMode>('bilingual')
   const [copied, setCopied] = useState(false)
@@ -174,6 +218,9 @@ function TranslationCardView({
   const [exportOpen, setExportOpen] = useState(false)
   const [retranslateOpen, setRetranslateOpen] = useState(false)
   const [bodyExpanded, setBodyExpanded] = useState(false)
+  const bilingualRef = useRef<HTMLDivElement>(null)
+  const [bilingualScrollHeight, setBilingualScrollHeight] = useState(0)
+  const [collapsedCapPx, setCollapsedCapPx] = useState(240)
 
   const activeProvider = useSettingsStore((s) => s.activeProvider)
   const activeModel = useSettingsStore((s) => s.activeModel)
@@ -181,12 +228,78 @@ function TranslationCardView({
 
   const exportRef = useRef<HTMLButtonElement>(null)
   const retranslateRef = useRef<HTMLButtonElement>(null)
+  const srcPanelScrollRef = useRef<HTMLDivElement>(null)
 
-  /* Assistant thường không có originalContent — lấy từ tin user liền trước */
-  const src = precedingUserContent?.trim() || m.originalContent || ''
+  const bilingualFileTitle = useMemo(
+    () => (m.fileId ? parseFileAttachmentDisplayName(precedingUserContent ?? '') : null),
+    [m.fileId, precedingUserContent],
+  )
+
+  /* File dịch: nguồn đầy đủ ghi vào original_content của assistant; tin thường lấy từ user liền trước */
+  const src =
+    (m.originalContent?.trim() ? m.originalContent.trim() : '') ||
+    (precedingUserContent?.trim() ?? '')
   const dest = destDisplay
   const collapsible = useMemo(() => translationCardIsCollapsible(src, dest, streaming), [src, dest, streaming])
+  const heavyInlineNoExpand = useMemo(() => isHeavyFileBilingualInline(m, src), [m, src])
   const modelLabel = `${activeProvider} · ${activeModel}`
+  const fileJobActive = Boolean(m.fileId && streaming)
+  const showFileProgressStrip = fileJobActive
+  const fileProgressIndeterminate = !fileTranslateProgress || fileTranslateProgress.total < 1
+  const fileBufferPercent =
+    fileTranslateProgress && fileTranslateProgress.total > 0 ? fileTranslateProgress.percent : 0
+  const showPartialDestTail = fileJobShowPartialDestTail(fileJobActive, streaming, dest, fileTranslateProgress ?? null)
+  const destTailMinPx = useMemo(() => fileJobDestTailMinPx(fileTranslateProgress ?? null), [fileTranslateProgress])
+  const srcPanelBody = (
+    <div className="panel-body" ref={srcPanelScrollRef}>
+      {streaming && heavyInlineNoExpand ? (
+        <LazyChunkedPlainText content={src} scrollRootRef={srcPanelScrollRef} />
+      ) : (
+        <MemoMessageMarkdown content={src} />
+      )}
+    </div>
+  )
+
+  const destPanelBody = (
+    <div className="panel-body">
+      {streaming && !dest ? (
+        <div className="stream-skeleton" aria-busy="true" aria-label="Đang dịch">
+          <span className="stream-skeleton-line medium" />
+          <span className="stream-skeleton-line short" />
+          <span className="stream-skeleton-line medium" />
+        </div>
+      ) : streaming && dest && showPartialDestTail ? (
+        <>
+          <StreamingPlainDest text={dest} />
+          <div
+            className="translation-fs-dest-tail"
+            style={{ minHeight: destTailMinPx }}
+            aria-hidden
+          >
+            <div className="translation-fs-skeleton-lines">
+              <span className="translation-fs-skel-line" />
+              <span className="translation-fs-skel-line short" />
+              <span className="translation-fs-skel-line medium" />
+              <span className="translation-fs-skel-line short" />
+            </div>
+          </div>
+        </>
+      ) : streaming && dest ? (
+        <StreamingPlainDest text={dest} />
+      ) : (
+        <MessageMarkdown content={dest} />
+      )}
+    </div>
+  )
+
+  const pendingFullscreenId = useUIStore((s) => s.pendingTranslationFullscreenMessageId)
+  const setPendingFullscreenId = useUIStore((s) => s.setPendingTranslationFullscreenMessageId)
+
+  useEffect(() => {
+    if (!pendingFullscreenId || pendingFullscreenId !== m.id) return
+    setFullscreenOpen(true)
+    setPendingFullscreenId(null)
+  }, [pendingFullscreenId, m.id, setPendingFullscreenId])
 
   useEffect(() => {
     setBodyExpanded(false)
@@ -195,6 +308,34 @@ function TranslationCardView({
   useEffect(() => {
     if (!collapsible) setBodyExpanded(false)
   }, [collapsible])
+
+  useEffect(() => {
+    if (heavyInlineNoExpand) setBodyExpanded(false)
+  }, [heavyInlineNoExpand])
+
+  useEffect(() => {
+    const upd = () => setCollapsedCapPx(Math.min(240, Math.round(window.innerHeight * 0.42)))
+    upd()
+    window.addEventListener('resize', upd)
+    return () => window.removeEventListener('resize', upd)
+  }, [])
+
+  useLayoutEffect(() => {
+    if (!collapsible) return
+    /* File rất lớn + đang stream: đo scrollHeight mỗi lần dest đổi → layout thrash, treo UI */
+    if (heavyInlineNoExpand && streaming) {
+      setBilingualScrollHeight(0)
+      return
+    }
+    const el = bilingualRef.current
+    if (!el) return
+    const measure = () => setBilingualScrollHeight(el.scrollHeight)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [collapsible, heavyInlineNoExpand, m.id, src, dest, streaming, mode, bodyExpanded])
+
   const canRetranslate = Boolean(precedingUserContent?.trim() && onRetranslate)
 
   const panelSrcHead = `Nguồn · ${langShortLabel(m.sourceLang || 'auto')}`
@@ -208,6 +349,23 @@ function TranslationCardView({
       window.alert(e instanceof Error ? e.message : String(e))
     }
   }
+
+  const bilingualStyle = useMemo(() => {
+    if (!collapsible) return undefined
+    const cap = collapsedCapPx
+    const expanded = bodyExpanded && !heavyInlineNoExpand
+    if (streaming && expanded) {
+      return {
+        maxHeight: 'none' as const,
+        overflow: 'visible' as const,
+      }
+    }
+    const fullH = Math.max(bilingualScrollHeight, cap + 1)
+    return {
+      maxHeight: expanded ? `${fullH}px` : `${cap}px`,
+      overflow: (expanded ? 'visible' : 'hidden') as 'visible' | 'hidden',
+    }
+  }, [collapsible, collapsedCapPx, streaming, bodyExpanded, bilingualScrollHeight, heavyInlineNoExpand])
 
   const runRetranslate = async (style: TranslationStyle) => {
     if (!precedingUserContent?.trim() || !onRetranslate) return
@@ -228,7 +386,9 @@ function TranslationCardView({
       >
         <div className="card-topbar">
           <div className="card-topbar-left">
-            <div className="card-inline-title" />
+            <div className="card-inline-title" title={bilingualFileTitle ?? undefined}>
+              {bilingualFileTitle ?? ''}
+            </div>
           </div>
           <div className="card-topbar-center">
             <div className="view-toggle" role="tablist" aria-label="Chế độ xem">
@@ -288,24 +448,40 @@ function TranslationCardView({
               >
                 <IconRetranslate />
               </button>
-              {!streaming && (
-                <button
-                  type="button"
-                  className="btn-icon"
-                  data-tooltip="Sao chép bản dịch"
-                  aria-label="Sao chép bản dịch"
-                  onClick={() => {
-                    void WailsService.copyTranslation(m.id)
-                      .then(() => {
-                        setCopied(true)
-                        window.setTimeout(() => setCopied(false), 900)
-                      })
-                      .catch(() => {})
-                  }}
-                >
-                  {copied ? '✓' : <IconCopyCard />}
-                </button>
-              )}
+              {!streaming &&
+                (heavyInlineNoExpand ? (
+                  <span
+                    className="btn-icon-tooltip-host"
+                    data-tooltip={LARGE_DOCUMENT_COPY_DISABLED_TOOLTIP}
+                    data-tooltip-multiline=""
+                  >
+                    <button
+                      type="button"
+                      className="btn-icon"
+                      disabled
+                      aria-label="Sao chép bản dịch — không khả dụng với tài liệu lớn"
+                    >
+                      <IconCopyCard />
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn-icon"
+                    data-tooltip="Sao chép bản dịch"
+                    aria-label="Sao chép bản dịch"
+                    onClick={() => {
+                      void WailsService.copyTranslation(m.id)
+                        .then(() => {
+                          setCopied(true)
+                          window.setTimeout(() => setCopied(false), 900)
+                        })
+                        .catch(() => {})
+                    }}
+                  >
+                    {copied ? '✓' : <IconCopyCard />}
+                  </button>
+                ))}
               <button
                 type="button"
                 className="btn-icon always-on"
@@ -321,49 +497,58 @@ function TranslationCardView({
         <div
           className="translation-card-expandable"
           data-collapsible={collapsible ? 'true' : 'false'}
-          data-expanded={collapsible ? (bodyExpanded ? 'true' : 'false') : 'true'}
+          data-expanded={
+            collapsible ? (heavyInlineNoExpand || !bodyExpanded ? 'false' : 'true') : 'true'
+          }
+          data-heavy-inline={heavyInlineNoExpand ? 'true' : 'false'}
         >
           <div className="translation-card-expandable-main">
-            <div className="bilingual-view" data-mode={mode} id={`translation-card-body-${m.id}`}>
-              <div className="translation-panel src">
+            <div
+              ref={bilingualRef}
+              className="bilingual-view"
+              data-mode={mode}
+              data-file-rail={showFileProgressStrip ? 'active' : 'idle'}
+              id={`translation-card-body-${m.id}`}
+              style={bilingualStyle}
+            >
+              <div className="translation-panel translation-panel--bilingual-head src">
                 <div className="panel-head">{panelSrcHead}</div>
-                <div className="panel-body">
-                  <MemoMessageMarkdown content={src} />
-                </div>
               </div>
-              <div className="translation-panel dest">
+              <div className="translation-panel translation-panel--bilingual-head dest">
                 <div className="panel-head">{panelDestHead}</div>
-                <div className="panel-body">
-                  {streaming && !dest ? (
-                    <div className="stream-skeleton" aria-busy="true" aria-label="Đang dịch">
-                      <span className="stream-skeleton-line medium" />
-                      <span className="stream-skeleton-line short" />
-                      <span className="stream-skeleton-line medium" />
-                    </div>
-                  ) : streaming && dest ? (
-                    <StreamingPlainDest text={dest} />
-                  ) : (
-                    <MessageMarkdown content={dest} />
-                  )}
-                </div>
               </div>
+              <FileJobBilingualEdgeRail
+                active={showFileProgressStrip}
+                indeterminate={fileProgressIndeterminate}
+                percent={fileBufferPercent}
+                chunk={fileTranslateProgress?.chunk}
+                total={fileTranslateProgress?.total}
+              />
+              <div className="translation-panel translation-panel--bilingual-body src">{srcPanelBody}</div>
+              <div className="translation-panel translation-panel--bilingual-body dest">{destPanelBody}</div>
             </div>
           </div>
           {collapsible && (
             <div className="translation-card-expand-controls">
-              <button
-                type="button"
-                className={`translation-card-expand-btn${bodyExpanded ? ' is-expanded' : ''}`}
-                aria-expanded={bodyExpanded}
-                aria-controls={`translation-card-body-${m.id}`}
-                id={`translation-card-expand-${m.id}`}
-                onClick={() => setBodyExpanded((v) => !v)}
-              >
-                <span className="translation-card-expand-btn-label">{bodyExpanded ? 'Thu gọn' : 'Mở rộng'}</span>
-                <span className="translation-card-expand-btn-chevron" aria-hidden>
-                  <IconChevronDown />
-                </span>
-              </button>
+              {heavyInlineNoExpand ? (
+                <p className="translation-card-heavy-inline-hint" role="note">
+                  Tài liệu quá lớn, vui lòng chọn chế độ Toàn màn hình để xem.
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  className={`translation-card-expand-btn${bodyExpanded ? ' is-expanded' : ''}`}
+                  aria-expanded={bodyExpanded}
+                  aria-controls={`translation-card-body-${m.id}`}
+                  id={`translation-card-expand-${m.id}`}
+                  onClick={() => setBodyExpanded((v) => !v)}
+                >
+                  <span className="translation-card-expand-btn-label">{bodyExpanded ? 'Thu gọn' : 'Mở rộng'}</span>
+                  <span className="translation-card-expand-btn-chevron" aria-hidden>
+                    <IconChevronDown />
+                  </span>
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -398,47 +583,68 @@ function TranslationCardView({
         onExport={(f) => void handleExport(f)}
         onRetranslateConfirm={(style) => void runRetranslate(style)}
         retranslateDisabled={!canRetranslate}
+        fileJobActive={fileJobActive}
+        fileJobProgress={fileTranslateProgress ?? null}
+        copyLargeDocumentDisabled={heavyInlineNoExpand}
+        topBarTitle={bilingualFileTitle}
       />
     </>
   )
 }
 
-function BubbleActions({ messageId }: { messageId: string }) {
+function BubbleActions({
+  messageId,
+  heavyInlineNoExpand,
+}: {
+  messageId: string
+  heavyInlineNoExpand: boolean
+}) {
   const [flash, setFlash] = useState(false)
   return (
     <div className="assistant-bubble-actions">
-      <button
-        type="button"
-        className="btn-icon"
-        data-tooltip="Sao chép"
-        aria-label="Sao chép"
-        onClick={() => {
-          void WailsService.copyTranslation(messageId)
-            .then(() => {
-              setFlash(true)
-              window.setTimeout(() => setFlash(false), 900)
-            })
-            .catch(() => {})
-        }}
-      >
-        {flash ? '✓' : <IconCopySmall />}
-      </button>
+      {heavyInlineNoExpand ? (
+        <span
+          className="btn-icon-tooltip-host"
+          data-tooltip={LARGE_DOCUMENT_COPY_DISABLED_TOOLTIP}
+          data-tooltip-multiline=""
+        >
+          <button
+            type="button"
+            className="btn-icon"
+            disabled
+            aria-label="Sao chép — không khả dụng với tài liệu lớn"
+          >
+            <IconCopySmall />
+          </button>
+        </span>
+      ) : (
+        <button
+          type="button"
+          className="btn-icon"
+          data-tooltip="Sao chép"
+          aria-label="Sao chép"
+          onClick={() => {
+            void WailsService.copyTranslation(messageId)
+              .then(() => {
+                setFlash(true)
+                window.setTimeout(() => setFlash(false), 900)
+              })
+              .catch(() => {})
+          }}
+        >
+          {flash ? '✓' : <IconCopySmall />}
+        </button>
+      )}
     </div>
   )
 }
 
-export function ChatMessage({
-  m,
-  streamingAssistantId,
-  nextAssistant,
-  precedingUserContent,
-  retranslateQuoteAssistant,
-  retranslateFollowUp,
-  onRetranslate,
-}: {
+type ChatMessageProps = {
   m: Message
   /** Chỉ tin đang stream subscribe buffer — tránh App re-render cả layout mỗi chunk. */
   streamingAssistantId: string | null
+  /** Tiến độ chunk khi dịch file (fullscreen buffer bar). */
+  fileTranslateProgress?: FileProgress | null
   /** Tin user: assistant ngay sau (nếu có), để tính “Văn bản đã dán” + buffer stream. */
   nextAssistant?: Message
   precedingUserContent?: string
@@ -447,7 +653,18 @@ export function ChatMessage({
   /** Tin assistant ngay sau user dịch lại (`originalMessageId`). */
   retranslateFollowUp?: boolean
   onRetranslate?: (p: RetranslatePayload) => Promise<void>
-}) {
+}
+
+function ChatMessageImpl({
+  m,
+  streamingAssistantId,
+  fileTranslateProgress,
+  nextAssistant,
+  precedingUserContent,
+  retranslateQuoteAssistant,
+  retranslateFollowUp,
+  onRetranslate,
+}: ChatMessageProps) {
   const selectStreamBuf = useCallback(
     (s: MessageStore) => {
       if (m.role === 'assistant' && m.id === streamingAssistantId) return s.streamingText
@@ -480,6 +697,19 @@ export function ChatMessage({
         />
       )
     }
+    const fileAttachName = m.fileId ? parseFileAttachmentDisplayName(m.originalContent) : null
+    if (fileAttachName) {
+      return (
+        <div className="chat-msg user user-text-upload user-file-attachment" id={`chat-msg-${m.id}`}>
+          <div className="avatar" aria-hidden>
+            U
+          </div>
+          <div className="chat-msg-body">
+            <UserFileAttachmentBubble fileName={fileAttachName} meta={userMeta} />
+          </div>
+        </div>
+      )
+    }
     if (userMessageShowPastedPlaceholder(m, pairedAssistantLongForm)) {
       return (
         <div className="chat-msg user user-text-upload" id={`chat-msg-${m.id}`}>
@@ -509,6 +739,7 @@ export function ChatMessage({
 
   const streaming = m.id === streamingAssistantId
   const destText = streaming ? streamBuf : m.translatedContent
+  const bubbleHeavyInline = isHeavyFileBilingualInline(m, m.originalContent?.trim() ?? '')
 
   const quotedSnippet =
     retranslateFollowUp && retranslateQuoteAssistant
@@ -538,6 +769,7 @@ export function ChatMessage({
             precedingUserContent={precedingUserContent}
             isRetranslated={retranslateFollowUp}
             onRetranslate={onRetranslate}
+            fileTranslateProgress={fileTranslateProgress}
           />
           {!streaming && (
             <div className="card-footer-outside">
@@ -557,13 +789,10 @@ export function ChatMessage({
       </div>
       <div className="chat-msg-body">
         <div className="assistant-bubble-wrap">
-          <BubbleActions messageId={m.id} />
-          <div className="chat-bubble assistant">
+          <BubbleActions messageId={m.id} heavyInlineNoExpand={bubbleHeavyInline} />
+          <div className={`chat-bubble assistant${streaming ? ' chat-bubble--streaming' : ''}`}>
             {streaming && !destText ? (
-              <div className="stream-skeleton stream-skeleton--compact" aria-busy="true" aria-label="Đang dịch">
-                <span className="stream-skeleton-line" />
-                <span className="stream-skeleton-line short" />
-              </div>
+              <div className="assistant-bubble-stream-placeholder" aria-busy="true" aria-label="Đang dịch" />
             ) : streaming && destText ? (
               <StreamingPlainDest text={destText} />
             ) : (
@@ -580,3 +809,19 @@ export function ChatMessage({
     </div>
   )
 }
+
+function chatMessagePropsEqual(a: ChatMessageProps, b: ChatMessageProps): boolean {
+  return (
+    a.m === b.m &&
+    a.streamingAssistantId === b.streamingAssistantId &&
+    a.fileTranslateProgress === b.fileTranslateProgress &&
+    a.nextAssistant === b.nextAssistant &&
+    a.precedingUserContent === b.precedingUserContent &&
+    a.retranslateQuoteAssistant === b.retranslateQuoteAssistant &&
+    a.retranslateFollowUp === b.retranslateFollowUp &&
+    a.onRetranslate === b.onRetranslate
+  )
+}
+
+/** memo: App không re-render cả list khi state không liên quan (scroll nhẹ, v.v.) */
+export const ChatMessage = memo(ChatMessageImpl, chatMessagePropsEqual)

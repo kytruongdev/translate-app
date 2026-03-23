@@ -158,6 +158,23 @@ func (q *Queries) InsertMessage(ctx context.Context, arg InsertMessageParams) er
 	return err
 }
 
+const updateMessageOriginalContent = `-- name: UpdateMessageOriginalContent :exec
+UPDATE messages
+SET original_content = ?, updated_at = ?
+WHERE id = ?
+`
+
+type UpdateMessageOriginalContentParams struct {
+	OriginalContent string `json:"original_content"`
+	UpdatedAt       string `json:"updated_at"`
+	ID              string `json:"id"`
+}
+
+func (q *Queries) UpdateMessageOriginalContent(ctx context.Context, arg UpdateMessageOriginalContentParams) error {
+	_, err := q.db.ExecContext(ctx, updateMessageOriginalContent, arg.OriginalContent, arg.UpdatedAt, arg.ID)
+	return err
+}
+
 const updateMessageTranslated = `-- name: UpdateMessageTranslated :exec
 UPDATE messages
 SET translated_content = ?, tokens = ?, updated_at = ?

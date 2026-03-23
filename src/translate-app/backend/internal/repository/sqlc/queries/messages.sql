@@ -1,3 +1,4 @@
+-- Trang đầu (cursor=0): N tin mới nhất. cursor>0: display_order < cursor → các tin cũ hơn, vẫn DESC.
 -- name: GetMessagesBySessionCursor :many
 SELECT * FROM messages
 WHERE session_id = sqlc.arg(session_id)
@@ -18,6 +19,11 @@ INSERT INTO messages (
 -- name: UpdateMessageTranslated :exec
 UPDATE messages
 SET translated_content = ?, tokens = ?, updated_at = ?
+WHERE id = ?;
+
+-- name: UpdateMessageOriginalContent :exec
+UPDATE messages
+SET original_content = ?, updated_at = ?
 WHERE id = ?;
 
 -- name: GetMessageById :one

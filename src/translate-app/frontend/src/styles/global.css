@@ -14,7 +14,10 @@
   --sidebar: #f5f5f5;
   --active: #ebebeb;
   --input-bg: #f0f0f0;
-  --card-bg: #fafafa;
+  /* Hơi đậm hơn #fafafa một nấc để khung thẻ dịch tách nhẹ khỏi nền trắng */
+  --card-bg: #f3f3f4;
+  /* Rãnh lõm chứa segment (view-toggle) — đậm hơn khung thẻ để có chiều sâu */
+  --view-toggle-track-bg: color-mix(in srgb, var(--text) 5.5%, var(--card-bg));
   --text: #1a1a1a;
   --text-secondary: #5c5c5c;
   --text-tertiary: #8c8c8c;
@@ -55,7 +58,9 @@
   --sidebar: #1e293b;
   --active: #334155;
   --input-bg: #1e293b;
-  --card-bg: #1e293b;
+  /* Khung thẻ tối hơn surface một chút */
+  --card-bg: #1a2230;
+  --view-toggle-track-bg: color-mix(in srgb, var(--surface) 52%, var(--card-bg));
   --text: #f1f5f9;
   --text-secondary: #94a3b8;
   --text-tertiary: #64748b;

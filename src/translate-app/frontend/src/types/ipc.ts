@@ -29,6 +29,8 @@ export interface SendRequest {
 export interface FileRequest {
   sessionId: string
   filePath: string
+  /** Khớp ngôn ngữ đích trên UI (tránh dùng target_lang cũ của phiên). */
+  targetLang?: string
   style?: string
   provider?: string
   model?: string
@@ -44,6 +46,9 @@ export interface FileInfo {
   estimatedChunks: number
   estimatedMinutes: number
 }
+
+/** Tệp vừa chọn — `loading` khi BE còn `ReadFileInfo` (pdfcpu có thể >1s). */
+export type PendingFilePick = { path: string; info: FileInfo; loading?: boolean }
 
 export interface FileContent {
   sourceMarkdown: string

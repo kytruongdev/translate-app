@@ -21,8 +21,8 @@ export interface SettingsStore {
 
 export const useSettingsStore = create<SettingsStore>((set, get) => ({
   theme: 'system',
-  activeProvider: 'gemini',
-  activeModel: 'gemini-2.0-flash',
+  activeProvider: 'ollama',
+  activeModel: 'qwen2.5:7b',
   defaultStyle: 'casual',
   lastTargetLang: 'en-US',
 
@@ -32,7 +32,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const lastTargetLang = s.lastTargetLang || 'en-US'
     set({
       theme,
-      activeProvider: (s.activeProvider as ActiveProvider) ?? 'gemini',
+      activeProvider: (s.activeProvider as ActiveProvider) ?? 'ollama',
       activeModel: s.activeModel,
       defaultStyle: s.defaultStyle,
       lastTargetLang,

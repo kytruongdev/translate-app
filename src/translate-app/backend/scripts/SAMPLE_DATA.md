@@ -23,6 +23,13 @@ Lệnh **idempotent**: mỗi lần chạy sẽ xóa và tạo lại đúng các 
 
 (Cùng logic với `internal/infra/db.Open()`.)
 
+## Reset sạch dữ liệu (xóa phiên + tin + settings + file đính kèm đã lưu)
+
+1. **Đóng** Translate App.
+2. Từ `backend/`: `make reset-data` (chạy `scripts/reset-user-data.sh`).
+
+Hoặc xóa tay cả thư mục `TranslateApp` ở đường dẫn tương ứng OS ở trên (gồm `data.db` và `files/`).
+
 ## Nội dung mẫu
 
 | Session | Mục đích |
