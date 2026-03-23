@@ -250,10 +250,39 @@
 }
 
 .chat-load-more {
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 0 4px;
   font-size: 12px;
   color: var(--text-tertiary);
-  padding: 4px 0;
+}
+
+.chat-load-more-ring {
+  width: 26px;
+  height: 26px;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.chat-load-more-ring::before,
+.chat-load-more-ring::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2.5px solid transparent;
+}
+
+.chat-load-more-ring::before {
+  border-top-color: var(--ring-user, #ff9a9e);
+  animation: dual-ring-spin 0.8s linear infinite;
+}
+
+.chat-load-more-ring::after {
+  border-bottom-color: var(--ring-assistant, #89f7fe);
+  animation: dual-ring-spin 1.2s linear infinite reverse;
 }
 
 /* ─── Messages + avatar ─── */

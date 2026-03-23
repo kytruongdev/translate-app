@@ -721,7 +721,8 @@ export default function App() {
             <div className="chat-feed" ref={feedRef} onScroll={onFeedScroll}>
               {loadingMore && hasMore && !warmTransitionShell && (
                 <div className="chat-load-more" role="status" aria-live="polite">
-                  Đang tải tin cũ…
+                  <div className="chat-load-more-ring" aria-hidden />
+                  Đang tải nội dung cũ...
                 </div>
               )}
               <div key={activeSessionId ?? 'none'} className="chat-feed-session">
