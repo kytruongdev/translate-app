@@ -142,6 +142,8 @@ export namespace bridge {
 	    originalMessageId?: string;
 	    provider?: string;
 	    model?: string;
+	    fileId?: string;
+	    fileDisplayContent?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new SendRequest(source);
@@ -158,6 +160,8 @@ export namespace bridge {
 	        this.originalMessageId = source["originalMessageId"];
 	        this.provider = source["provider"];
 	        this.model = source["model"];
+	        this.fileId = source["fileId"];
+	        this.fileDisplayContent = source["fileDisplayContent"];
 	    }
 	}
 
@@ -180,6 +184,7 @@ export namespace model {
 	    modelUsed: string;
 	    originalMessageId?: string;
 	    tokens: number;
+	    fileSize: number;
 	    createdAt: string;
 	    updatedAt: string;
 	
@@ -203,6 +208,7 @@ export namespace model {
 	        this.modelUsed = source["modelUsed"];
 	        this.originalMessageId = source["originalMessageId"];
 	        this.tokens = source["tokens"];
+	        this.fileSize = source["fileSize"];
 	        this.createdAt = source["createdAt"];
 	        this.updatedAt = source["updatedAt"];
 	    }

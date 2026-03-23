@@ -24,6 +24,10 @@ export interface SendRequest {
   originalMessageId?: string
   provider?: string
   model?: string
+  /** File retranslate: copy fileId to new assistant message. */
+  fileId?: string
+  /** File retranslate: stored as user message originalContent ("📎 filename.ext"). */
+  fileDisplayContent?: string
 }
 
 export interface FileRequest {

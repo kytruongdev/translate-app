@@ -100,6 +100,10 @@ func (c *controller) runFileTranslate(ctx context.Context, p fileTranslateParams
 	var cumulative strings.Builder
 	preserveMD := true // bilingual-friendly output
 
+	// Detect source language once on full document — per-chunk detection fails when individual chunks
+	// contain East Asian script (e.g. Chinese citations in a Vietnamese dissertation) and gets mis-routed to "auto".
+	docSrcHint := gateway.SourceLangForTranslate(sourceMD)
+
 	for i, chunk := range chunks {
 		pct := 0
 		if total > 0 {
@@ -111,8 +115,7 @@ func (c *controller) runFileTranslate(ctx context.Context, p fileTranslateParams
 			Percent: pct,
 		})
 
-		// Không cứng "auto" — với văn có dấu Việt dùng nhánh "từ tiếng Việt → đích" (prompt chặt hơn "detect language").
-		srcHint := gateway.SourceLangForTranslate(chunk)
+		srcHint := docSrcHint
 		translated, err := c.streamTranslate(ctx, p.Provider, chunk, srcHint, p.TargetLang, p.Style, preserveMD, func(delta string) {
 			runtime.EventsEmit(ctx, "translation:chunk", delta)
 		})

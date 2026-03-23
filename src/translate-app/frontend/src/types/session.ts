@@ -24,6 +24,7 @@ export interface Message {
   modelUsed: string
   originalMessageId: string | null
   tokens: number
+  fileSize?: number
   createdAt: string
   updatedAt: string
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"translate-app/internal/bridge"
+	"translate-app/internal/controller/file"
 	"translate-app/internal/model"
 	"translate-app/internal/repository"
 )
@@ -156,12 +157,18 @@ func (c *controller) SendMessage(ctx context.Context, req bridge.SendRequest) (s
 	userID := uuid.New().String()
 	assistantID := uuid.New().String()
 
+	// File retranslate: user message stores display name ("📎 filename.ext"), not full source text.
+	userOriginalContent := content
+	if req.FileDisplayContent != "" {
+		userOriginalContent = req.FileDisplayContent
+	}
+
 	userMsg := &model.Message{
 		ID:                userID,
 		SessionID:         req.SessionID,
 		Role:              model.RoleUser,
 		DisplayMode:       req.DisplayMode,
-		OriginalContent:   content,
+		OriginalContent:   userOriginalContent,
 		SourceLang:        req.SourceLang,
 		TargetLang:        req.TargetLang,
 		Style:             style,
@@ -169,13 +176,15 @@ func (c *controller) SendMessage(ctx context.Context, req bridge.SendRequest) (s
 		OriginalMessageID: ptrIfNonEmpty(req.OriginalMessageID),
 	}
 
+	// File retranslate: copy fileId + store source text in originalContent (mirrors file pipeline).
 	asstMsg := &model.Message{
 		ID:                assistantID,
 		SessionID:         req.SessionID,
 		Role:              model.RoleAssistant,
 		DisplayMode:       req.DisplayMode,
-		OriginalContent:   "",
+		OriginalContent:   func() string { if req.FileID != "" { return content }; return "" }(),
 		TranslatedContent: "",
+		FileID:            ptrIfNonEmpty(req.FileID),
 		SourceLang:        req.SourceLang,
 		TargetLang:        req.TargetLang,
 		Style:             style,
@@ -203,6 +212,23 @@ func (c *controller) SendMessage(ctx context.Context, req bridge.SendRequest) (s
 		"messageId": assistantID,
 		"sessionId": req.SessionID,
 	})
-	go c.runTranslationStream(ctx, req.SessionID, assistantID, content, req.SourceLang, req.TargetLang, style, preserveMD, provider)
+	// File retranslate: emit file:source so FE can trigger auto-fullscreen for heavy content.
+	if req.FileID != "" {
+		runtime.EventsEmit(ctx, "file:source", map[string]interface{}{
+			"markdown":           content,
+			"sessionId":          req.SessionID,
+			"assistantMessageId": assistantID,
+		})
+		go c.fileCtrl.RunRetranslateContent(ctx, file.RetranslateContentParams{
+			SessionID:   req.SessionID,
+			AssistantID: assistantID,
+			SourceMD:    content,
+			TargetLang:  req.TargetLang,
+			Style:       style,
+			Provider:    provider,
+		})
+	} else {
+		go c.runTranslationStream(ctx, req.SessionID, assistantID, content, req.SourceLang, req.TargetLang, style, preserveMD, provider)
+	}
 	return assistantID, nil
 }

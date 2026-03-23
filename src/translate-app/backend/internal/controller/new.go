@@ -19,11 +19,12 @@ type Controllers struct {
 
 // New wires all controllers. API keys are used by the message controller to build AI clients per request from settings + optional overrides.
 func New(reg repository.Registry, keys *config.APIKeys) *Controllers {
-	msg := message.New(reg, keys)
+	fileCtrl := file.New(reg, keys)
+	msg := message.New(reg, keys, fileCtrl)
 	return &Controllers{
 		Session:  session.New(reg, msg),
 		Message:  msg,
-		File:     file.New(reg, keys),
+		File:     fileCtrl,
 		Settings: settings.New(reg),
 	}
 }

@@ -402,8 +402,58 @@
 
 /* Chờ chunk đầu: giữ chiều cao nhẹ, không skeleton */
 .assistant-bubble-stream-placeholder {
-  min-height: 1.25rem;
-  min-width: 4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 2px 0;
+  min-width: 0;
+}
+
+.assistant-bubble-skel-line {
+  display: block;
+  height: 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.assistant-bubble-skel-line:first-child { width: 6rem; }
+.assistant-bubble-skel-line:last-child  { width: 4rem; }
+
+.assistant-bubble-skel-line::after {
+  content: '';
+  position: absolute;
+  left: 0; top: 0;
+  height: 100%;
+  width: 55%;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--text) 20%, transparent) 50%,
+    transparent 100%
+  );
+  animation: session-skel-line-sweep 1.55s ease-in-out infinite;
+  will-change: transform;
+}
+
+[data-theme='dark'] .assistant-bubble-skel-line {
+  background: color-mix(in srgb, var(--text) 16%, transparent);
+}
+
+[data-theme='dark'] .assistant-bubble-skel-line::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--text) 32%, transparent) 50%,
+    transparent 100%
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assistant-bubble-skel-line::after { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1230,7 +1280,7 @@
 /* Căn phải, phía trên line — chừa khoảng vừa đủ (không như hàng flex cũ, cũng không dính sát) */
 .bilingual-file-edge-pct {
   position: absolute;
-  right: 2px;
+  right: 10px;
   bottom: calc(100% + 5px);
   min-width: 2.25rem;
   text-align: right;
@@ -1543,6 +1593,10 @@
   max-height: none !important;
   overflow: hidden;
   grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.fullscreen-modal .bilingual-file-edge-pct {
+  right: 2px;
 }
 
 .fullscreen-modal .translation-panel {

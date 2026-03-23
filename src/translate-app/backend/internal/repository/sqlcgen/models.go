@@ -44,6 +44,7 @@ type Message struct {
 	Tokens            sql.NullInt64  `json:"tokens"`
 	CreatedAt         string         `json:"created_at"`
 	UpdatedAt         string         `json:"updated_at"`
+	FileSize          int64          `json:"file_size"`
 }
 
 type Session struct {
