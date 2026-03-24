@@ -33,7 +33,7 @@ func findPandoc() string {
 	return ""
 }
 
-// extractDocxWithPandoc converts a DOCX file to GFM Markdown using pandoc.
+// extractDocxWithPandoc converts a DOCX file to GFM Markdown for display.
 func extractDocxWithPandoc(pandocPath, docxPath string) (string, error) {
 	out, err := exec.Command(pandocPath,
 		"--from=docx",
@@ -46,6 +46,23 @@ func extractDocxWithPandoc(pandocPath, docxPath string) (string, error) {
 	}
 	md := cleanPandocOutput(string(out))
 	return strings.TrimSpace(md), nil
+}
+
+// extractDocxPlainText converts a DOCX file to plain text for AI translation.
+// Plain text is consistent across all document types — no HTML leakage,
+// no table/blockquote formatting issues — just readable content in order.
+func extractDocxPlainText(pandocPath, docxPath string) (string, error) {
+	out, err := exec.Command(pandocPath,
+		"--from=docx",
+		"--to=plain",
+		"--wrap=none",
+		docxPath,
+	).Output()
+	if err != nil {
+		return "", fmt.Errorf("pandoc plain: %w", err)
+	}
+	text := rePandocEmptyLines.ReplaceAllString(string(out), "\n\n")
+	return strings.TrimSpace(text), nil
 }
 
 // cleanPandocOutput removes noise from pandoc GFM output that would

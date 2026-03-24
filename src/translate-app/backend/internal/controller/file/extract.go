@@ -95,6 +95,22 @@ func extractDocxPlain(path string) (string, error) {
 	return md, nil
 }
 
+// extractTranslationText returns clean plain text for AI translation.
+// Separate from extractSourceMarkdown (used for display) — plain text is
+// consistent across all document types regardless of table/layout complexity.
+func extractTranslationText(path, ext string) (string, error) {
+	if strings.ToLower(ext) == ".docx" {
+		if pandocPath := findPandoc(); pandocPath != "" {
+			text, err := extractDocxPlainText(pandocPath, path)
+			if err == nil && text != "" {
+				return text, nil
+			}
+		}
+	}
+	// PDF or no pandoc: fall back to same extraction as display
+	return extractSourceMarkdown(path, ext)
+}
+
 // sourceMarkdownFromPlain chuẩn hoá nguồn để hiển thị song ngữ: với plain (PDF / DOCX chưa có MD),
 // suy luận nhẹ ## / tiêu đề số để cột trái render được format gần bản dịch.
 func sourceMarkdownFromPlain(plain string) string {

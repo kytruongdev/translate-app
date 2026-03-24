@@ -47,6 +47,8 @@ func (c *controller) runFileTranslate(ctx context.Context, p fileTranslateParams
 	}
 
 	ext := fileExt(p.FilePath)
+
+	// Extract for display (GFM with structure)
 	plain, err := extractSourceMarkdown(p.FilePath, ext)
 	if err != nil {
 		fail(err.Error())
@@ -58,7 +60,13 @@ func (c *controller) runFileTranslate(ctx context.Context, p fileTranslateParams
 		return
 	}
 
-	chunks := chunkMarkdownByParagraphs(sourceMD, charsPerChunk)
+	// Extract for AI translation (plain text — consistent across all file types)
+	translationText, err := extractTranslationText(p.FilePath, ext)
+	if err != nil || translationText == "" {
+		translationText = sourceMD // fallback to display text
+	}
+
+	chunks := chunkMarkdownByParagraphs(translationText, charsPerChunk)
 	if len(chunks) == 0 {
 		fail("nội dung tệp rỗng")
 		return
