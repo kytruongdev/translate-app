@@ -19,6 +19,7 @@ type fileTranslateParams struct {
 	SessionID   string
 	FilePath    string
 	FileID      string
+	UserID      string
 	AssistantID string
 	TargetLang  string
 	Style       model.TranslationStyle
@@ -90,6 +91,14 @@ func (c *controller) runFileTranslate(ctx context.Context, p fileTranslateParams
 		return
 	}
 
+	// Detect source language before emitting file:source so the frontend loads messages
+	// with the correct sourceLang (e.g. "vi") instead of the initial "auto" placeholder.
+	docSrcHint := gateway.SourceLangForTranslate(sourceMD)
+	if docSrcHint != "auto" {
+		_ = c.reg.Message().UpdateSourceLang(ctx, p.UserID, docSrcHint)
+		_ = c.reg.Message().UpdateSourceLang(ctx, p.AssistantID, docSrcHint)
+	}
+
 	runtime.EventsEmit(ctx, "file:source", map[string]string{
 		"markdown":           sourceMD,
 		"sessionId":          p.SessionID,
@@ -99,10 +108,6 @@ func (c *controller) runFileTranslate(ctx context.Context, p fileTranslateParams
 	total := len(chunks)
 	var cumulative strings.Builder
 	preserveMD := true // bilingual-friendly output
-
-	// Detect source language once on full document — per-chunk detection fails when individual chunks
-	// contain East Asian script (e.g. Chinese citations in a Vietnamese dissertation) and gets mis-routed to "auto".
-	docSrcHint := gateway.SourceLangForTranslate(sourceMD)
 
 	for i, chunk := range chunks {
 		pct := 0

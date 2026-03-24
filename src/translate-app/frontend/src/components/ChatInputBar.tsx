@@ -106,7 +106,7 @@ export function ChatInputBar({
   const styleLabel = STYLE_OPTIONS.find((o) => o.value === defaultStyle)?.label ?? 'Casual'
   const langOpt =
     TARGET_LANG_OPTIONS.find((o) => o.value === activeTargetLang) ?? TARGET_LANG_OPTIONS[0]
-  const langChip = `Dịch · ${langOpt?.chip ?? activeTargetLang}`
+  const langChip = langOpt?.label ?? activeTargetLang
 
   const blockAttach = attachDisabled ?? busy
 

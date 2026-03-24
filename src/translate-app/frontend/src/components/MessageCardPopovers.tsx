@@ -1,6 +1,7 @@
 import { createPortal } from 'react-dom'
 import { useEffect, useLayoutEffect, useState } from 'react'
 import type { TranslationStyle } from '@/types/session'
+import { STYLE_OPTIONS } from '@/constants/inputOptions'
 
 type PopoverPos = { top: number; left: number; width: number; isAbove: boolean }
 
@@ -163,17 +164,6 @@ export function CardRetranslatePopover({
 
   if (!open || !pos) return null
 
-  const segBtn = (s: TranslationStyle, label: string) => (
-    <button
-      key={s}
-      type="button"
-      className={style === s ? 'active' : ''}
-      onClick={() => setStyle(s)}
-    >
-      {label}
-    </button>
-  )
-
   return createPortal(
     <div
       data-card-retranslate-popover="1"
@@ -192,14 +182,22 @@ export function CardRetranslatePopover({
           Model: {modelLabel}
         </p>
         <div className="retranslate-style-block">
-          <div>
-            <div className="settings-row-label">Kiểu dịch</div>
-            <div className="settings-row-desc">Casual, Business, Academic</div>
-          </div>
-          <div className="theme-segmented retranslate-style-segmented" role="group" aria-label="Kiểu dịch">
-            {segBtn('casual', 'Casual')}
-            {segBtn('business', 'Business')}
-            {segBtn('academic', 'Academic')}
+          <div className="settings-row-label">Kiểu dịch</div>
+          <div className="style-radio-list" role="group" aria-label="Kiểu dịch">
+            {STYLE_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                className={`style-radio-item${style === opt.value ? ' active' : ''}`}
+                onClick={() => setStyle(opt.value as TranslationStyle)}
+              >
+                <span className="style-radio-dot" aria-hidden="true" />
+                <span className="style-radio-text">
+                  <span className="style-radio-label">{opt.label}</span>
+                  <span className="style-radio-desc">{opt.description}</span>
+                </span>
+              </button>
+            ))}
           </div>
         </div>
       </div>

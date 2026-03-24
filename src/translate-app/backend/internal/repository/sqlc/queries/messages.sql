@@ -28,6 +28,9 @@ UPDATE messages
 SET original_content = ?, updated_at = ?
 WHERE id = ?;
 
+-- name: UpdateMessageSourceLang :exec
+UPDATE messages SET source_lang = ?, updated_at = ? WHERE id = ?;
+
 -- name: GetMessageById :one
 SELECT m.*, COALESCE(f.file_size, 0) AS file_size
 FROM messages m
