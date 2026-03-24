@@ -37,6 +37,22 @@ func TargetLangLabel(locale string) string {
 	return locale
 }
 
+// outputLangGuard returns a hard constraint placed at the TOP of the system prompt
+// to prevent the model from outputting memorised translations in a wrong language.
+func outputLangGuard(target string) string {
+	return "ABSOLUTE OUTPUT LANGUAGE RULE: Every single word you write must be in " + target + ".\n" +
+		"Do NOT produce output in Chinese, Japanese, Korean, or any other language under any circumstance.\n" +
+		"This applies to ALL content: body text, quoted titles, article names, journal names, citations, " +
+		"proper nouns, and headings. Translate everything fresh from the source text — " +
+		"do not use or recall any pre-existing translations you may know.\n" +
+		"Violation of this rule is a critical error.\n\n"
+}
+
+// mixedLangNote instructs the model to translate embedded foreign-language text
+// (e.g. Chinese journal citations inside a Vietnamese document).
+const mixedLangNote = "If you encounter text written in Chinese, Japanese, Korean, or any other language " +
+	"within the source, translate it into the target language as well — do not copy it verbatim."
+
 const markdownPreserveRule = `IMPORTANT: Preserve ALL Markdown formatting tags exactly (# ## ### **bold** *italic* > - etc.)
 Only translate text content, never translate or modify Markdown syntax.
 
@@ -100,15 +116,17 @@ func BuildTranslationSystemPrompt(sourceLang, targetLocale, style string, preser
 		case "business":
 			base = "You are a professional translator. Translate the text from Vietnamese to " + target + "\n" +
 				"in a formal, clear, and professional tone suitable for business communication.\n" +
-				"Preserve technical terms. Output ONLY the translated text, no explanations."
+				"Preserve technical terms. " + mixedLangNote + "\n" +
+				"Output ONLY the translated text, no explanations."
 		case "academic":
 			base = "You are a scholarly translator. Translate the text from Vietnamese to " + target + "\n" +
 				"with precision and rigor, using domain-appropriate terminology.\n" +
-				"Maintain logical structure and formal register.\n" +
+				"Maintain logical structure and formal register. " + mixedLangNote + "\n" +
 				"Output ONLY the translated text, no explanations."
 		default: // casual
 			base = "You are a translator. Translate the text from Vietnamese to " + target + " naturally\n" +
 				"and conversationally, as if explaining to a friend. Use everyday language, avoid stiff phrasing.\n" +
+				mixedLangNote + "\n" +
 				"Output ONLY the translated text, no explanations."
 		}
 	} else if sourceLangKey(sourceLang) == "en" {
@@ -153,10 +171,16 @@ func BuildTranslationSystemPrompt(sourceLang, targetLocale, style string, preser
 		}
 	}
 
-	base = base + "\n\n" + targetMonolingualConstraint(targetLocale)
-
+	body := base + "\n\n" + targetMonolingualConstraint(targetLocale)
 	if preserveMarkdown {
-		return base + "\n\n" + markdownPreserveRule
+		body = body + "\n\n" + markdownPreserveRule
 	}
-	return base
+
+	// Prepend hard output-language guard for non-CJK targets.
+	tl := strings.ToLower(strings.TrimSpace(targetLocale))
+	if !strings.HasPrefix(tl, "zh") && !strings.HasPrefix(tl, "ja") &&
+		!strings.HasPrefix(tl, "ko") && tl != "jp" {
+		return outputLangGuard(target) + body
+	}
+	return body
 }

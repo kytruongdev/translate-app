@@ -52,6 +52,15 @@ func extractPDFPlain(path string) (string, error) {
 }
 
 func extractDocxPlain(path string) (string, error) {
+	// Prefer pandoc when available — handles tables, headings, field codes correctly.
+	if pandocPath := findPandoc(); pandocPath != "" {
+		md, err := extractDocxWithPandoc(pandocPath, path)
+		if err == nil && md != "" {
+			return md, nil
+		}
+	}
+
+	// Fallback: regex-based extraction (no pandoc installed).
 	zr, err := zip.OpenReader(path)
 	if err != nil {
 		return "", fmt.Errorf("không mở được DOCX: %w", err)

@@ -23,8 +23,11 @@ func TestBuildTranslationSystemPrompt_Markdown(t *testing.T) {
 	if !strings.Contains(p, "CRITICAL OUTPUT LANGUAGE") {
 		t.Fatal("expected output-language guard for markdown mode")
 	}
-	if !strings.Contains(p, "MONOLINGUAL OUTPUT") || !strings.Contains(p, "Chinese characters") {
-		t.Fatal("expected monolingual / anti-Chinese-script guard for non-zh target")
+	if !strings.Contains(p, "MONOLINGUAL OUTPUT") {
+		t.Fatal("expected monolingual guard for non-zh target")
+	}
+	if !strings.Contains(p, "ABSOLUTE OUTPUT LANGUAGE RULE") {
+		t.Fatal("expected absolute output language guard at top of prompt")
 	}
 }
 
