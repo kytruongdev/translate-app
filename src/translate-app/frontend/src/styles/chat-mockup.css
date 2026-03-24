@@ -836,7 +836,10 @@
 
 /* Topbar thẻ dịch: giống mockup — 3 cột minmax(0,1fr) để segment luôn đủ chỗ, không bị overflow:hidden cắt */
 /* Mockup: không border-bottom — tránh “line” cứng giữa view-toggle và hàng Nguồn/Bản dịch */
+/* position+z-index để tooltip bên dưới nút hiển thị trên nội dung thẻ (translation-card-expandable) */
 .card-topbar {
+  position: relative;
+  z-index: 10;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
@@ -1002,54 +1005,90 @@
   margin-top: 2px;
 }
 
-/* Mockup: .theme-segmented — track + nút đều bo pill (999px), không dùng .view-toggle (bo góc nhỏ) */
-.retranslate-popover .theme-segmented.retranslate-style-segmented {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px;
-  padding: 4px;
-  background: var(--input-bg);
-  border-radius: 999px;
+/* Style radio list — thay segmented button */
+.retranslate-popover .style-radio-list,
+.model-ai-modal .style-radio-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   width: 100%;
-  max-width: none;
-  box-sizing: border-box;
-  overflow: hidden;
 }
 
-.retranslate-popover .theme-segmented.retranslate-style-segmented button {
-  margin: 0;
+.retranslate-popover .style-radio-item,
+.model-ai-modal .style-radio-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
   border: none;
-  border-radius: 999px;
+  border-radius: 8px;
   background: transparent;
   color: var(--text-secondary);
   font-family: inherit;
   font-size: 13px;
-  font-weight: 500;
-  min-width: 0;
-  padding: 8px 6px;
+  font-weight: 400;
+  text-align: left;
   cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transition:
-    background 0.2s var(--ease),
-    color 0.2s var(--ease),
-    box-shadow 0.2s var(--ease);
+  transition: background 0.15s var(--ease), color 0.15s var(--ease);
 }
 
-.retranslate-popover .theme-segmented.retranslate-style-segmented button:hover {
+.retranslate-popover .style-radio-item:hover,
+.model-ai-modal .style-radio-item:hover {
+  background: var(--input-bg);
   color: var(--text);
 }
 
-.retranslate-popover .theme-segmented.retranslate-style-segmented button:focus,
-.retranslate-popover .theme-segmented.retranslate-style-segmented button:focus-visible {
-  outline: none;
+.retranslate-popover .style-radio-item.active,
+.model-ai-modal .style-radio-item.active {
+  color: var(--text);
+  font-weight: 500;
 }
 
-.retranslate-popover .theme-segmented.retranslate-style-segmented button.active {
-  background: var(--active);
-  color: var(--text);
-  box-shadow: var(--shadow-subtle);
+.retranslate-popover .style-radio-text,
+.model-ai-modal .style-radio-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.retranslate-popover .style-radio-label,
+.model-ai-modal .style-radio-label {
+  font-size: 13px;
+  font-weight: inherit;
+  line-height: 1.3;
+}
+
+.retranslate-popover .style-radio-desc,
+.model-ai-modal .style-radio-desc {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-tertiary, var(--text-secondary));
+  line-height: 1.35;
+  opacity: 0.8;
+}
+
+.retranslate-popover .style-radio-item.active .style-radio-desc,
+.model-ai-modal .style-radio-item.active .style-radio-desc {
+  opacity: 1;
+}
+
+.retranslate-popover .style-radio-dot,
+.model-ai-modal .style-radio-dot {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--text-secondary);
+  transition: border-color 0.15s var(--ease), background 0.15s var(--ease);
+}
+
+.retranslate-popover .style-radio-item.active .style-radio-dot,
+.model-ai-modal .style-radio-item.active .style-radio-dot {
+  border-color: var(--accent, #4f8ef7);
+  background: var(--accent, #4f8ef7);
+  box-shadow: inset 0 0 0 3px var(--popover-bg, #1e2229);
 }
 
 /* Popover Export / Dịch lại (fixed portal — mockup.v1.html) */
@@ -2053,7 +2092,10 @@
 }
 
 .message-md table {
-  width: 100%;
+  /* min-width 100% stretches narrow tables; max-content lets wide tables overflow
+     so the parent panel-body (overflow-x: auto) can show a scrollbar. */
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   font-size: 0.92em;
   margin: 0.55em 0;
@@ -2253,6 +2295,13 @@
   transition:
     opacity 0.12s var(--ease),
     visibility 0.12s var(--ease);
+}
+
+/* Nút fullscreen nằm sát mép phải card → canh phải để tránh bị overflow:hidden cắt */
+.translation-card .card-inline-actions .btn-icon.always-on[data-tooltip]::before {
+  left: auto;
+  right: 0;
+  translate: none;
 }
 
 .assistant-bubble-actions .btn-icon[data-tooltip]:hover::before,

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSettingsStore } from '@/stores/settings/settingsStore'
+import { STYLE_OPTIONS } from '@/constants/inputOptions'
 import type { ActiveProvider } from '@/types/settings'
 import type { TranslationStyle } from '@/types/session'
 
@@ -55,20 +56,25 @@ export function ModelAIModal({ onClose }: { onClose: () => void }) {
               <option value="ollama">Offline (Qwen2.5:7b)</option>
             </select>
           </label>
-          <label className="settings-row compact">
-            <div>
-              <div className="settings-row-label">Kiểu dịch mặc định</div>
+          <div className="settings-row compact column">
+            <div className="settings-row-label">Kiểu dịch mặc định</div>
+            <div className="style-radio-list" role="group" aria-label="Kiểu dịch mặc định">
+              {STYLE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  className={`style-radio-item${style === opt.value ? ' active' : ''}`}
+                  onClick={() => setStyle(opt.value as TranslationStyle)}
+                >
+                  <span className="style-radio-dot" aria-hidden="true" />
+                  <span className="style-radio-text">
+                    <span className="style-radio-label">{opt.label}</span>
+                    <span className="style-radio-desc">{opt.description}</span>
+                  </span>
+                </button>
+              ))}
             </div>
-            <select
-              className="retranslate-select"
-              value={style}
-              onChange={(e) => setStyle(e.target.value as TranslationStyle)}
-            >
-              <option value="casual">Phổ thông</option>
-              <option value="academic">Học thuật</option>
-              <option value="business">Kinh doanh</option>
-            </select>
-          </label>
+          </div>
         </div>
         <div className="dialog-actions">
           <button type="button" className="popover-btn cancel" onClick={onClose} disabled={saving}>

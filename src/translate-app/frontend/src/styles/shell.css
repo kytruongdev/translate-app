@@ -526,6 +526,14 @@
   padding: 12px 0;
 }
 
+.model-ai-modal .modal-body .settings-row.compact.column {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 12px 0;
+}
+
 .model-ai-modal .modal-body .settings-row.compact .settings-row-label {
   font-size: 14px;
   font-weight: 500;

@@ -134,6 +134,7 @@ func (c *controller) TranslateFile(ctx context.Context, req bridge.FileRequest) 
 		SessionID:   req.SessionID,
 		FilePath:    clean,
 		FileID:      fileID,
+		UserID:      userID,
 		AssistantID: assistantID,
 		TargetLang:  targetLang,
 		Style:       style,

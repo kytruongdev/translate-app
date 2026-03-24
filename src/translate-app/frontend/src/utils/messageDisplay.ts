@@ -29,9 +29,9 @@ export const LARGE_DOCUMENT_COPY_DISABLED_TOOLTIP =
   'Chức năng sao chép không khả dụng với tài liệu lớn. Vui lòng sử dụng chức năng Export'
 
 export function styleLabel(style: TranslationStyle | ''): string {
-  if (style === 'business') return 'Business'
-  if (style === 'academic') return 'Academic'
-  return 'Casual'
+  if (style === 'business') return 'Chuyên nghiệp'
+  if (style === 'academic') return 'Học thuật'
+  return 'Thông thường'
 }
 
 export function formatMessageFooterTime(iso: string): string {
@@ -78,18 +78,25 @@ export function userMessageShowPastedPlaceholder(m: Message, pairedAssistantLong
 
 export function langShortLabel(code: string): string {
   const map: Record<string, string> = {
-    'en-US': 'EN',
-    'en-GB': 'EN-GB',
-    vi: 'VI',
-    'vi-VN': 'VI',
-    ja: 'JA',
-    'ja-JP': 'JA',
-    ko: 'KO',
-    'zh-CN': '中文',
-    'zh-TW': '繁中',
-    fr: 'FR',
-    de: 'DE',
-    es: 'ES',
+    vi: 'Tiếng Việt',
+    'vi-VN': 'Tiếng Việt',
+    'en-US': 'Tiếng Anh (Mỹ)',
+    'en-GB': 'Tiếng Anh (Anh)',
+    en: 'Tiếng Anh',
+    'zh-CN': 'Tiếng Hoa (Giản thể)',
+    'zh-TW': 'Tiếng Hoa (Phồn thể)',
+    ko: 'Tiếng Hàn',
+    'ko-KR': 'Tiếng Hàn',
+    ja: 'Tiếng Nhật',
+    'ja-JP': 'Tiếng Nhật',
+    fr: 'Tiếng Pháp',
+    'fr-FR': 'Tiếng Pháp',
+    de: 'Tiếng Đức',
+    'de-DE': 'Tiếng Đức',
+    es: 'Tiếng Tây Ban Nha',
+    'es-ES': 'Tiếng Tây Ban Nha',
+    auto: 'Tự động',
+    unknown: 'Tự động',
   }
   return map[code] ?? code
 }
