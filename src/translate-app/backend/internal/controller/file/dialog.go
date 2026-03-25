@@ -9,9 +9,9 @@ import (
 
 func (c *controller) OpenFileDialog(ctx context.Context) (string, error) {
 	path, err := runtime.OpenFileDialog(ctx, runtime.OpenDialogOptions{
-		Title: "Chọn tệp PDF hoặc Word",
+		Title: "Chọn tệp Word",
 		Filters: []runtime.FileFilter{
-			{DisplayName: "PDF, Word (*.pdf;*.docx)", Pattern: "*.pdf;*.docx"},
+			{DisplayName: "Word (*.docx)", Pattern: "*.docx"},
 		},
 	})
 	if err != nil {

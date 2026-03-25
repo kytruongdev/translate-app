@@ -18,11 +18,9 @@ function normalizeFileInfo(r: {
   fileSize: number
   pageCount?: number | string
   charCount: number
-  isScanned?: boolean | string
   estimatedChunks: number
   estimatedMinutes: number
 }): FileInfo {
-  const t = r.type === 'docx' ? 'docx' : 'pdf'
   const rawPc = r.pageCount
   let pageCount: number | undefined
   if (typeof rawPc === 'number' && Number.isFinite(rawPc)) {
@@ -33,11 +31,10 @@ function normalizeFileInfo(r: {
   }
   return {
     name: r.name,
-    type: t,
+    type: 'docx',
     fileSize: r.fileSize,
     pageCount,
     charCount: r.charCount,
-    isScanned: r.isScanned === true,
     estimatedChunks: r.estimatedChunks,
     estimatedMinutes: r.estimatedMinutes,
   }

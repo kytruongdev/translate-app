@@ -42,16 +42,15 @@ export interface FileRequest {
 
 export interface FileInfo {
   name: string
-  type: 'pdf' | 'docx'
+  type: 'docx'
   fileSize: number
   pageCount?: number
   charCount: number
-  isScanned?: boolean
   estimatedChunks: number
   estimatedMinutes: number
 }
 
-/** Tệp vừa chọn — `loading` khi BE còn `ReadFileInfo` (pdfcpu có thể >1s). */
+/** Tệp vừa chọn — `loading` khi BE còn `ReadFileInfo`. */
 export type PendingFilePick = { path: string; info: FileInfo; loading?: boolean }
 
 export interface FileContent {

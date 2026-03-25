@@ -163,18 +163,13 @@ export function ChatInputBar({
         ResolveFilePaths(files)
         path = (f as File & { path?: string }).path
       }
-      const nameLower = f.name.toLowerCase()
       const ref = (path ?? f.name).toLowerCase()
-      if (!ref.endsWith('.pdf') && !ref.endsWith('.docx')) {
-        onNotifyPickError('Chỉ hỗ trợ PDF và DOCX')
+      if (!ref.endsWith('.docx')) {
+        onNotifyPickError('Chỉ hỗ trợ DOCX')
         return
       }
       if (!path) {
-        if (nameLower.endsWith('.pdf') || nameLower.endsWith('.docx')) {
-          onNotifyPickError('Không lấy được đường dẫn tệp — hãy dùng nút đính kèm hoặc bản build Wails')
-        } else {
-          onNotifyPickError('Chỉ hỗ trợ PDF và DOCX')
-        }
+        onNotifyPickError('Không lấy được đường dẫn tệp — hãy dùng nút đính kèm hoặc bản build Wails')
         return
       }
       await onUserChoseFilePath(path)
