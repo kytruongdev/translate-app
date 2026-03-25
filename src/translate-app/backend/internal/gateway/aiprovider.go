@@ -17,6 +17,9 @@ type StreamEvent struct {
 type AIProvider interface {
 	// TranslateStream streams translated text. preserveMarkdown adds §9.1 Markdown preservation when true (e.g. displayMode bilingual).
 	TranslateStream(ctx context.Context, text, from, to, style string, preserveMarkdown bool, events chan<- StreamEvent) error
+	// TranslateBatchStream streams a DOCX paragraph batch translation using a dedicated system prompt
+	// that explicitly preserves <<<N>>> markers without conflicting "output-only" instructions.
+	TranslateBatchStream(ctx context.Context, text, from, to, style string, events chan<- StreamEvent) error
 }
 
 // NewFromSettings returns the default AI client from persisted settings.

@@ -180,7 +180,7 @@ function UserFileAttachmentBubble({
 export type RetranslatePayload = {
   sourceContent: string
   assistantMessageId: string
-  displayMode: 'bubble' | 'bilingual'
+  displayMode: 'bubble' | 'bilingual' | 'file'
   sourceLang: string
   targetLang: string
   style: TranslationStyle
@@ -610,6 +610,141 @@ function TranslationCardView({
   )
 }
 
+const IconDownload = () => (
+  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width={18} height={18} aria-hidden>
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+    />
+  </svg>
+)
+
+function FileTranslationCard({
+  m,
+  streaming,
+  fileTranslateProgress,
+  precedingUserContent,
+  onRetranslate,
+}: {
+  m: Message
+  streaming: boolean
+  fileTranslateProgress?: FileProgress | null
+  precedingUserContent?: string
+  onRetranslate?: (p: RetranslatePayload) => Promise<void>
+}) {
+  const [retranslateOpen, setRetranslateOpen] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const [downloadError, setDownloadError] = useState<string | null>(null)
+  const retranslateRef = useRef<HTMLButtonElement>(null)
+  const defaultStyle = useSettingsStore((s) => s.defaultStyle)
+  const activeProvider = useSettingsStore((s) => s.activeProvider)
+  const activeModel = useSettingsStore((s) => s.activeModel)
+
+  const fileName =
+    parseFileAttachmentDisplayName(precedingUserContent ?? '') ??
+    parseFileAttachmentDisplayName(m.originalContent ?? '') ??
+    'document.docx'
+
+  const pct = fileTranslateProgress?.percent ?? 0
+  const chunk = fileTranslateProgress?.chunk ?? 0
+  const total = fileTranslateProgress?.total ?? 0
+  const indeterminate = !fileTranslateProgress || total < 1
+
+  const handleDownload = async () => {
+    if (!m.fileId) return
+    setDownloading(true)
+    setDownloadError(null)
+    try {
+      await WailsService.exportFile(m.fileId, 'docx')
+    } catch (e) {
+      setDownloadError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  const runRetranslate = async (style: TranslationStyle) => {
+    if (!onRetranslate) return
+    await onRetranslate({
+      sourceContent: m.originalContent?.trim() ?? '',
+      assistantMessageId: m.id,
+      displayMode: 'file',
+      sourceLang: m.sourceLang,
+      targetLang: m.targetLang,
+      style,
+      fileId: m.fileId ?? undefined,
+      fileDisplayContent: precedingUserContent,
+    })
+  }
+
+  return (
+    <div className="file-translation-card">
+      <div className="file-translation-card-header">
+        <IconUserAttachmentFile />
+        <span className="file-translation-card-name" title={fileName}>
+          {fileName}
+        </span>
+        {!streaming && (
+          <button
+            ref={retranslateRef}
+            type="button"
+            className="btn-icon"
+            aria-label="Dịch lại"
+            data-tooltip="Dịch lại"
+            onClick={() => setRetranslateOpen((v) => !v)}
+          >
+            <IconRetranslate />
+          </button>
+        )}
+      </div>
+
+      {streaming ? (
+        <div className="file-translation-card-progress">
+          <div className="file-translation-card-progress-bar">
+            <div
+              className={`file-translation-card-progress-fill${indeterminate ? ' indeterminate' : ''}`}
+              style={indeterminate ? undefined : { width: `${pct}%` }}
+            />
+          </div>
+          <span className="file-translation-card-progress-label">
+            {indeterminate
+              ? 'Đang dịch...'
+              : total > 0
+                ? `Đang dịch đoạn ${chunk}/${total} (${pct}%)`
+                : `${pct}%`}
+          </span>
+        </div>
+      ) : (
+        <div className="file-translation-card-actions">
+          {downloadError && (
+            <span className="file-translation-card-error">{downloadError}</span>
+          )}
+          <button
+            type="button"
+            className="btn-primary file-translation-card-download"
+            disabled={downloading || !m.fileId}
+            onClick={() => void handleDownload()}
+          >
+            <IconDownload />
+            {downloading ? 'Đang lưu...' : 'Tải file đã dịch'}
+          </button>
+        </div>
+      )}
+
+      <CardRetranslatePopover
+        open={retranslateOpen}
+        anchorRef={retranslateRef}
+        onClose={() => setRetranslateOpen(false)}
+        initialStyle={m.style || defaultStyle}
+        modelLabel={`${activeProvider} · ${activeModel}`}
+        onConfirm={(style) => void runRetranslate(style)}
+      />
+    </div>
+  )
+}
+
 function BubbleActions({
   messageId,
   heavyInlineNoExpand,
@@ -763,6 +898,30 @@ function ChatMessageImpl({
     retranslateFollowUp && retranslateQuoteAssistant
       ? retranslateQuotedSnippet(retranslateQuoteAssistant.translatedContent || '')
       : ''
+
+  if (m.displayMode === 'file') {
+    return (
+      <div className="chat-msg assistant" id={`chat-msg-${m.id}`}>
+        <div className="avatar assistant-avatar" aria-hidden>
+          ✦
+        </div>
+        <div className="chat-msg-body">
+          <FileTranslationCard
+            m={m}
+            streaming={streaming}
+            fileTranslateProgress={fileTranslateProgress}
+            precedingUserContent={precedingUserContent}
+            onRetranslate={onRetranslate}
+          />
+          {!streaming && (
+            <div className="card-footer-outside">
+              {formatMessageFooterTime(m.updatedAt)} · {styleLabel(m.style)}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   if (m.displayMode === 'bilingual') {
     return (

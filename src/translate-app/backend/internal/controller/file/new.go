@@ -3,8 +3,12 @@ package file
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
+	"path/filepath"
 	"strings"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"translate-app/config"
 	"translate-app/internal/bridge"
@@ -64,6 +68,61 @@ func (c *controller) GetFileContent(ctx context.Context, fileID string) (*bridge
 	return out, nil
 }
 
-func (c *controller) ExportFile(ctx context.Context, fileID, format string) (string, error) {
-	return "", errors.New("not implemented")
+func (c *controller) ExportFile(ctx context.Context, fileID, _ string) (string, error) {
+	if strings.TrimSpace(fileID) == "" {
+		return "", errors.New("thiếu fileId")
+	}
+	f, err := c.reg.File().GetByID(ctx, fileID)
+	if err != nil {
+		return "", err
+	}
+	if f == nil {
+		return "", errors.New("không tìm thấy tệp")
+	}
+	if f.TranslatedPath == "" {
+		return "", errors.New("file chưa được dịch")
+	}
+	if _, err := os.Stat(f.TranslatedPath); err != nil {
+		return "", errors.New("file đã dịch không tồn tại trên ổ đĩa")
+	}
+
+	ext := strings.ToLower(filepath.Ext(f.TranslatedPath))
+	defaultName := strings.TrimSuffix(f.FileName, filepath.Ext(f.FileName)) + "_translated" + ext
+
+	savePath, err := runtime.SaveFileDialog(ctx, runtime.SaveDialogOptions{
+		DefaultFilename: defaultName,
+		Filters: []runtime.FileFilter{
+			{DisplayName: "DOCX Document (*.docx)", Pattern: "*.docx"},
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(savePath) == "" {
+		return "", nil // user cancelled
+	}
+
+	if err := copyFile(f.TranslatedPath, savePath); err != nil {
+		return "", err
+	}
+	return savePath, nil
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	return out.Sync()
 }

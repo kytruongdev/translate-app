@@ -25,6 +25,36 @@ func newOllamaProvider(model string) AIProvider {
 	}
 }
 
+func (p *ollamaProvider) TranslateBatchStream(ctx context.Context, text, from, to, style string, events chan<- StreamEvent) error {
+	defer close(events)
+
+	model := strings.TrimSpace(p.model)
+	if model == "" {
+		model = "qwen2.5:7b"
+	}
+
+	system := BuildDocxBatchSystemPrompt(from, to, style)
+	userText := strings.TrimSpace(text)
+
+	isRetryable := func(err error) bool {
+		if err == nil || IsConnectionRefused(err) {
+			return false
+		}
+		return IsRetryableOpenAI(err)
+	}
+
+	err := openAIChatStream(ctx, p.client, model, system, userText, events, isRetryable)
+	if err != nil {
+		if IsConnectionRefused(err) {
+			err = ErrOllamaNotRunning
+		}
+		_ = emit(ctx, events, StreamEvent{Type: "error", Error: err})
+		return err
+	}
+	_ = emit(ctx, events, StreamEvent{Type: "done"})
+	return nil
+}
+
 func (p *ollamaProvider) TranslateStream(ctx context.Context, text, from, to, style string, preserveMarkdown bool, events chan<- StreamEvent) error {
 	defer close(events)
 

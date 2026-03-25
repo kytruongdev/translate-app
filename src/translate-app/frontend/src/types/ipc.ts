@@ -8,7 +8,7 @@ export interface CreateSessionAndSendResult {
 export interface CreateSessionAndSendRequest {
   title?: string
   content: string
-  displayMode: 'bubble' | 'bilingual'
+  displayMode: 'bubble' | 'bilingual' | 'file'
   sourceLang: string
   targetLang: string
   style?: string
@@ -17,7 +17,7 @@ export interface CreateSessionAndSendRequest {
 export interface SendRequest {
   sessionId: string
   content: string
-  displayMode: 'bubble' | 'bilingual'
+  displayMode: 'bubble' | 'bilingual' | 'file'
   sourceLang: string
   targetLang: string
   style?: string

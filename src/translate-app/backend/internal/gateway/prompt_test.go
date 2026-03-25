@@ -38,6 +38,46 @@ func TestBuildTranslationSystemPrompt_EnglishSourceBranch(t *testing.T) {
 	}
 }
 
+func TestBuildDocxBatchSystemPrompt_NoConflict(t *testing.T) {
+	p := BuildDocxBatchSystemPrompt("vi", "en-US", "academic")
+	// Must contain marker format rule
+	if !strings.Contains(p, "<<<N>>>") {
+		t.Fatal("missing <<<N>>> marker format rule")
+	}
+	if !strings.Contains(p, "<<<1>>>") {
+		t.Fatal("missing example marker <<<1>>>")
+	}
+	// Must NOT have the conflicting "output only" instruction
+	if strings.Contains(p, "Output ONLY the translated text") {
+		t.Fatal("should not contain conflicting output-only instruction")
+	}
+	// Must still have language guards
+	if !strings.Contains(p, "ABSOLUTE OUTPUT LANGUAGE RULE") {
+		t.Fatal("missing absolute output language guard")
+	}
+	if !strings.Contains(p, "MONOLINGUAL OUTPUT") {
+		t.Fatal("missing monolingual constraint")
+	}
+	// Must mention source language
+	if !strings.Contains(p, "Vietnamese") {
+		t.Fatal("missing source language (Vietnamese)")
+	}
+	if !strings.Contains(p, "English (United States)") {
+		t.Fatal("missing target language")
+	}
+}
+
+func TestBuildDocxBatchSystemPrompt_AutoSource(t *testing.T) {
+	p := BuildDocxBatchSystemPrompt("auto", "vi", "casual")
+	// auto source should not mention a specific source language
+	if strings.Contains(p, "from Vietnamese") || strings.Contains(p, "from English") {
+		t.Fatal("auto source should not specify source language")
+	}
+	if !strings.Contains(p, "Vietnamese") {
+		t.Fatal("missing target language Vietnamese")
+	}
+}
+
 func TestSourceLangForTranslate(t *testing.T) {
 	if SourceLangForTranslate("Xin chào thế giới") != "vi" {
 		t.Fatal("expected vi for Vietnamese text")

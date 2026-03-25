@@ -10,7 +10,7 @@ export function isOptimisticUserMessage(m: Message): boolean {
 export function buildOptimisticUserMessage(params: {
   sessionId: string
   content: string
-  displayMode: 'bubble' | 'bilingual'
+  displayMode: 'bubble' | 'bilingual' | 'file'
   sourceLang: string
   targetLang: string
   style: TranslationStyle

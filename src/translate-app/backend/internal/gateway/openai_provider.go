@@ -26,6 +26,31 @@ func newOpenAIProvider(apiKey, model string) AIProvider {
 	}
 }
 
+func (p *openaiProvider) TranslateBatchStream(ctx context.Context, text, from, to, style string, events chan<- StreamEvent) error {
+	defer close(events)
+
+	if p.apiKey == "" {
+		_ = emit(ctx, events, StreamEvent{Type: "error", Error: errMissingOpenAIKey})
+		return errMissingOpenAIKey
+	}
+
+	model := strings.TrimSpace(p.model)
+	if model == "" {
+		model = "gpt-4o-mini"
+	}
+
+	system := BuildDocxBatchSystemPrompt(from, to, style)
+	userText := strings.TrimSpace(text)
+
+	err := openAIChatStream(ctx, p.client, model, system, userText, events, IsRetryableOpenAI)
+	if err != nil {
+		_ = emit(ctx, events, StreamEvent{Type: "error", Error: err})
+		return err
+	}
+	_ = emit(ctx, events, StreamEvent{Type: "done"})
+	return nil
+}
+
 func (p *openaiProvider) TranslateStream(ctx context.Context, text, from, to, style string, preserveMarkdown bool, events chan<- StreamEvent) error {
 	defer close(events)
 

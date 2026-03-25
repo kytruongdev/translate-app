@@ -42,7 +42,17 @@ func (p *geminiProvider) lazyClient() (*genai.Client, error) {
 	return p.client, p.cliErr
 }
 
+func (p *geminiProvider) TranslateBatchStream(ctx context.Context, text, from, to, style string, events chan<- StreamEvent) error {
+	system := BuildDocxBatchSystemPrompt(from, to, style)
+	return p.doTranslateStream(ctx, system, text, events)
+}
+
 func (p *geminiProvider) TranslateStream(ctx context.Context, text, from, to, style string, preserveMarkdown bool, events chan<- StreamEvent) error {
+	system := BuildTranslationSystemPrompt(from, to, style, preserveMarkdown)
+	return p.doTranslateStream(ctx, system, text, events)
+}
+
+func (p *geminiProvider) doTranslateStream(ctx context.Context, system, text string, events chan<- StreamEvent) error {
 	defer close(events)
 
 	if p.apiKey == "" {
@@ -50,7 +60,6 @@ func (p *geminiProvider) TranslateStream(ctx context.Context, text, from, to, st
 		return errMissingGeminiKey
 	}
 
-	system := BuildTranslationSystemPrompt(from, to, style, preserveMarkdown)
 	contents := []*genai.Content{genai.NewUserContentFromText(strings.TrimSpace(text))}
 	config := &genai.GenerateContentConfig{
 		SystemInstruction: genai.NewUserContentFromText(system),
