@@ -4,11 +4,13 @@ go 1.23
 
 require (
 	github.com/google/uuid v1.6.0
+	github.com/pdfcpu/pdfcpu v0.8.0
 	github.com/sashabaranov/go-openai v1.36.1
 	github.com/sqlc-dev/sqlc v1.28.0
 	github.com/wailsapp/wails/v2 v2.11.0
 	google.golang.org/genai v0.6.0
 	modernc.org/sqlite v1.34.5
+	rsc.io/pdf v0.1.1
 )
 
 require (
@@ -28,6 +30,8 @@ require (
 	github.com/google/cel-go v0.22.1 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
+	github.com/hhrutter/lzw v1.0.0 // indirect
+	github.com/hhrutter/tiff v1.0.1 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
@@ -43,6 +47,7 @@ require (
 	github.com/leaanthony/u v1.1.1 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/mattn/go-runewidth v0.0.16 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/pganalyze/pg_query_go/v5 v5.1.0 // indirect
 	github.com/pingcap/errors v0.11.5-0.20240311024730-e056997136bb // indirect
@@ -71,6 +76,7 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/crypto v0.33.0 // indirect
 	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842 // indirect
+	golang.org/x/image v0.15.0 // indirect
 	golang.org/x/net v0.35.0 // indirect
 	golang.org/x/oauth2 v0.23.0 // indirect
 	golang.org/x/sync v0.11.0 // indirect
@@ -81,6 +87,7 @@ require (
 	google.golang.org/grpc v1.69.4 // indirect
 	google.golang.org/protobuf v1.36.3 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
+	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	modernc.org/libc v1.55.3 // indirect
 	modernc.org/mathutil v1.6.0 // indirect

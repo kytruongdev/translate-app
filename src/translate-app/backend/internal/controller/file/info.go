@@ -13,10 +13,13 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/pdfcpu/pdfcpu/pkg/api"
+
 	"translate-app/internal/bridge"
 )
 
 const (
+	maxPDFPeek       = 4 << 20 // 4 MiB for text-operator heuristic
 	charsPerChunk    = 2500
 	docxCharsPerPage = 2800
 )
@@ -46,10 +49,38 @@ func (c *controller) ReadFileInfo(ctx context.Context, path string) (*bridge.Fil
 	name := filepath.Base(clean)
 	size := fi.Size()
 
-	if ext == ".docx" {
+	switch ext {
+	case ".pdf":
+		return readPDFInfo(clean, name, size)
+	case ".docx":
 		return readDocxInfo(clean, name, size)
+	default:
+		return nil, errors.New("chỉ hỗ trợ PDF và DOCX")
 	}
-	return nil, errors.New("chỉ hỗ trợ DOCX")
+}
+
+func readPDFInfo(path, name string, size int64) (*bridge.FileInfo, error) {
+	ctxPDF, err := api.ReadContextFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("không đọc được PDF: %w", err)
+	}
+	if err := ctxPDF.EnsurePageCount(); err != nil {
+		return nil, fmt.Errorf("không xác định được số trang: %w", err)
+	}
+	pages := ctxPDF.PageCount
+	if pages < 1 {
+		return nil, errors.New("PDF không có trang hợp lệ")
+	}
+
+	ops := pdfTextOperatorCount(path)
+	isScanned := pages >= 1 && ops < intMax(1, pages/3)
+
+	charCount := pages * 2000
+	if !isScanned && ops > 0 {
+		charCount = intMax(charCount, ops*350)
+	}
+
+	return buildFileInfo(name, "pdf", size, pages, charCount, isScanned), nil
 }
 
 func readDocxInfo(path, name string, size int64) (*bridge.FileInfo, error) {
@@ -87,10 +118,10 @@ func readDocxInfo(path, name string, size int64) (*bridge.FileInfo, error) {
 	}
 
 	pages := max(1, (charCount+docxCharsPerPage-1)/docxCharsPerPage)
-	return buildFileInfo(name, "docx", size, pages, charCount), nil
+	return buildFileInfo(name, "docx", size, pages, charCount, false), nil
 }
 
-func buildFileInfo(name, typ string, size int64, pageCount, charCount int) *bridge.FileInfo {
+func buildFileInfo(name, typ string, size int64, pageCount, charCount int, isScanned bool) *bridge.FileInfo {
 	chunks := (charCount + charsPerChunk - 1) / charsPerChunk
 	if chunks < 1 {
 		chunks = 1
@@ -101,12 +132,33 @@ func buildFileInfo(name, typ string, size int64, pageCount, charCount int) *brid
 	}
 
 	return &bridge.FileInfo{
-		Name:             name,
-		Type:             typ,
-		FileSize:         size,
-		PageCount:        pageCount,
-		CharCount:        charCount,
-		EstimatedChunks:  chunks,
-		EstimatedMinutes: minutes,
+		Name:              name,
+		Type:              typ,
+		FileSize:          size,
+		PageCount:         pageCount,
+		CharCount:         charCount,
+		IsScanned:         isScanned,
+		EstimatedChunks:   chunks,
+		EstimatedMinutes:  minutes,
 	}
+}
+
+func pdfTextOperatorCount(path string) int {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, maxPDFPeek))
+	if err != nil || len(b) == 0 {
+		return 0
+	}
+	return bytes.Count(b, []byte(" Tj")) + bytes.Count(b, []byte(" TJ"))
+}
+
+func intMax(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
