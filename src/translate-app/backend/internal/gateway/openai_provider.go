@@ -39,7 +39,7 @@ func (p *openaiProvider) TranslateBatchStream(ctx context.Context, text, from, t
 		model = "gpt-4o-mini"
 	}
 
-	system := BuildDocxBatchSystemPrompt(from, to, style)
+	system := BuildDocxBatchSystemPromptGPT(from, to, style)
 	userText := strings.TrimSpace(text)
 
 	err := openAIChatStream(ctx, p.client, model, system, userText, events, IsRetryableOpenAI)
@@ -64,7 +64,7 @@ func (p *openaiProvider) TranslateStream(ctx context.Context, text, from, to, st
 		model = "gpt-4o-mini"
 	}
 
-	system := BuildTranslationSystemPrompt(from, to, style, preserveMarkdown)
+	system := BuildTranslationSystemPromptGPT(from, to, style, preserveMarkdown)
 	userText := strings.TrimSpace(text)
 
 	err := openAIChatStream(ctx, p.client, model, system, userText, events, IsRetryableOpenAI)
