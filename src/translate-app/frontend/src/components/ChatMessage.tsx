@@ -916,6 +916,7 @@ function ChatMessageImpl({
           {!streaming && (
             <div className="card-footer-outside">
               {formatMessageFooterTime(m.updatedAt)} · {styleLabel(m.style)}
+              {m.tokens > 0 ? ` · ${m.tokens.toLocaleString()} tokens` : ''}
             </div>
           )}
         </div>
