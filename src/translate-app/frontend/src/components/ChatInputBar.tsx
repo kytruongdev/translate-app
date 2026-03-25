@@ -165,15 +165,19 @@ export function ChatInputBar({
       }
       const nameLower = f.name.toLowerCase()
       const ref = (path ?? f.name).toLowerCase()
-      if (!ref.endsWith('.pdf') && !ref.endsWith('.docx')) {
-        onNotifyPickError('Chỉ hỗ trợ PDF và DOCX')
+      if (ref.endsWith('.pdf')) {
+        onNotifyPickError('PDF chưa được hỗ trợ ở phiên bản này')
+        return
+      }
+      if (!ref.endsWith('.docx')) {
+        onNotifyPickError('Chỉ hỗ trợ DOCX')
         return
       }
       if (!path) {
-        if (nameLower.endsWith('.pdf') || nameLower.endsWith('.docx')) {
+        if (nameLower.endsWith('.docx')) {
           onNotifyPickError('Không lấy được đường dẫn tệp — hãy dùng nút đính kèm hoặc bản build Wails')
         } else {
-          onNotifyPickError('Chỉ hỗ trợ PDF và DOCX')
+          onNotifyPickError('Chỉ hỗ trợ DOCX')
         }
         return
       }
