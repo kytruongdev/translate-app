@@ -95,10 +95,10 @@ export const WailsEvents = {
   onTranslationError: (cb: (err: string) => void) =>
     EventsOn('translation:error', (...a: unknown[]) => cb(a[0] as string)),
   onFileSource: (
-    cb: (payload: { markdown: string; sessionId?: string; assistantMessageId?: string }) => void,
+    cb: (payload: { markdown?: string; sessionId?: string; assistantMessageId?: string }) => void,
   ) =>
     EventsOn('file:source', (...a: unknown[]) =>
-      cb(a[0] as { markdown: string; sessionId?: string; assistantMessageId?: string }),
+      cb(a[0] as { markdown?: string; sessionId?: string; assistantMessageId?: string }),
     ),
   onFileProgress: (cb: (p: FileProgress) => void) =>
     EventsOn('file:progress', (...a: unknown[]) => cb(a[0] as FileProgress)),

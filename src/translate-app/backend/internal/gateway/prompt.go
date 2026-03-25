@@ -102,6 +102,60 @@ func targetMonolingualConstraint(targetLocale string) string {
 	}
 }
 
+// BuildDocxBatchSystemPrompt builds the system prompt for DOCX paragraph-batch translation.
+// Unlike BuildTranslationSystemPrompt, this does NOT say "output ONLY translated text"
+// (which conflicts with marker preservation). Instead it makes the <<<N>>> format rule
+// explicit in the system prompt so the AI has no conflicting instructions.
+func BuildDocxBatchSystemPrompt(from, to, style string) string {
+	target := TargetLangLabel(to)
+	styleNorm := strings.ToLower(strings.TrimSpace(style))
+	if styleNorm != "business" && styleNorm != "academic" {
+		styleNorm = "casual"
+	}
+
+	srcKey := sourceLangKey(from)
+	var fromClause string
+	switch srcKey {
+	case "vi":
+		fromClause = "from Vietnamese "
+	case "en":
+		fromClause = "from English "
+	default:
+		fromClause = "" // auto-detect
+	}
+
+	var base string
+	switch styleNorm {
+	case "business":
+		base = "You are a professional translator. Translate each paragraph " + fromClause + "to " + target +
+			" in a formal, clear, and professional tone suitable for business communication.\n" +
+			"Preserve technical terms. " + mixedLangNote
+	case "academic":
+		base = "You are a scholarly translator. Translate each paragraph " + fromClause + "to " + target +
+			" with precision and rigor, using domain-appropriate terminology.\n" +
+			"Maintain logical structure and formal register. " + mixedLangNote
+	default:
+		base = "You are a translator. Translate each paragraph " + fromClause + "to " + target +
+			" naturally and conversationally, using everyday language.\n" + mixedLangNote
+	}
+
+	markerRule := "\n\nFORMAT RULE (critical):\n" +
+		"The user message contains paragraphs numbered with <<<N>>> markers.\n" +
+		"Return each translated paragraph preceded by its marker, like this:\n\n" +
+		"<<<1>>>\n[translation of paragraph 1]\n\n<<<2>>>\n[translation of paragraph 2]\n\n" +
+		"IMPORTANT: Keep every <<<N>>> marker EXACTLY as written — exactly 3 angle brackets on each side, same number N.\n" +
+		"Do NOT add extra angle brackets. Do NOT remove markers. Do NOT add any explanation or commentary."
+
+	body := base + markerRule + "\n\n" + targetMonolingualConstraint(to)
+
+	tl := strings.ToLower(strings.TrimSpace(to))
+	if !strings.HasPrefix(tl, "zh") && !strings.HasPrefix(tl, "ja") &&
+		!strings.HasPrefix(tl, "ko") && tl != "jp" {
+		return outputLangGuard(target) + body
+	}
+	return body
+}
+
 // BuildTranslationSystemPrompt builds the system instruction per doc/architecture-document.md §9.1.
 func BuildTranslationSystemPrompt(sourceLang, targetLocale, style string, preserveMarkdown bool) string {
 	target := TargetLangLabel(targetLocale)

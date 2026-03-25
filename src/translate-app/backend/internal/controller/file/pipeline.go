@@ -48,7 +48,19 @@ func (c *controller) runFileTranslate(ctx context.Context, p fileTranslateParams
 
 	ext := fileExt(p.FilePath)
 
-	// Extract for display (GFM with structure)
+	if ext == ".docx" {
+		c.runDocxTranslate(ctx, p, fail)
+	} else {
+		c.runPlainTranslate(ctx, p, ext, fail)
+	}
+}
+
+// runDocxTranslate handles DOCX files using the XML-level translation pipeline.
+// Structure (tables, images, columns) is preserved; only <w:t> text nodes are translated.
+func (c *controller) runDocxTranslate(ctx context.Context, p fileTranslateParams, fail func(string)) {
+	ext := ".docx"
+
+	// Extract plain text for preview display (source.md).
 	plain, err := extractSourceMarkdown(p.FilePath, ext)
 	if err != nil {
 		fail(err.Error())
@@ -60,10 +72,122 @@ func (c *controller) runFileTranslate(ctx context.Context, p fileTranslateParams
 		return
 	}
 
-	// Extract for AI translation (plain text — consistent across all file types)
+	dir, err := userFilesDir()
+	if err != nil {
+		fail(err.Error())
+		return
+	}
+	subDir := filepath.Join(dir, p.FileID)
+	if err := os.MkdirAll(subDir, 0o755); err != nil {
+		fail(fmt.Sprintf("không tạo được thư mục lưu: %v", err))
+		return
+	}
+	sourcePath := filepath.Join(subDir, "source.md")
+	if err := os.WriteFile(sourcePath, []byte(sourceMD), 0o644); err != nil {
+		fail(fmt.Sprintf("không ghi được source.md: %v", err))
+		return
+	}
+
+	charCount, pageCount := charAndPageCount(sourceMD, ext, p.PageCount)
+	if err := c.reg.File().UpdateExtracted(ctx, p.FileID, sourcePath, charCount, pageCount); err != nil {
+		fail(err.Error())
+		return
+	}
+
+	// Detect source language.
+	docSrcHint := gateway.SourceLangForTranslate(sourceMD)
+	if docSrcHint != "auto" {
+		_ = c.reg.Message().UpdateSourceLang(ctx, p.UserID, docSrcHint)
+		_ = c.reg.Message().UpdateSourceLang(ctx, p.AssistantID, docSrcHint)
+	}
+
+	runtime.EventsEmit(ctx, "file:source", map[string]string{
+		"sessionId":          p.SessionID,
+		"assistantMessageId": p.AssistantID,
+	})
+
+	// Parse DOCX XML structure.
+	df, err := ParseDocx(p.FilePath)
+	if err != nil {
+		fail(fmt.Sprintf("không đọc được cấu trúc DOCX: %v", err))
+		return
+	}
+	if len(df.Paragraphs) == 0 {
+		fail("DOCX không có nội dung văn bản")
+		return
+	}
+
+	totalBatches := len(chunkDocxParagraphs(df.Paragraphs, charsPerChunk))
+
+	// Translate all paragraphs via XML pipeline.
+	translations, err := c.translateDocxFile(ctx, df, docSrcHint, p.TargetLang, p.Style, p.Provider,
+		func(batchIdx, total int) {
+			pct := 0
+			if total > 0 {
+				pct = (batchIdx * 100) / total
+			}
+			runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{
+				Chunk:   batchIdx + 1,
+				Total:   total,
+				Percent: pct,
+			})
+		},
+	)
+	if err != nil {
+		fail(err.Error())
+		return
+	}
+
+	runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{
+		Chunk:   totalBatches,
+		Total:   totalBatches,
+		Percent: 100,
+	})
+
+	// Write translated DOCX.
+	translatedPath := filepath.Join(subDir, "translated.docx")
+	if err := WriteTranslatedDocx(df, translations, translatedPath); err != nil {
+		fail(fmt.Sprintf("không tạo được file DOCX đã dịch: %v", err))
+		return
+	}
+
+	if err := c.reg.File().UpdateTranslated(ctx, p.FileID, sourcePath, translatedPath, charCount, pageCount, p.ModelUsed); err != nil {
+		fail(err.Error())
+		return
+	}
+
+	msg, err := c.reg.Message().GetByID(ctx, p.AssistantID)
+	if err != nil || msg == nil {
+		fail("không tải được tin nhắn sau khi dịch file")
+		return
+	}
+	runtime.EventsEmit(ctx, "translation:done", *msg)
+
+	runtime.EventsEmit(ctx, "file:done", bridge.FileResult{
+		FileID:    p.FileID,
+		FileName:  filepath.Base(p.FilePath),
+		FileType:  "docx",
+		CharCount: charCount,
+		PageCount: pageCount,
+	})
+}
+
+// runPlainTranslate handles non-DOCX files (PDF) using the existing text pipeline.
+func (c *controller) runPlainTranslate(ctx context.Context, p fileTranslateParams, ext string, fail func(string)) {
+	plain, err := extractSourceMarkdown(p.FilePath, ext)
+	if err != nil {
+		fail(err.Error())
+		return
+	}
+	sourceMD := sourceMarkdownFromPlain(plain)
+	if sourceMD == "" {
+		fail("không trích được văn bản từ tệp")
+		return
+	}
+
 	translationText, err := extractTranslationText(p.FilePath, ext)
 	if err != nil || translationText == "" {
-		translationText = sourceMD // fallback to display text
+		translationText = sourceMD
 	}
 
 	chunks := chunkMarkdownByParagraphs(translationText, charsPerChunk)
@@ -99,8 +223,6 @@ func (c *controller) runFileTranslate(ctx context.Context, p fileTranslateParams
 		return
 	}
 
-	// Detect source language before emitting file:source so the frontend loads messages
-	// with the correct sourceLang (e.g. "vi") instead of the initial "auto" placeholder.
 	docSrcHint := gateway.SourceLangForTranslate(sourceMD)
 	if docSrcHint != "auto" {
 		_ = c.reg.Message().UpdateSourceLang(ctx, p.UserID, docSrcHint)
@@ -115,7 +237,6 @@ func (c *controller) runFileTranslate(ctx context.Context, p fileTranslateParams
 
 	total := len(chunks)
 	var cumulative strings.Builder
-	preserveMD := true // bilingual-friendly output
 
 	for i, chunk := range chunks {
 		pct := 0
@@ -128,8 +249,7 @@ func (c *controller) runFileTranslate(ctx context.Context, p fileTranslateParams
 			Percent: pct,
 		})
 
-		srcHint := docSrcHint
-		translated, err := c.streamTranslate(ctx, p.Provider, chunk, srcHint, p.TargetLang, p.Style, preserveMD, func(delta string) {
+		translated, err := c.streamTranslate(ctx, p.Provider, chunk, docSrcHint, p.TargetLang, p.Style, true, func(delta string) {
 			runtime.EventsEmit(ctx, "translation:chunk", delta)
 		})
 		if err != nil {
@@ -173,13 +293,14 @@ func (c *controller) runFileTranslate(ctx context.Context, p fileTranslateParams
 	}
 	runtime.EventsEmit(ctx, "translation:done", *msg)
 
+	fullTranslatedStr := cumulative.String()
 	runtime.EventsEmit(ctx, "file:done", bridge.FileResult{
 		FileID:     p.FileID,
 		FileName:   filepath.Base(p.FilePath),
 		FileType:   strings.TrimPrefix(ext, "."),
 		CharCount:  charCount,
 		PageCount:  pageCount,
-		TokensUsed: estimateTokens(fullTranslated),
+		TokensUsed: estimateTokens(fullTranslatedStr),
 	})
 }
 

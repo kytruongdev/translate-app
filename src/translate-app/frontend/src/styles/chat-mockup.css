@@ -2508,3 +2508,103 @@
   font-weight: 600;
   background: var(--active);
 }
+
+/* ── File Translation Card ───────────────────────────────────────────────── */
+.file-translation-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 260px;
+  max-width: 420px;
+}
+
+.file-translation-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.file-translation-card-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-translation-card-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.file-translation-card-progress-bar {
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.file-translation-card-progress-fill {
+  height: 100%;
+  background: var(--accent, #6366f1);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.file-translation-card-progress-fill.indeterminate {
+  width: 40%;
+  animation: progress-indeterminate 1.4s ease-in-out infinite;
+}
+
+@keyframes progress-indeterminate {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+
+.file-translation-card-progress-label {
+  font-size: 12px;
+  color: var(--text-secondary, var(--text));
+  opacity: 0.7;
+}
+
+.file-translation-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.file-translation-card-error {
+  font-size: 12px;
+  color: var(--error, #ef4444);
+}
+
+.file-translation-card-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: var(--r-small);
+  border: none;
+  background: var(--accent, #6366f1);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.file-translation-card-download:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.file-translation-card-download:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

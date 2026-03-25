@@ -14,7 +14,7 @@ export interface Message {
   sessionId: string
   role: 'user' | 'assistant'
   displayOrder: number
-  displayMode: 'bubble' | 'bilingual'
+  displayMode: 'bubble' | 'bilingual' | 'file'
   originalContent: string
   translatedContent: string
   fileId: string | null
