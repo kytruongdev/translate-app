@@ -137,6 +137,7 @@ func (c *controller) retranslatePlain(ctx context.Context, p RetranslateContentP
 
 	total := len(chunks)
 	var cumulative strings.Builder
+	var totalTokens int
 	docSrcHint := gateway.SourceLangForTranslate(p.SourceMD)
 
 	for i, chunk := range chunks {
@@ -150,16 +151,21 @@ func (c *controller) retranslatePlain(ctx context.Context, p RetranslateContentP
 			Percent: pct,
 		})
 
-		translated, err := c.streamTranslate(ctx, p.Provider, chunk, docSrcHint, p.TargetLang, p.Style, true, func(delta string) {
+		translated, tokens, err := c.streamTranslate(ctx, p.Provider, chunk, docSrcHint, p.TargetLang, p.Style, true, func(delta string) {
 			runtime.EventsEmit(ctx, "translation:chunk", delta)
 		})
 		if err != nil {
 			fail(err.Error())
 			return
 		}
+		totalTokens += tokens
 		cumulative.WriteString(translated)
 		sum := cumulative.String()
-		if err := c.reg.Message().UpdateTranslated(ctx, p.AssistantID, sum, estimateTokens(sum)); err != nil {
+		usedTokens := totalTokens
+		if usedTokens == 0 {
+			usedTokens = estimateTokens(sum)
+		}
+		if err := c.reg.Message().UpdateTranslated(ctx, p.AssistantID, sum, usedTokens); err != nil {
 			fail(err.Error())
 			return
 		}

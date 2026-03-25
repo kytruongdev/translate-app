@@ -9,9 +9,10 @@ import (
 )
 
 type StreamEvent struct {
-	Type    string // "chunk" | "done" | "error"
-	Content string
-	Error   error
+	Type       string // "chunk" | "done" | "error" | "usage"
+	Content    string
+	Error      error
+	TokensUsed int // set on Type=="usage" (OpenAI only; 0 for other providers)
 }
 
 type AIProvider interface {
