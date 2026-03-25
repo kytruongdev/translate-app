@@ -32,7 +32,7 @@ func plainTextLooksLikeMarkdown(s string) bool {
 	return false
 }
 
-// inferMarkdownFromPlain thêm heading Markdown (##) cho dòng “giống tiêu đề” — chủ yếu PDF/plain.
+// inferMarkdownFromPlain thêm heading Markdown (##) cho dòng “giống tiêu đề” — chủ yếu plain text.
 func inferMarkdownFromPlain(plain string) string {
 	paras := splitBlankParagraphs(plain)
 	if len(paras) == 0 {

@@ -11,7 +11,7 @@ func (a *App) OpenFileDialog() (string, error) {
 	return a.ctrl.File.OpenFileDialog(a.appCtx())
 }
 
-// ReadFileInfo returns PDF/DOCX metadata — E6.
+// ReadFileInfo returns DOCX metadata — E6.
 func (a *App) ReadFileInfo(path string) (*FileInfo, error) {
 	return a.ctrl.File.ReadFileInfo(a.appCtx(), path)
 }
