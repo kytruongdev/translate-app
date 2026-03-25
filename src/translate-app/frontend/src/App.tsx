@@ -292,6 +292,9 @@ export default function App() {
   const attachmentValidationError = useMemo(() => {
     if (!pendingFile) return null
     if (pendingFile.loading) return null
+    if (pendingFile.info.isScanned === true) {
+      return 'PDF scan không hỗ trợ, vui lòng dùng PDF có text'
+    }
     const raw = pendingFile.info.pageCount
     const pc = typeof raw === 'number' ? raw : raw != null ? Number(raw) : NaN
     if (Number.isFinite(pc) && pc > MAX_FILE_PAGE_COUNT) {
@@ -307,15 +310,16 @@ export default function App() {
 
   const ingestFilePath = useCallback(async (path: string) => {
     const lower = path.toLowerCase()
-    if (!lower.endsWith('.docx')) {
-      setFilePickError('Chỉ hỗ trợ DOCX')
+    if (!lower.endsWith('.pdf') && !lower.endsWith('.docx')) {
+      setFilePickError('Chỉ hỗ trợ PDF và DOCX')
       setPendingFile(null)
       return
     }
     const name = path.replace(/^.*[/\\]/, '') || path
+    const type: FileInfo['type'] = lower.endsWith('.pdf') ? 'pdf' : 'docx'
     const placeholder: FileInfo = {
       name,
-      type: 'docx',
+      type,
       fileSize: 0,
       charCount: 1,
       estimatedChunks: 1,

@@ -47,13 +47,14 @@ type FileRequest struct {
 
 // FileInfo — ReadFileInfo response.
 type FileInfo struct {
-	Name             string `json:"name"`
-	Type             string `json:"type"`
-	FileSize         int64  `json:"fileSize"`
-	PageCount        int    `json:"pageCount,omitempty"`
-	CharCount        int    `json:"charCount"`
-	EstimatedChunks  int    `json:"estimatedChunks"`
-	EstimatedMinutes int    `json:"estimatedMinutes"`
+	Name              string  `json:"name"`
+	Type              string  `json:"type"`
+	FileSize          int64   `json:"fileSize"`
+	PageCount         int     `json:"pageCount,omitempty"`
+	CharCount         int     `json:"charCount"`
+	IsScanned         bool    `json:"isScanned,omitempty"`
+	EstimatedChunks   int     `json:"estimatedChunks"`
+	EstimatedMinutes  int     `json:"estimatedMinutes"`
 }
 
 // FileContent — lazy markdown from disk.

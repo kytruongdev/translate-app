@@ -56,6 +56,7 @@ export namespace bridge {
 	    fileSize: number;
 	    pageCount?: number;
 	    charCount: number;
+	    isScanned?: boolean;
 	    estimatedChunks: number;
 	    estimatedMinutes: number;
 	
@@ -70,6 +71,7 @@ export namespace bridge {
 	        this.fileSize = source["fileSize"];
 	        this.pageCount = source["pageCount"];
 	        this.charCount = source["charCount"];
+	        this.isScanned = source["isScanned"];
 	        this.estimatedChunks = source["estimatedChunks"];
 	        this.estimatedMinutes = source["estimatedMinutes"];
 	    }

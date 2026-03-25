@@ -14,6 +14,7 @@ export function FileAttachment({
   loading?: boolean
 }) {
   const label = fileInfo.name.length > 48 ? `${fileInfo.name.slice(0, 45)}…` : fileInfo.name
+  const isPdf = fileInfo.type === 'pdf'
 
   return (
     <div
@@ -23,7 +24,7 @@ export function FileAttachment({
     >
       <div className="file-attachment-main">
         <span className="file-attachment-icon" aria-hidden>
-          DOC
+          {isPdf ? 'PDF' : 'DOC'}
         </span>
         <div className="file-attachment-meta">
           <span className="file-attachment-name" title={fileInfo.name}>

@@ -43,6 +43,9 @@ func (c *controller) TranslateFile(ctx context.Context, req bridge.FileRequest) 
 	if err != nil {
 		return err
 	}
+	if info.IsScanned {
+		return errors.New("PDF scan không hỗ trợ, vui lòng dùng PDF có text")
+	}
 	if info.PageCount > maxFilePages {
 		return fmt.Errorf("Tệp quá lớn (tối đa %d trang)", maxFilePages)
 	}
