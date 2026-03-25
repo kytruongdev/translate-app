@@ -237,6 +237,7 @@ func (c *controller) runPlainTranslate(ctx context.Context, p fileTranslateParam
 
 	total := len(chunks)
 	var cumulative strings.Builder
+	var totalTokens int
 
 	for i, chunk := range chunks {
 		pct := 0
@@ -249,16 +250,21 @@ func (c *controller) runPlainTranslate(ctx context.Context, p fileTranslateParam
 			Percent: pct,
 		})
 
-		translated, err := c.streamTranslate(ctx, p.Provider, chunk, docSrcHint, p.TargetLang, p.Style, true, func(delta string) {
+		translated, tokens, err := c.streamTranslate(ctx, p.Provider, chunk, docSrcHint, p.TargetLang, p.Style, true, func(delta string) {
 			runtime.EventsEmit(ctx, "translation:chunk", delta)
 		})
 		if err != nil {
 			fail(err.Error())
 			return
 		}
+		totalTokens += tokens
 		cumulative.WriteString(translated)
 		sum := cumulative.String()
-		if err := c.reg.Message().UpdateTranslated(ctx, p.AssistantID, sum, estimateTokens(sum)); err != nil {
+		usedTokens := totalTokens
+		if usedTokens == 0 {
+			usedTokens = estimateTokens(sum)
+		}
+		if err := c.reg.Message().UpdateTranslated(ctx, p.AssistantID, sum, usedTokens); err != nil {
 			fail(err.Error())
 			return
 		}
@@ -293,17 +299,23 @@ func (c *controller) runPlainTranslate(ctx context.Context, p fileTranslateParam
 	}
 	runtime.EventsEmit(ctx, "translation:done", *msg)
 
-	fullTranslatedStr := cumulative.String()
+	finalTokens := totalTokens
+	if finalTokens == 0 {
+		finalTokens = estimateTokens(cumulative.String())
+	}
 	runtime.EventsEmit(ctx, "file:done", bridge.FileResult{
 		FileID:     p.FileID,
 		FileName:   filepath.Base(p.FilePath),
 		FileType:   strings.TrimPrefix(ext, "."),
 		CharCount:  charCount,
 		PageCount:  pageCount,
-		TokensUsed: estimateTokens(fullTranslatedStr),
+		TokensUsed: finalTokens,
 	})
 }
 
+// streamTranslate streams a translation and returns (text, tokensUsed, error).
+// tokensUsed is the real API token count when the provider reports it (OpenAI),
+// or 0 for providers that don't emit usage events (Ollama, Gemini).
 func (c *controller) streamTranslate(
 	ctx context.Context,
 	provider gateway.AIProvider,
@@ -311,7 +323,7 @@ func (c *controller) streamTranslate(
 	style model.TranslationStyle,
 	preserveMD bool,
 	onDelta func(string),
-) (string, error) {
+) (string, int, error) {
 	events := make(chan gateway.StreamEvent, 64)
 	errCh := make(chan error, 1)
 	go func() {
@@ -319,6 +331,7 @@ func (c *controller) streamTranslate(
 	}()
 
 	var full strings.Builder
+	var tokensUsed int
 	for ev := range events {
 		switch ev.Type {
 		case "chunk":
@@ -328,22 +341,22 @@ func (c *controller) streamTranslate(
 					onDelta(ev.Content)
 				}
 			}
+		case "usage":
+			tokensUsed = ev.TokensUsed
 		case "error":
 			errMsg := errors.New("translation failed")
 			if ev.Error != nil {
 				errMsg = ev.Error
 			}
 			<-errCh
-			return "", errMsg
-		case "done":
+			return "", 0, errMsg
 		}
 	}
 
-	streamErr := <-errCh
-	if streamErr != nil {
-		return "", streamErr
+	if streamErr := <-errCh; streamErr != nil {
+		return "", 0, streamErr
 	}
-	return full.String(), nil
+	return full.String(), tokensUsed, nil
 }
 
 func userFilesDir() (string, error) {

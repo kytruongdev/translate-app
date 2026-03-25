@@ -37,7 +37,8 @@ func openAIChatStream(
 				{Role: openai.ChatMessageRoleSystem, Content: systemPrompt},
 				{Role: openai.ChatMessageRoleUser, Content: userText},
 			},
-			Stream: true,
+			Stream:        true,
+			StreamOptions: &openai.StreamOptions{IncludeUsage: true},
 		})
 		if err != nil {
 			lastErr = err
@@ -79,7 +80,11 @@ func drainOpenAIStream(ctx context.Context, stream *openai.ChatCompletionStream,
 		if err != nil {
 			return err
 		}
+		// Final chunk with usage data (IncludeUsage=true, Choices is empty).
 		if len(resp.Choices) == 0 {
+			if resp.Usage != nil {
+				_ = emit(ctx, events, StreamEvent{Type: "usage", TokensUsed: resp.Usage.TotalTokens})
+			}
 			continue
 		}
 		delta := resp.Choices[0].Delta.Content
