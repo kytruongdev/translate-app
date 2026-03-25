@@ -51,11 +51,11 @@ func (c *controller) ReadFileInfo(ctx context.Context, path string) (*bridge.Fil
 
 	switch ext {
 	case ".pdf":
-		return readPDFInfo(clean, name, size)
+		return nil, errors.New("PDF chưa được hỗ trợ ở phiên bản này")
 	case ".docx":
 		return readDocxInfo(clean, name, size)
 	default:
-		return nil, errors.New("chỉ hỗ trợ PDF và DOCX")
+		return nil, errors.New("chỉ hỗ trợ DOCX")
 	}
 }
 
