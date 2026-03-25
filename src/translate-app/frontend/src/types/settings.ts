@@ -2,8 +2,7 @@ import type { TranslationStyle } from './session'
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 
-/** V1: gemini | ollama only in Settings UI (openai reserved). */
-export type ActiveProvider = 'gemini' | 'ollama'
+export type ActiveProvider = 'gemini' | 'ollama' | 'openai'
 
 export interface Settings {
   theme: ThemeMode
