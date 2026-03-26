@@ -20,7 +20,7 @@ import { StartHello } from '@/components/StartHello'
 import { StartOutgoingPreview } from '@/components/StartOutgoingPreview'
 import { SessionRow } from '@/components/SessionRow'
 import { ChatSessionHeader } from '@/components/ChatSessionHeader'
-import { ChatMessageVirtualList } from '@/components/ChatMessageVirtualList'
+import { ChatMessageVirtualList, formatStickyDate } from '@/components/ChatMessageVirtualList'
 import type { RetranslatePayload } from '@/components/ChatMessage'
 import { ChatSessionLoadingPreview } from '@/components/ChatSessionLoadingPreview'
 import { ChatInputBar } from '@/components/ChatInputBar'
@@ -116,6 +116,13 @@ export default function App() {
   const [streamingAssistantId, setStreamingAssistantId] = useState<string | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
   const [feedHeaderElevated, setFeedHeaderElevated] = useState(false)
+  const [chatStickyDate, setChatStickyDate] = useState<string | null>(null)
+  const [chatStickyVisible, setChatStickyVisible] = useState(false)
+
+  const handleScrollDate = useCallback((date: string | null, visible: boolean) => {
+    if (date) setChatStickyDate(date)
+    setChatStickyVisible(visible)
+  }, [])
   const [pendingFile, setPendingFile] = useState<PendingFilePick | null>(null)
   const [filePickError, setFilePickError] = useState<string | null>(null)
   const [fileTranslateProgress, setFileTranslateProgress] = useState<FileProgress | null>(null)
@@ -725,27 +732,35 @@ export default function App() {
                 elevated={feedHeaderElevated}
               />
             )}
-            <div className="chat-feed" ref={feedRef} onScroll={onFeedScroll}>
-              {loadingMore && hasMore && !warmTransitionShell && (
-                <div className="chat-load-more" role="status" aria-live="polite">
-                  <div className="chat-load-more-ring" aria-hidden />
-                  Đang tải nội dung cũ...
+            <div className="chat-feed-wrap">
+              <div className="chat-feed" ref={feedRef} onScroll={onFeedScroll}>
+                {loadingMore && hasMore && !warmTransitionShell && (
+                  <div className="chat-load-more" role="status" aria-live="polite">
+                    <div className="chat-load-more-ring" aria-hidden />
+                    Đang tải nội dung cũ...
+                  </div>
+                )}
+                <div key={activeSessionId ?? 'none'} className="chat-feed-session">
+                  {sendError && <div className="chat-error-banner">{sendError}</div>}
+                  {showSessionFeedPlaceholder && <ChatSessionLoadingPreview />}
+                  {!warmTransitionShell && (
+                    <ChatMessageVirtualList
+                      messages={messages}
+                      assistantById={assistantById}
+                      streamingAssistantId={streamingAssistantId}
+                      fileTranslateProgress={fileTranslateProgress}
+                      onRetranslate={handleRetranslate}
+                      scrollElementRef={feedRef}
+                      onScrollDate={handleScrollDate}
+                    />
+                  )}
+                </div>
+              </div>
+              {chatStickyDate && (
+                <div className={`chat-sticky-date${chatStickyVisible ? ' chat-sticky-date--visible' : ''}`}>
+                  {formatStickyDate(chatStickyDate)}
                 </div>
               )}
-              <div key={activeSessionId ?? 'none'} className="chat-feed-session">
-                {sendError && <div className="chat-error-banner">{sendError}</div>}
-                {showSessionFeedPlaceholder && <ChatSessionLoadingPreview />}
-                {!warmTransitionShell && (
-                  <ChatMessageVirtualList
-                    messages={messages}
-                    assistantById={assistantById}
-                    streamingAssistantId={streamingAssistantId}
-                    fileTranslateProgress={fileTranslateProgress}
-                    onRetranslate={handleRetranslate}
-                    scrollElementRef={feedRef}
-                  />
-                )}
-              </div>
             </div>
             <ChatInputBar
               draft={draft}

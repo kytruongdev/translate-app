@@ -142,7 +142,7 @@
 }
 
 [data-theme='dark'] .sidebar-group.pinned-group {
-  background: color-mix(in srgb, var(--card-bg) 70%, #000);
+  background: color-mix(in srgb, var(--sidebar) 95%, white);
 }
 
 .sidebar-group.pinned-group .sidebar-group-label {
@@ -245,7 +245,7 @@
 }
 
 [data-theme='dark'] .sidebar-group.today-group:hover {
-  background: color-mix(in srgb, var(--card-bg) 70%, #000);
+  background: color-mix(in srgb, var(--sidebar) 95%, white);
 }
 
 .sidebar-group-label {

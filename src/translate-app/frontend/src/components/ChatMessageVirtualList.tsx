@@ -4,6 +4,15 @@ import type { RefObject } from 'react'
 import type { Message } from '@/types/session'
 import type { FileProgress } from '@/types/file'
 import { ChatMessage, type RetranslatePayload } from '@/components/ChatMessage'
+import { formatDateLabel } from '@/utils/dateLabel'
+
+function toDateKey(iso: string): string {
+  return iso.slice(0, 10)
+}
+
+export function formatStickyDate(iso: string): string {
+  return formatDateLabel(new Date(iso))
+}
 
 type Props = {
   messages: Message[]
@@ -13,6 +22,8 @@ type Props = {
   onRetranslate: (p: RetranslatePayload) => Promise<void>
   /** `.chat-feed` — phần tử overflow-y: auto */
   scrollElementRef: RefObject<HTMLElement | null>
+  /** Callback khi scroll: trả về date của tin đầu tiên visible */
+  onScrollDate?: (date: string | null, visible: boolean) => void
 }
 
 const ROW_GAP = 16
@@ -20,10 +31,6 @@ const ROW_GAP = 16
 const SMALL_SESSION_THRESHOLD = 150
 const OVERSCAN_LARGE = 8
 
-/**
- * Chỉ mount tin trong / gần viewport — giảm mạnh lag khi session có hàng trăm tin sau load-more.
- * Căn trái/phải giữ đúng bubble user / assistant (flex align-items).
- */
 function ChatMessageVirtualListImpl({
   messages,
   assistantById,
@@ -31,13 +38,13 @@ function ChatMessageVirtualListImpl({
   fileTranslateProgress,
   onRetranslate,
   scrollElementRef,
+  onScrollDate,
 }: Props) {
   const count = messages.length
   const initialScrollDone = useRef(false)
   const spacerRef = useRef<HTMLDivElement>(null)
+  const hideTimerRef = useRef<number>(0)
 
-  // Session nhỏ: overscan = count → render hết → đo thật hết → scrollbar không nhảy.
-  // Session lớn: overscan nhỏ để tránh quá nhiều DOM node.
   const overscan = count <= SMALL_SESSION_THRESHOLD ? count : OVERSCAN_LARGE
 
   const virtualizer = useVirtualizer({
@@ -57,10 +64,31 @@ function ChatMessageVirtualListImpl({
     useFlushSync: false,
   })
 
+  // Sticky date badge: update theo tin đầu tiên visible trong viewport
+  useEffect(() => {
+    const el = scrollElementRef.current
+    if (!el || !onScrollDate) return
+
+    const handleScroll = () => {
+      const scrollTop = el.scrollTop
+      const items = virtualizer.getVirtualItems()
+      const first = items.find((row) => row.start + row.size > scrollTop)
+      if (first) {
+        const msg = messages[first.index]
+        if (msg) onScrollDate(msg.createdAt, true)
+      }
+      clearTimeout(hideTimerRef.current)
+      hideTimerRef.current = window.setTimeout(() => onScrollDate(null, false), 1200)
+    }
+
+    el.addEventListener('scroll', handleScroll, { passive: true })
+    return () => {
+      el.removeEventListener('scroll', handleScroll)
+      clearTimeout(hideTimerRef.current)
+    }
+  }, [scrollElementRef, virtualizer, messages, onScrollDate])
+
   // Lần đầu tiên có tin: scroll xuống cuối.
-  // Virtualizer dùng estimated size → scrollToIndex chỉ đưa gần đúng.
-  // ResizeObserver theo dõi spacer: mỗi lần item được đo thật + height cập nhật → re-snap.
-  // Dừng sau 1.5s (đủ để tất cả item visible được đo xong).
   useEffect(() => {
     if (count === 0 || initialScrollDone.current) return
     initialScrollDone.current = true
@@ -86,58 +114,66 @@ function ChatMessageVirtualListImpl({
 
   return (
     <div
-      ref={spacerRef}
-      className="chat-feed-virtual-spacer"
-      style={{
-        height: virtualizer.getTotalSize(),
-        width: '100%',
-        position: 'relative',
-      }}
-    >
-      {virtualizer.getVirtualItems().map((virtualRow) => {
-        const i = virtualRow.index
-        const m = messages[i]
-        if (!m) return null
-        const prev = messages[i - 1]
-        const retranslateFollowUp =
-          m.role === 'assistant' && prev?.role === 'user' && Boolean(prev.originalMessageId)
-        const retranslateQuoteAssistant =
-          m.role === 'assistant' && prev?.role === 'user' && prev.originalMessageId
-            ? assistantById.get(prev.originalMessageId)
-            : undefined
-        const alignEnd = m.role === 'user'
-        return (
-          <div
-            key={virtualRow.key}
-            data-index={virtualRow.index}
-            ref={virtualizer.measureElement}
-            className={`chat-feed-virtual-row${alignEnd ? ' chat-feed-virtual-row--user' : ' chat-feed-virtual-row--assistant'}`}
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              transform: `translateY(${virtualRow.start}px)`,
-            }}
-          >
-            <ChatMessage
-              m={m}
-              streamingAssistantId={streamingAssistantId}
-              fileTranslateProgress={
-                m.role === 'assistant' && m.id === streamingAssistantId ? fileTranslateProgress : null
-              }
-              nextAssistant={messages[i + 1]?.role === 'assistant' ? messages[i + 1] : undefined}
-              precedingUserContent={
-                m.role === 'assistant' && prev?.role === 'user' ? prev.originalContent : undefined
-              }
-              retranslateQuoteAssistant={retranslateQuoteAssistant}
-              retranslateFollowUp={retranslateFollowUp}
-              onRetranslate={onRetranslate}
-            />
-          </div>
-        )
-      })}
-    </div>
+        ref={spacerRef}
+        className="chat-feed-virtual-spacer"
+        style={{
+          height: virtualizer.getTotalSize(),
+          width: '100%',
+          position: 'relative',
+        }}
+      >
+        {virtualizer.getVirtualItems().map((virtualRow) => {
+          const i = virtualRow.index
+          const m = messages[i]
+          if (!m) return null
+          const prev = messages[i - 1]
+          const retranslateFollowUp =
+            m.role === 'assistant' && prev?.role === 'user' && Boolean(prev.originalMessageId)
+          const retranslateQuoteAssistant =
+            m.role === 'assistant' && prev?.role === 'user' && prev.originalMessageId
+              ? assistantById.get(prev.originalMessageId)
+              : undefined
+          const alignEnd = m.role === 'user'
+          const showDateSep = prev
+            ? toDateKey(m.createdAt) !== toDateKey(prev.createdAt)
+            : false
+          return (
+            <div
+              key={virtualRow.key}
+              data-index={virtualRow.index}
+              ref={virtualizer.measureElement}
+              className={`chat-feed-virtual-row${alignEnd ? ' chat-feed-virtual-row--user' : ' chat-feed-virtual-row--assistant'}`}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                transform: `translateY(${virtualRow.start}px)`,
+              }}
+            >
+              {showDateSep && (
+                <div className="chat-date-sep">
+                  <span className="chat-date-sep-pill">{formatStickyDate(m.createdAt)}</span>
+                </div>
+              )}
+              <ChatMessage
+                m={m}
+                streamingAssistantId={streamingAssistantId}
+                fileTranslateProgress={
+                  m.role === 'assistant' && m.id === streamingAssistantId ? fileTranslateProgress : null
+                }
+                nextAssistant={messages[i + 1]?.role === 'assistant' ? messages[i + 1] : undefined}
+                precedingUserContent={
+                  m.role === 'assistant' && prev?.role === 'user' ? prev.originalContent : undefined
+                }
+                retranslateQuoteAssistant={retranslateQuoteAssistant}
+                retranslateFollowUp={retranslateFollowUp}
+                onRetranslate={onRetranslate}
+              />
+            </div>
+          )
+        })}
+      </div>
   )
 }
 

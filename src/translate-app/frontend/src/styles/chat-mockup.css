@@ -42,6 +42,7 @@
   background: var(--active);
 }
 
+
 .session-item-menu-wrap {
   position: relative;
   flex-shrink: 0;
@@ -214,6 +215,15 @@
 }
 
 /* ─── Chat feed ─── */
+.chat-feed-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 .chat-feed {
   flex: 1;
   overflow-y: auto;
@@ -257,6 +267,53 @@
   padding: 12px 0 4px;
   font-size: 12px;
   color: var(--text-tertiary);
+}
+
+/* ── Date separator between different-day messages ── */
+.chat-date-sep {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  width: 100%;
+  padding: 8px 0 20px;
+}
+
+.chat-date-sep-pill {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  padding: 3px 12px;
+  border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+  border-radius: 20px;
+  background: var(--surface);
+  backdrop-filter: blur(6px);
+  white-space: nowrap;
+}
+
+/* ── Sticky date badge ── */
+.chat-sticky-date {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  padding: 3px 12px;
+  border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+  border-radius: 20px;
+  background: var(--surface);
+  backdrop-filter: blur(6px);
+  white-space: nowrap;
+}
+
+.chat-sticky-date--visible {
+  opacity: 1;
 }
 
 .chat-load-more-ring {
@@ -477,6 +534,18 @@
   margin-top: 2px;
 }
 
+.chat-msg.user .chat-lang-label {
+  text-align: right;
+}
+
+.chat-bubble-inner-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  opacity: 0.7;
+  text-align: right;
+  margin-top: 4px;
+}
+
 /* Văn bản dài đã dán — mockup .user-text-upload / .text-upload-bubble (không lặp full text trong bubble user) */
 .chat-msg.user.user-text-upload .text-upload-bubble {
   display: flex;
@@ -497,7 +566,7 @@
   gap: 10px;
 }
 
-.chat-msg.user.user-text-upload .text-upload-bubble svg {
+.chat-msg.user.user-text-upload .text-upload-bubble:not(.user-file-bubble) svg {
   width: 20px;
   height: 20px;
   color: var(--text-secondary);
@@ -514,6 +583,55 @@
 .chat-msg.user.user-file-attachment .text-upload-bubble .preview-title {
   white-space: normal;
   word-break: break-word;
+}
+
+/* User file attachment bubble — redesigned */
+.user-file-bubble {
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding: 10px 14px !important;
+}
+
+.user-file-bubble-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+[data-theme='dark'] .user-file-bubble-icon {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.user-file-bubble-svg {
+  width: 18px;
+  height: auto;
+}
+
+.user-file-bubble-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.user-file-bubble-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: normal;
+  word-break: break-word;
+}
+
+.user-file-bubble-size {
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 
 .chat-msg.user.user-text-upload .chat-msg-body > .chat-lang-label {
@@ -2511,62 +2629,112 @@
 
 /* ── File Translation Card ───────────────────────────────────────────────── */
 /* ── File translation card ── */
+.file-translation-card-wrap {
+  position: relative;
+}
+
 .file-translation-card {
-  background: var(--card-bg);
+  background: var(--bubble-assistant-bg);
   border-radius: var(--r-large);
   overflow: hidden;
   box-shadow: var(--shadow-elev1);
   transition: box-shadow 0.25s var(--ease);
-  min-width: 260px;
+  width: fit-content;
   max-width: 360px;
   display: flex;
   flex-direction: column;
 }
 
-.file-translation-card:hover {
+.file-translation-card-wrap:hover .file-translation-card {
   box-shadow: var(--shadow-elev2);
 }
 
-/* Preview area */
-.file-translation-card-preview {
-  background: var(--surface-subtle, var(--surface));
+/* Main row */
+.file-translation-card-main {
   display: flex;
   align-items: center;
-  justify-content: center;
-  min-height: 120px;
-  padding: 16px;
+  gap: 12px;
+  padding: 14px 14px 12px;
 }
 
 /* Word "W" icon */
 .file-translation-card-word-icon {
-  width: 56px;
-  height: 56px;
+  width: 40px;
+  height: 40px;
   background: #2b579a;
-  border-radius: 10px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .file-translation-card-word-icon span {
   color: #fff;
-  font-size: 28px;
+  font-size: 20px;
   font-weight: 700;
   font-family: sans-serif;
   line-height: 1;
-  letter-spacing: -1px;
 }
 
-/* Progress inside preview area */
-.file-translation-card-progress {
+/* File info */
+.file-translation-card-info {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  width: 100%;
+  gap: 2px;
+  min-width: 0;
+}
+
+.file-translation-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-translation-card-sub {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* Action buttons — float above card, hidden until hover (like assistant-bubble-actions) */
+.file-translation-card-actions {
+  position: absolute;
+  top: -12px;
+  right: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--surface);
+  border-radius: 20px;
+  box-shadow: var(--shadow-elev1);
+  padding: 2px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+.file-translation-card-wrap:hover .file-translation-card-actions,
+.file-translation-card-wrap:focus-within .file-translation-card-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.file-card-action-btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Progress bar */
+.file-translation-card-progress {
+  padding: 0 14px 12px;
 }
 
 .file-translation-card-progress-bar {
-  height: 4px;
+  height: 3px;
   background: var(--border);
   border-radius: 2px;
   overflow: hidden;
@@ -2589,64 +2757,7 @@
   100% { transform: translateX(350%); }
 }
 
-.file-translation-card-progress-label {
-  font-size: 12px;
-  color: var(--text-secondary, var(--text));
-}
-
-/* Header: filename + action buttons */
-.file-translation-card-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  border-top: 1px solid var(--border);
-}
-
-.file-translation-card-name {
-  flex: 1;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.file-translation-card-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex-shrink: 0;
-}
-
-/* Footer inside card: status */
-.file-translation-card-status {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  border-top: 1px solid var(--border);
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.file-translation-card-status svg {
-  color: var(--accent, #6366f1);
-  flex-shrink: 0;
-}
-
-.file-translation-card-status-translating {
-  color: var(--text-secondary);
-}
-
 .file-translation-card-error {
   font-size: 12px;
   color: var(--error, #ef4444);
-  margin-left: 4px;
-}
-
-/* Dark theme subtle bg */
-[data-theme='dark'] .file-translation-card-preview {
-  background: var(--surface-subtle, rgba(255,255,255,0.04));
 }
