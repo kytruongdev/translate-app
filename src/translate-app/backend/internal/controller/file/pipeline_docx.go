@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
+	"time"
 
 	"translate-app/internal/gateway"
 	"translate-app/internal/model"
@@ -26,64 +28,103 @@ func (c *controller) translateDocxFile(
 	style model.TranslationStyle,
 	provider gateway.AIProvider,
 	onProgress func(batchIdx, totalBatches int),
-) ([]string, error) {
+) ([]string, int, error) {
 	// Pre-allocate result aligned with df.Paragraphs.
 	results := make([]string, len(df.Paragraphs))
+	start := time.Now()
 
 	// Build a flat index so we can map batch positions back to global positions.
 	batches := chunkDocxParagraphs(df.Paragraphs, charsPerChunk)
 	if len(batches) == 0 {
-		return results, nil
+		return results, 0, nil
 	}
 
-	// Track global paragraph index across batches.
-	globalIdx := 0
+	// Pre-compute global start index for each batch.
+	batchGlobalStart := make([]int, len(batches))
+	idx := 0
+	for i, batch := range batches {
+		batchGlobalStart[i] = idx
+		idx += len(batch)
+	}
 
+	// Run batches in parallel with a concurrency cap (provider-aware).
+	maxConcurrent := provider.MaxBatchConcurrency()
+	if maxConcurrent < 1 {
+		maxConcurrent = 1
+	}
+	sem := make(chan struct{}, maxConcurrent)
+
+	type batchResult struct {
+		batchIdx int
+		tokens   int
+		err      error
+	}
+	resultCh := make(chan batchResult, len(batches))
+
+	var wg sync.WaitGroup
 	for batchIdx, batch := range batches {
-		if onProgress != nil {
-			onProgress(batchIdx, len(batches))
-		}
+		wg.Add(1)
+		go func(batchIdx int, batch []DocxParagraph) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
 
-		// Separate empty paragraphs (no text to translate) from translatable ones.
-		// We still need to advance globalIdx for empties.
-		var translatableLocal []int // local indices within batch that have text
-		for i, p := range batch {
-			if strings.TrimSpace(p.Text) == "" {
-				results[globalIdx+i] = ""
-			} else {
-				translatableLocal = append(translatableLocal, i)
+			if onProgress != nil {
+				onProgress(batchIdx, len(batches))
 			}
-		}
 
-		if len(translatableLocal) > 0 {
-			// Build numbered input for AI.
+			globalBase := batchGlobalStart[batchIdx]
+
+			var translatableLocal []int
+			for i, p := range batch {
+				if strings.TrimSpace(p.Text) == "" {
+					results[globalBase+i] = ""
+				} else {
+					translatableLocal = append(translatableLocal, i)
+				}
+			}
+
+			if len(translatableLocal) == 0 {
+				resultCh <- batchResult{batchIdx: batchIdx}
+				return
+			}
+
 			input := buildBatchInput(batch, translatableLocal)
-
-			translated, err := c.streamTranslateDocxBatch(ctx, provider, input, sourceLang, targetLang, style)
+			translated, tokens, err := c.streamTranslateDocxBatch(ctx, provider, input, sourceLang, targetLang, style)
 			if err != nil {
-				return nil, fmt.Errorf("batch %d: %w", batchIdx+1, err)
+				resultCh <- batchResult{batchIdx: batchIdx, err: fmt.Errorf("batch %d: %w", batchIdx+1, err)}
+				return
 			}
 
-			// Parse numbered output back into per-paragraph strings.
 			parsed := parseBatchOutput(translated, len(translatableLocal))
-
 			for i, localIdx := range translatableLocal {
 				text := ""
 				if i < len(parsed) {
 					text = parsed[i]
 				}
 				if text == "" {
-					// Fallback: keep original text rather than losing content.
 					text = batch[localIdx].Text
 				}
-				results[globalIdx+localIdx] = text
+				results[globalBase+localIdx] = text
 			}
-		}
 
-		globalIdx += len(batch)
+			resultCh <- batchResult{batchIdx: batchIdx, tokens: tokens}
+		}(batchIdx, batch)
 	}
 
-	return results, nil
+	wg.Wait()
+	close(resultCh)
+
+	var totalTokens int
+	for r := range resultCh {
+		if r.err != nil {
+			return nil, 0, r.err
+		}
+		totalTokens += r.tokens
+	}
+
+	fmt.Printf("[DEBUG] translateDocxFile done — batches=%d total_tokens=%d elapsed=%.2fs\n", len(batches), totalTokens, time.Since(start).Seconds())
+	return results, totalTokens, nil
 }
 
 // batchFormatInstruction is a short reminder prepended to each batch user message.
@@ -98,7 +139,7 @@ func (c *controller) streamTranslateDocxBatch(
 	provider gateway.AIProvider,
 	text, sourceLang, targetLang string,
 	style model.TranslationStyle,
-) (string, error) {
+) (string, int, error) {
 	events := make(chan gateway.StreamEvent, 64)
 	errCh := make(chan error, 1)
 	go func() {
@@ -106,26 +147,31 @@ func (c *controller) streamTranslateDocxBatch(
 	}()
 
 	var full strings.Builder
+	var tokensUsed int
 	for ev := range events {
 		switch ev.Type {
 		case "chunk":
 			if ev.Content != "" {
 				full.WriteString(ev.Content)
 			}
+		case "usage":
+			tokensUsed = ev.TokensUsed
 		case "error":
 			errMsg := errors.New("batch translation failed")
 			if ev.Error != nil {
 				errMsg = ev.Error
 			}
 			<-errCh
-			return "", errMsg
+			return "", 0, errMsg
 		}
 	}
 	if err := <-errCh; err != nil {
-		return "", err
+		return "", 0, err
 	}
-	return full.String(), nil
+	fmt.Printf("[DEBUG] streamTranslateDocxBatch done — tokens=%d\n", tokensUsed)
+	return full.String(), tokensUsed, nil
 }
+
 
 // buildBatchInput formats a subset of paragraphs (identified by localIndices)
 // as a numbered list for the AI translation prompt.

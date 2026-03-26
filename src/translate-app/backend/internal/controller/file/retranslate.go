@@ -3,6 +3,7 @@ package file
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -49,6 +50,7 @@ func (c *controller) retranslateDocx(ctx context.Context, p RetranslateContentPa
 		fail("không tìm thấy thông tin tệp để dịch lại")
 		return
 	}
+	fmt.Printf("[DEBUG] retranslateDocx — file=%s\n", filepath.Base(fileRec.OriginalPath))
 	if fileRec.OriginalPath == "" {
 		fail("không có đường dẫn tệp gốc để dịch lại")
 		return
@@ -67,7 +69,7 @@ func (c *controller) retranslateDocx(ctx context.Context, p RetranslateContentPa
 	srcHint := gateway.SourceLangForTranslate(p.SourceMD)
 	totalBatches := len(chunkDocxParagraphs(df.Paragraphs, charsPerChunk))
 
-	translations, err := c.translateDocxFile(ctx, df, srcHint, p.TargetLang, p.Style, p.Provider,
+	translations, totalTokens, err := c.translateDocxFile(ctx, df, srcHint, p.TargetLang, p.Style, p.Provider,
 		func(batchIdx, total int) {
 			pct := 0
 			if total > 0 {
@@ -100,6 +102,17 @@ func (c *controller) retranslateDocx(ctx context.Context, p RetranslateContentPa
 	translatedPath := filepath.Join(subDir, "translated.docx")
 	if err := WriteTranslatedDocx(df, translations, translatedPath); err != nil {
 		fail(fmt.Sprintf("không tạo được file DOCX đã dịch: %v", err))
+		return
+	}
+
+	sourceMDBytes, _ := os.ReadFile(fileRec.SourcePath)
+	sourceMD := string(sourceMDBytes)
+	usedTokens := totalTokens
+	if usedTokens == 0 {
+		usedTokens = estimateTokens(sourceMD)
+	}
+	if err := c.reg.Message().UpdateTranslated(ctx, p.AssistantID, sourceMD, usedTokens); err != nil {
+		fail(err.Error())
 		return
 	}
 

@@ -15,9 +15,16 @@ var (
 	reHyperlinkField = regexp.MustCompile(`(?i)HYPERLINK\s+"([^"]+)"`)
 )
 
+// reDeletedText matches <w:del>…</w:del> blocks (tracked deletions).
+// These must be stripped before text extraction so deleted Vietnamese/foreign
+// text in revision history does not pollute language detection.
+var reDeletedText = regexp.MustCompile(`(?s)<w:del\b[^>]*>.*?</w:del>`)
+
 // docxXMLToMarkdown đọc document.xml (chuỗi), giữ đoạn văn cơ bản và chuyển field Word sang Markdown.
 func docxXMLToMarkdown(xml string) string {
 	s := xml
+	// Remove tracked-deletion blocks before any text extraction.
+	s = reDeletedText.ReplaceAllString(s, "")
 	// Giữ ranh giới đoạn / xuống dòng từ OOXML trước khi bỏ thẻ.
 	s = strings.ReplaceAll(s, "</w:p>", "\n\n")
 	s = strings.ReplaceAll(s, "<w:br/>", "\n")

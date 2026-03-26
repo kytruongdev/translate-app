@@ -621,6 +621,12 @@ const IconDownload = () => (
   </svg>
 )
 
+const IconCheckCircle = () => (
+  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width={14} height={14} aria-hidden>
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+)
+
 function FileTranslationCard({
   m,
   streaming,
@@ -681,57 +687,76 @@ function FileTranslationCard({
 
   return (
     <div className="file-translation-card">
-      <div className="file-translation-card-header">
-        <IconUserAttachmentFile />
-        <span className="file-translation-card-name" title={fileName}>
-          {fileName}
-        </span>
-        {!streaming && (
-          <button
-            ref={retranslateRef}
-            type="button"
-            className="btn-icon"
-            aria-label="Dịch lại"
-            data-tooltip="Dịch lại"
-            onClick={() => setRetranslateOpen((v) => !v)}
-          >
-            <IconRetranslate />
-          </button>
+      {/* Preview area */}
+      <div className="file-translation-card-preview">
+        {streaming ? (
+          <div className="file-translation-card-progress">
+            <div className="file-translation-card-progress-bar">
+              <div
+                className={`file-translation-card-progress-fill${indeterminate ? ' indeterminate' : ''}`}
+                style={indeterminate ? undefined : { width: `${pct}%` }}
+              />
+            </div>
+            <span className="file-translation-card-progress-label">
+              {indeterminate
+                ? 'Đang dịch...'
+                : total > 0
+                  ? `Đang dịch đoạn ${chunk}/${total} (${pct}%)`
+                  : `${pct}%`}
+            </span>
+          </div>
+        ) : (
+          <div className="file-translation-card-word-icon" aria-hidden>
+            <span>W</span>
+          </div>
         )}
       </div>
 
-      {streaming ? (
-        <div className="file-translation-card-progress">
-          <div className="file-translation-card-progress-bar">
-            <div
-              className={`file-translation-card-progress-fill${indeterminate ? ' indeterminate' : ''}`}
-              style={indeterminate ? undefined : { width: `${pct}%` }}
-            />
-          </div>
-          <span className="file-translation-card-progress-label">
-            {indeterminate
-              ? 'Đang dịch...'
-              : total > 0
-                ? `Đang dịch đoạn ${chunk}/${total} (${pct}%)`
-                : `${pct}%`}
-          </span>
-        </div>
-      ) : (
-        <div className="file-translation-card-actions">
-          {downloadError && (
-            <span className="file-translation-card-error">{downloadError}</span>
+      {/* Header: file name + actions */}
+      <div className="file-translation-card-header">
+        <span className="file-translation-card-name" title={fileName}>
+          {fileName}
+        </span>
+        <div className="file-translation-card-header-actions">
+          {!streaming && (
+            <button
+              ref={retranslateRef}
+              type="button"
+              className="btn-icon"
+              aria-label="Dịch lại"
+              data-tooltip="Dịch lại"
+              onClick={() => setRetranslateOpen((v) => !v)}
+            >
+              <IconRetranslate />
+            </button>
           )}
           <button
             type="button"
-            className="btn-primary file-translation-card-download"
-            disabled={downloading || !m.fileId}
+            className="btn-icon"
+            aria-label="Tải file đã dịch"
+            data-tooltip="Tải file đã dịch"
+            disabled={streaming || downloading || !m.fileId}
             onClick={() => void handleDownload()}
           >
             <IconDownload />
-            {downloading ? 'Đang lưu...' : 'Tải file đã dịch'}
           </button>
         </div>
-      )}
+      </div>
+
+      {/* Footer inside card: status */}
+      <div className="file-translation-card-status">
+        {streaming ? (
+          <span className="file-translation-card-status-translating">Đang xử lý...</span>
+        ) : (
+          <>
+            <IconCheckCircle />
+            <span>Đã dịch xong</span>
+            {downloadError && (
+              <span className="file-translation-card-error">{downloadError}</span>
+            )}
+          </>
+        )}
+      </div>
 
       <CardRetranslatePopover
         open={retranslateOpen}

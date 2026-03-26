@@ -31,12 +31,14 @@ func openAIChatStream(
 			}
 		}
 
+		temp := float32(0)
 		stream, err := client.CreateChatCompletionStream(ctx, openai.ChatCompletionRequest{
 			Model: model,
 			Messages: []openai.ChatCompletionMessage{
 				{Role: openai.ChatMessageRoleSystem, Content: systemPrompt},
 				{Role: openai.ChatMessageRoleUser, Content: userText},
 			},
+			Temperature:   temp,
 			Stream:        true,
 			StreamOptions: &openai.StreamOptions{IncludeUsage: true},
 		})
