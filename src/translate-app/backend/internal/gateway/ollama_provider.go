@@ -25,6 +25,8 @@ func newOllamaProvider(model string) AIProvider {
 	}
 }
 
+func (p *ollamaProvider) MaxBatchConcurrency() int { return 1 }
+
 func (p *ollamaProvider) TranslateBatchStream(ctx context.Context, text, from, to, style string, events chan<- StreamEvent) error {
 	defer close(events)
 

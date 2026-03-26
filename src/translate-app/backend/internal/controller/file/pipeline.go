@@ -58,6 +58,7 @@ func (c *controller) runFileTranslate(ctx context.Context, p fileTranslateParams
 // runDocxTranslate handles DOCX files using the XML-level translation pipeline.
 // Structure (tables, images, columns) is preserved; only <w:t> text nodes are translated.
 func (c *controller) runDocxTranslate(ctx context.Context, p fileTranslateParams, fail func(string)) {
+	fmt.Printf("[DEBUG] runDocxTranslate — file=%s\n", filepath.Base(p.FilePath))
 	ext := ".docx"
 
 	// Extract plain text for preview display (source.md).
@@ -120,7 +121,7 @@ func (c *controller) runDocxTranslate(ctx context.Context, p fileTranslateParams
 	totalBatches := len(chunkDocxParagraphs(df.Paragraphs, charsPerChunk))
 
 	// Translate all paragraphs via XML pipeline.
-	translations, err := c.translateDocxFile(ctx, df, docSrcHint, p.TargetLang, p.Style, p.Provider,
+	translations, totalTokens, err := c.translateDocxFile(ctx, df, docSrcHint, p.TargetLang, p.Style, p.Provider,
 		func(batchIdx, total int) {
 			pct := 0
 			if total > 0 {
@@ -148,6 +149,15 @@ func (c *controller) runDocxTranslate(ctx context.Context, p fileTranslateParams
 	translatedPath := filepath.Join(subDir, "translated.docx")
 	if err := WriteTranslatedDocx(df, translations, translatedPath); err != nil {
 		fail(fmt.Sprintf("không tạo được file DOCX đã dịch: %v", err))
+		return
+	}
+
+	usedTokens := totalTokens
+	if usedTokens == 0 {
+		usedTokens = estimateTokens(sourceMD)
+	}
+	if err := c.reg.Message().UpdateTranslated(ctx, p.AssistantID, sourceMD, usedTokens); err != nil {
+		fail(err.Error())
 		return
 	}
 

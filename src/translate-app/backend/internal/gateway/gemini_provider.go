@@ -42,6 +42,8 @@ func (p *geminiProvider) lazyClient() (*genai.Client, error) {
 	return p.client, p.cliErr
 }
 
+func (p *geminiProvider) MaxBatchConcurrency() int { return 4 }
+
 func (p *geminiProvider) TranslateBatchStream(ctx context.Context, text, from, to, style string, events chan<- StreamEvent) error {
 	system := BuildDocxBatchSystemPrompt(from, to, style)
 	return p.doTranslateStream(ctx, system, text, events)

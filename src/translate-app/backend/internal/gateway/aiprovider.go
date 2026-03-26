@@ -21,6 +21,9 @@ type AIProvider interface {
 	// TranslateBatchStream streams a DOCX paragraph batch translation using a dedicated system prompt
 	// that explicitly preserves <<<N>>> markers without conflicting "output-only" instructions.
 	TranslateBatchStream(ctx context.Context, text, from, to, style string, events chan<- StreamEvent) error
+	// MaxBatchConcurrency returns how many DOCX batches can run in parallel.
+	// Local providers (Ollama) return 1; cloud providers return higher values.
+	MaxBatchConcurrency() int
 }
 
 // NewFromSettings returns the default AI client from persisted settings.

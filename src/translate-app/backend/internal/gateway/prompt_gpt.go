@@ -19,29 +19,18 @@ func BuildTranslationSystemPromptGPT(sourceLang, targetLocale, style string, pre
 		styleNorm = "casual"
 	}
 
-	srcKey := sourceLangKey(sourceLang)
-	var fromClause string
-	switch srcKey {
-	case "vi":
-		fromClause = "from Vietnamese "
-	case "en":
-		fromClause = "from English "
-	default:
-		fromClause = "" // auto-detect
-	}
-
 	var base string
 	switch styleNorm {
 	case "business":
-		base = "You are a professional translator. Translate the text " + fromClause + "to " + target +
+		base = "You are a professional translator. Translate the text to " + target +
 			" in a formal, clear, and professional tone suitable for business communication.\n" +
 			"Preserve technical terms. Output ONLY the translated text, no explanations."
 	case "academic":
-		base = "You are a scholarly translator. Translate the text " + fromClause + "to " + target +
+		base = "You are a scholarly translator. Translate the text to " + target +
 			" with precision and rigor, using domain-appropriate terminology.\n" +
 			"Maintain logical structure and formal register. Output ONLY the translated text, no explanations."
 	default:
-		base = "You are a translator. Translate the text " + fromClause + "to " + target +
+		base = "You are a translator. Translate the text to " + target +
 			" naturally and conversationally, using everyday language.\n" +
 			"Output ONLY the translated text, no explanations."
 	}
@@ -62,29 +51,18 @@ func BuildDocxBatchSystemPromptGPT(from, to, style string) string {
 		styleNorm = "casual"
 	}
 
-	srcKey := sourceLangKey(from)
-	var fromClause string
-	switch srcKey {
-	case "vi":
-		fromClause = "from Vietnamese "
-	case "en":
-		fromClause = "from English "
-	default:
-		fromClause = "" // auto-detect
-	}
-
 	var base string
 	switch styleNorm {
 	case "business":
-		base = "You are a professional translator. Translate each paragraph " + fromClause + "to " + target +
+		base = "You are a professional translator. Translate each paragraph to " + target +
 			" in a formal, clear, and professional tone suitable for business communication.\n" +
 			"Preserve technical terms."
 	case "academic":
-		base = "You are a scholarly translator. Translate each paragraph " + fromClause + "to " + target +
+		base = "You are a scholarly translator. Translate each paragraph to " + target +
 			" with precision and rigor, using domain-appropriate terminology.\n" +
 			"Maintain logical structure and formal register."
 	default:
-		base = "You are a translator. Translate each paragraph " + fromClause + "to " + target +
+		base = "You are a translator. Translate each paragraph to " + target +
 			" naturally and conversationally, using everyday language."
 	}
 
