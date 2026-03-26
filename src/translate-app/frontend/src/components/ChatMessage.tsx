@@ -21,7 +21,7 @@ import {
   langShortLabel,
   LARGE_DOCUMENT_COPY_DISABLED_TOOLTIP,
   parseFileAttachmentDisplayName,
-  styleLabel,
+
   userMessageShowPastedPlaceholder,
 } from '@/utils/messageDisplay'
 import { formatFileSize } from '@/utils/formatFileSize'
@@ -70,17 +70,6 @@ const IconPastedDoc = () => (
   </svg>
 )
 
-/** Document icon — cùng kích thước / hàng với icon “Văn bản đã dán” (20×20, không khung). */
-const IconUserAttachmentFile = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width={20} height={20} aria-hidden>
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-    />
-  </svg>
-)
 
 /** Snippet trích từ bản dịch gốc — giống mockup (≈140 ký tự). */
 function retranslateQuotedSnippet(text: string, maxLen = 140): string {
@@ -150,6 +139,16 @@ function UserPastedLongTextBubble({ meta }: { meta: string }) {
   )
 }
 
+const IconDocxFile = () => (
+  <div className="user-file-bubble-icon" aria-hidden>
+    <svg className="user-file-bubble-svg" viewBox="0 0 24 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M3 3C3 1.9 3.9 1 5 1h10l6 6v15c0 1.1-.9 2-2 2H5c-1.1 0-2-.9-2-2V3z" fill="#f1f5f9" stroke="#94a3b8" strokeWidth="1.8" strokeLinejoin="round"/>
+      <path d="M15 1v5c0 .55.45 1 1 1h5" stroke="#94a3b8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M6 13h10M6 17h7" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round"/>
+    </svg>
+  </div>
+)
+
 function UserFileAttachmentBubble({
   fileName,
   meta,
@@ -159,20 +158,22 @@ function UserFileAttachmentBubble({
   meta: string
   fileSize?: number
 }) {
-  const sizeLabel = fileSize && fileSize > 0 ? ` · ${formatFileSize(fileSize)}` : ''
   return (
     <>
       <div
-        className="text-upload-bubble"
+        className="text-upload-bubble user-file-bubble"
         role="status"
         aria-label={`Đã gửi tệp ${fileName}`}
       >
-        <div className="preview-row">
-          <IconUserAttachmentFile />
-          <span className="preview-title">{fileName}</span>
+        <IconDocxFile />
+        <div className="user-file-bubble-meta">
+          <span className="user-file-bubble-name" title={fileName}>{fileName}</span>
+          {fileSize && fileSize > 0 && (
+            <span className="user-file-bubble-size">{formatFileSize(fileSize)}</span>
+          )}
         </div>
       </div>
-      <div className="chat-lang-label">{meta}{sizeLabel}</div>
+      <div className="chat-lang-label">{meta}</div>
     </>
   )
 }
@@ -356,7 +357,7 @@ function TranslationCardView({
 
   const panelSrcHead = `Nguồn · ${langShortLabel(m.sourceLang || 'auto')}`
   const panelDestHead = `Bản dịch · ${langShortLabel(m.targetLang || 'en-US')}`
-  const footerOutside = `${formatMessageFooterTime(m.updatedAt)} · ${styleLabel(m.style)}`
+  const footerOutside = formatMessageFooterTime(m.updatedAt)
 
   const handleExport = async (format: 'pdf' | 'docx') => {
     try {
@@ -621,11 +622,6 @@ const IconDownload = () => (
   </svg>
 )
 
-const IconCheckCircle = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width={14} height={14} aria-hidden>
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-  </svg>
-)
 
 function FileTranslationCard({
   m,
@@ -686,10 +682,37 @@ function FileTranslationCard({
   }
 
   return (
-    <div className="file-translation-card">
-      {/* Preview area */}
-      <div className="file-translation-card-preview">
-        {streaming ? (
+    <div className="file-translation-card-wrap">
+      <div className="file-translation-card">
+        {/* Main row: icon + info */}
+        <div className="file-translation-card-main">
+          <div className="user-file-bubble-icon" aria-hidden>
+            <svg className="user-file-bubble-svg" viewBox="0 0 24 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M3 3C3 1.9 3.9 1 5 1h10l6 6v15c0 1.1-.9 2-2 2H5c-1.1 0-2-.9-2-2V3z" fill="#f1f5f9" stroke="#94a3b8" strokeWidth="1.8" strokeLinejoin="round"/>
+              <path d="M15 1v5c0 .55.45 1 1 1h5" stroke="#94a3b8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M6 13h10M6 17h7" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          </div>
+          <div className="file-translation-card-info">
+            <span className="file-translation-card-name" title={fileName}>
+              {fileName}
+            </span>
+            <span className="file-translation-card-sub">
+              {streaming ? (
+                indeterminate
+                  ? 'Đang dịch...'
+                  : `Đang dịch đoạn ${chunk}/${total} (${pct}%)`
+              ) : downloadError ? (
+                <span className="file-translation-card-error">{downloadError}</span>
+              ) : m.tokens > 0 ? (
+                `${m.tokens.toLocaleString()} tokens`
+              ) : null}
+            </span>
+          </div>
+        </div>
+
+        {/* Progress bar khi đang dịch */}
+        {streaming && (
           <div className="file-translation-card-progress">
             <div className="file-translation-card-progress-bar">
               <div
@@ -697,65 +720,34 @@ function FileTranslationCard({
                 style={indeterminate ? undefined : { width: `${pct}%` }}
               />
             </div>
-            <span className="file-translation-card-progress-label">
-              {indeterminate
-                ? 'Đang dịch...'
-                : total > 0
-                  ? `Đang dịch đoạn ${chunk}/${total} (${pct}%)`
-                  : `${pct}%`}
-            </span>
-          </div>
-        ) : (
-          <div className="file-translation-card-word-icon" aria-hidden>
-            <span>W</span>
           </div>
         )}
       </div>
 
-      {/* Header: file name + actions */}
-      <div className="file-translation-card-header">
-        <span className="file-translation-card-name" title={fileName}>
-          {fileName}
-        </span>
-        <div className="file-translation-card-header-actions">
-          {!streaming && (
-            <button
-              ref={retranslateRef}
-              type="button"
-              className="btn-icon"
-              aria-label="Dịch lại"
-              data-tooltip="Dịch lại"
-              onClick={() => setRetranslateOpen((v) => !v)}
-            >
-              <IconRetranslate />
-            </button>
-          )}
+      {/* Floating action buttons — nằm lơ lửng bên ngoài card */}
+      <div className="file-translation-card-actions">
+        {!streaming && (
           <button
+            ref={retranslateRef}
             type="button"
-            className="btn-icon"
-            aria-label="Tải file đã dịch"
-            data-tooltip="Tải file đã dịch"
-            disabled={streaming || downloading || !m.fileId}
-            onClick={() => void handleDownload()}
+            className="btn-icon file-card-action-btn"
+            aria-label="Dịch lại"
+            data-tooltip="Dịch lại"
+            onClick={() => setRetranslateOpen((v) => !v)}
           >
-            <IconDownload />
+            <IconRetranslate />
           </button>
-        </div>
-      </div>
-
-      {/* Footer inside card: status */}
-      <div className="file-translation-card-status">
-        {streaming ? (
-          <span className="file-translation-card-status-translating">Đang xử lý...</span>
-        ) : (
-          <>
-            <IconCheckCircle />
-            <span>Đã dịch xong</span>
-            {downloadError && (
-              <span className="file-translation-card-error">{downloadError}</span>
-            )}
-          </>
         )}
+        <button
+          type="button"
+          className="btn-icon file-card-action-btn"
+          aria-label="Tải file đã dịch"
+          data-tooltip="Tải file đã dịch"
+          disabled={streaming || downloading || !m.fileId}
+          onClick={() => void handleDownload()}
+        >
+          <IconDownload />
+        </button>
       </div>
 
       <CardRetranslatePopover
@@ -861,8 +853,7 @@ function ChatMessageImpl({
     })
   }, [m.role, nextAssistant, streamingAssistantId, streamBuf])
 
-  const userLang = langShortLabel(m.sourceLang || 'auto')
-  const userMeta = `${formatMessageFooterTime(m.createdAt)} · ${userLang}`
+  const userMeta = formatMessageFooterTime(m.createdAt)
 
   if (m.role === 'user') {
     if (m.originalMessageId) {
@@ -940,8 +931,7 @@ function ChatMessageImpl({
           />
           {!streaming && (
             <div className="card-footer-outside">
-              {formatMessageFooterTime(m.updatedAt)} · {styleLabel(m.style)}
-              {m.tokens > 0 ? ` · ${m.tokens.toLocaleString()} tokens` : ''}
+              {formatMessageFooterTime(m.updatedAt)}
             </div>
           )}
         </div>
@@ -977,7 +967,7 @@ function ChatMessageImpl({
           {!streaming && (
             <div className="card-footer-outside">
               {formatMessageFooterTime(m.updatedAt)}
-              {retranslateFollowUp ? ' · Bản dịch lại' : ''} · {styleLabel(m.style)}
+              {retranslateFollowUp ? ' · Bản dịch lại' : ''}
             </div>
           )}
         </div>
@@ -1007,7 +997,7 @@ function ChatMessageImpl({
           </div>
           {!streaming && (
             <div className="chat-lang-label">
-              {formatMessageFooterTime(m.updatedAt)} · {styleLabel(m.style)}
+              {formatMessageFooterTime(m.updatedAt)}
             </div>
           )}
         </div>
