@@ -132,6 +132,7 @@ export default function App() {
   const settingsAnchorRef = useRef<HTMLDivElement>(null)
   const pendingFileRef = useRef<PendingFilePick | null>(null)
   const attachmentValidationRef = useRef<string | null>(null)
+  const autoSendOnReadyRef = useRef(false)
 
   const hasMore = activeSessionId ? !!hasMoreMap[activeSessionId] : false
 
@@ -358,8 +359,10 @@ export default function App() {
       try {
         const path = await WailsService.openFileDialog()
         if (!path) return
+        autoSendOnReadyRef.current = true
         await ingestFilePath(path)
       } catch (e) {
+        autoSendOnReadyRef.current = false
         setFilePickError(e instanceof Error ? e.message : String(e))
       }
     })()
@@ -368,11 +371,6 @@ export default function App() {
   const onNotifyPickError = useCallback((message: string) => {
     setFilePickError(message)
     setPendingFile(null)
-  }, [])
-
-  const clearPendingFile = useCallback(() => {
-    setPendingFile(null)
-    setFilePickError(null)
   }, [])
 
   const handleSend = useCallback(async () => {
@@ -506,6 +504,26 @@ export default function App() {
     activeModel,
     activeTargetLang,
   ])
+
+  // "Latest ref" pattern — always points to current handleSend without adding it to effect deps
+  const handleSendRef = useRef(handleSend)
+  handleSendRef.current = handleSend
+
+  // Auto-send after file picker: user picks file → translation starts immediately
+  useEffect(() => {
+    if (!autoSendOnReadyRef.current) return
+    if (!pendingFile) {
+      autoSendOnReadyRef.current = false
+      return
+    }
+    if (pendingFile.loading) return
+    if (attachmentValidationError) {
+      autoSendOnReadyRef.current = false
+      return
+    }
+    autoSendOnReadyRef.current = false
+    void handleSendRef.current()
+  }, [pendingFile, attachmentValidationError])
 
   const handleRetranslate = useCallback(
     async (p: RetranslatePayload) => {
@@ -718,7 +736,6 @@ export default function App() {
               filePickError={filePickError}
               attachmentValidationError={attachmentValidationError}
               onAttachClick={handleOpenFilePicker}
-              onClearPendingFile={clearPendingFile}
               onUserChoseFilePath={ingestFilePath}
               onNotifyPickError={onNotifyPickError}
             />
@@ -772,7 +789,6 @@ export default function App() {
               filePickError={filePickError}
               attachmentValidationError={attachmentValidationError}
               onAttachClick={handleOpenFilePicker}
-              onClearPendingFile={clearPendingFile}
               onUserChoseFilePath={ingestFilePath}
               onNotifyPickError={onNotifyPickError}
             />
