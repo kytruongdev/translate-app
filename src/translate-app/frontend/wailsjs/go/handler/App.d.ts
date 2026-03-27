@@ -3,6 +3,8 @@
 import {bridge} from '../models';
 import {model} from '../models';
 
+export function CancelFileTranslate(arg1:string):Promise<void>;
+
 export function CopyTranslation(arg1:string):Promise<string>;
 
 export function CreateEmptySession(arg1:string,arg2:string,arg3:string):Promise<string>;

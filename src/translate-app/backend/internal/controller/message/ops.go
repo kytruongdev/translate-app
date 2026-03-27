@@ -212,16 +212,22 @@ func (c *controller) SendMessage(ctx context.Context, req bridge.SendRequest) (s
 		"messageId": assistantID,
 		"sessionId": req.SessionID,
 	})
-	// File retranslate: emit file:source so FE can trigger auto-fullscreen for heavy content.
+	// File retranslate: emit file:source.
+	// For DOCX files, omit markdown (FE shows FileTranslationCard, not bilingual view).
+	// For PDF files, include markdown so FE can open auto-fullscreen for heavy content.
 	if req.FileID != "" {
-		runtime.EventsEmit(ctx, "file:source", map[string]interface{}{
-			"markdown":           content,
+		fileSourcePayload := map[string]interface{}{
 			"sessionId":          req.SessionID,
 			"assistantMessageId": assistantID,
-		})
+		}
+		if f, err2 := c.reg.File().GetByID(ctx, req.FileID); err2 == nil && f != nil && f.FileType != "docx" {
+			fileSourcePayload["markdown"] = content
+		}
+		runtime.EventsEmit(ctx, "file:source", fileSourcePayload)
 		go c.fileCtrl.RunRetranslateContent(ctx, file.RetranslateContentParams{
 			SessionID:   req.SessionID,
 			AssistantID: assistantID,
+			FileID:      req.FileID,
 			SourceMD:    content,
 			TargetLang:  req.TargetLang,
 			Style:       style,

@@ -20,7 +20,7 @@ import { StartHello } from '@/components/StartHello'
 import { StartOutgoingPreview } from '@/components/StartOutgoingPreview'
 import { SessionRow } from '@/components/SessionRow'
 import { ChatSessionHeader } from '@/components/ChatSessionHeader'
-import { ChatMessageVirtualList } from '@/components/ChatMessageVirtualList'
+import { ChatMessageVirtualList, formatStickyDate } from '@/components/ChatMessageVirtualList'
 import type { RetranslatePayload } from '@/components/ChatMessage'
 import { ChatSessionLoadingPreview } from '@/components/ChatSessionLoadingPreview'
 import { ChatInputBar } from '@/components/ChatInputBar'
@@ -116,15 +116,24 @@ export default function App() {
   const [streamingAssistantId, setStreamingAssistantId] = useState<string | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
   const [feedHeaderElevated, setFeedHeaderElevated] = useState(false)
+  const [chatStickyDate, setChatStickyDate] = useState<string | null>(null)
+  const [chatStickyVisible, setChatStickyVisible] = useState(false)
+
+  const handleScrollDate = useCallback((date: string | null, visible: boolean) => {
+    if (date) setChatStickyDate(date)
+    setChatStickyVisible(visible)
+  }, [])
   const [pendingFile, setPendingFile] = useState<PendingFilePick | null>(null)
   const [filePickError, setFilePickError] = useState<string | null>(null)
   const [fileTranslateProgress, setFileTranslateProgress] = useState<FileProgress | null>(null)
+  const addCancelledFileId = useUIStore((s) => s.addCancelledFileId)
 
   const feedRef = useRef<HTMLDivElement>(null)
   const sendLockRef = useRef(false)
   const settingsAnchorRef = useRef<HTMLDivElement>(null)
   const pendingFileRef = useRef<PendingFilePick | null>(null)
   const attachmentValidationRef = useRef<string | null>(null)
+  const autoSendOnReadyRef = useRef(false)
 
   const hasMore = activeSessionId ? !!hasMoreMap[activeSessionId] : false
 
@@ -194,6 +203,15 @@ export default function App() {
       setFileTranslateProgress(null)
       setStreamingFileJobActive(false)
     })
+    const uf4 = WailsEvents.onFileCancelled((p) => {
+      flushStreamingTextCoalescerSync()
+      setStreamingAssistantId(null)
+      setStreamStatus('idle')
+      clearStreamingText()
+      setFileTranslateProgress(null)
+      setStreamingFileJobActive(false)
+      addCancelledFileId(p.fileId)
+    })
     const uf0 = WailsEvents.onFileSource((p) => {
       const sid = p.sessionId?.trim()
       if (sid) void loadMessages(sid)
@@ -213,6 +231,7 @@ export default function App() {
       uf1()
       uf2()
       uf3()
+      uf4()
       resetStreamingTextCoalescer()
       setStreamingFileJobActive(false)
     }
@@ -310,13 +329,18 @@ export default function App() {
 
   const ingestFilePath = useCallback(async (path: string) => {
     const lower = path.toLowerCase()
-    if (!lower.endsWith('.pdf') && !lower.endsWith('.docx')) {
-      setFilePickError('Chỉ hỗ trợ PDF và DOCX')
+    if (lower.endsWith('.pdf')) {
+      setFilePickError('PDF chưa được hỗ trợ ở phiên bản này')
+      setPendingFile(null)
+      return
+    }
+    if (!lower.endsWith('.docx')) {
+      setFilePickError('Chỉ hỗ trợ DOCX')
       setPendingFile(null)
       return
     }
     const name = path.replace(/^.*[/\\]/, '') || path
-    const type: FileInfo['type'] = lower.endsWith('.pdf') ? 'pdf' : 'docx'
+    const type: FileInfo['type'] = 'docx'
     const placeholder: FileInfo = {
       name,
       type,
@@ -346,8 +370,10 @@ export default function App() {
       try {
         const path = await WailsService.openFileDialog()
         if (!path) return
+        autoSendOnReadyRef.current = true
         await ingestFilePath(path)
       } catch (e) {
+        autoSendOnReadyRef.current = false
         setFilePickError(e instanceof Error ? e.message : String(e))
       }
     })()
@@ -356,11 +382,6 @@ export default function App() {
   const onNotifyPickError = useCallback((message: string) => {
     setFilePickError(message)
     setPendingFile(null)
-  }, [])
-
-  const clearPendingFile = useCallback(() => {
-    setPendingFile(null)
-    setFilePickError(null)
   }, [])
 
   const handleSend = useCallback(async () => {
@@ -400,6 +421,7 @@ export default function App() {
         setPendingFile(null)
         setDraft('')
         await loadMessages(sessionId)
+        void loadSessions()
         scrollFeedToBottom()
       } catch (e) {
         setSendError(e instanceof Error ? e.message : String(e))
@@ -465,6 +487,7 @@ export default function App() {
             style,
           })
           await loadMessages(sessionId)
+          void loadSessions()
           scrollFeedToBottom()
         } catch (e) {
           removeMessage(sessionId, optimistic.id)
@@ -494,6 +517,26 @@ export default function App() {
     activeModel,
     activeTargetLang,
   ])
+
+  // "Latest ref" pattern — always points to current handleSend without adding it to effect deps
+  const handleSendRef = useRef(handleSend)
+  handleSendRef.current = handleSend
+
+  // Auto-send after file picker: user picks file → translation starts immediately
+  useEffect(() => {
+    if (!autoSendOnReadyRef.current) return
+    if (!pendingFile) {
+      autoSendOnReadyRef.current = false
+      return
+    }
+    if (pendingFile.loading) return
+    if (attachmentValidationError) {
+      autoSendOnReadyRef.current = false
+      return
+    }
+    autoSendOnReadyRef.current = false
+    void handleSendRef.current()
+  }, [pendingFile, attachmentValidationError])
 
   const handleRetranslate = useCallback(
     async (p: RetranslatePayload) => {
@@ -531,6 +574,7 @@ export default function App() {
             fileDisplayContent: p.fileDisplayContent,
           })
           await loadMessages(sessionId)
+          void loadSessions()
           scrollFeedToBottom()
         } catch (e) {
           removeMessage(sessionId, optimistic.id)
@@ -589,6 +633,12 @@ export default function App() {
   const listSessions = useMemo(() => sessions.filter((s) => s.status !== 'pinned'), [sessions])
   const dayGroups = useMemo(() => groupSessionsByDay(listSessions), [listSessions])
 
+  const [sidebarAnimReady, setSidebarAnimReady] = useState(false)
+  useEffect(() => {
+    const t = window.setTimeout(() => setSidebarAnimReady(true), 400)
+    return () => window.clearTimeout(t)
+  }, [])
+
   const sidebarList =
     listSessions.length === 0
       ? null
@@ -596,7 +646,7 @@ export default function App() {
           <div key={g.key} className="sidebar-group today-group">
             <div className="sidebar-group-label">{g.label}</div>
             {g.sessions.map((sess) => (
-              <SessionRow key={sess.id} sess={sess} active={sess.id === activeSessionId} />
+              <SessionRow key={`${g.key}-${sess.id}`} sess={sess} active={sess.id === activeSessionId} />
             ))}
           </div>
         ))
@@ -632,12 +682,12 @@ export default function App() {
           <IconPlus />
           <span className="sidebar-label">Bắt đầu phiên dịch mới</span>
         </button>
-        <div className="sidebar-groups">
+        <div className={`sidebar-groups${sidebarAnimReady ? ' sidebar-anim-ready' : ''}`}>
           {pinnedSessions.length > 0 && (
             <div className="sidebar-group pinned-group">
               <div className="sidebar-group-label">Ghim</div>
               {pinnedSessions.map((sess) => (
-                <SessionRow key={sess.id} sess={sess} active={sess.id === activeSessionId} />
+                <SessionRow key={`pinned-${sess.id}`} sess={sess} active={sess.id === activeSessionId} />
               ))}
             </div>
           )}
@@ -706,7 +756,6 @@ export default function App() {
               filePickError={filePickError}
               attachmentValidationError={attachmentValidationError}
               onAttachClick={handleOpenFilePicker}
-              onClearPendingFile={clearPendingFile}
               onUserChoseFilePath={ingestFilePath}
               onNotifyPickError={onNotifyPickError}
             />
@@ -720,27 +769,35 @@ export default function App() {
                 elevated={feedHeaderElevated}
               />
             )}
-            <div className="chat-feed" ref={feedRef} onScroll={onFeedScroll}>
-              {loadingMore && hasMore && !warmTransitionShell && (
-                <div className="chat-load-more" role="status" aria-live="polite">
-                  <div className="chat-load-more-ring" aria-hidden />
-                  Đang tải nội dung cũ...
+            <div className="chat-feed-wrap">
+              <div className="chat-feed" ref={feedRef} onScroll={onFeedScroll}>
+                {loadingMore && hasMore && !warmTransitionShell && (
+                  <div className="chat-load-more" role="status" aria-live="polite">
+                    <div className="chat-load-more-ring" aria-hidden />
+                    Đang tải nội dung cũ...
+                  </div>
+                )}
+                <div key={activeSessionId ?? 'none'} className="chat-feed-session">
+                  {sendError && <div className="chat-error-banner">{sendError}</div>}
+                  {showSessionFeedPlaceholder && <ChatSessionLoadingPreview />}
+                  {!warmTransitionShell && (
+                    <ChatMessageVirtualList
+                      messages={messages}
+                      assistantById={assistantById}
+                      streamingAssistantId={streamingAssistantId}
+                      fileTranslateProgress={fileTranslateProgress}
+                      onRetranslate={handleRetranslate}
+                      scrollElementRef={feedRef}
+                      onScrollDate={handleScrollDate}
+                    />
+                  )}
+                </div>
+              </div>
+              {chatStickyDate && (
+                <div className={`chat-sticky-date${chatStickyVisible ? ' chat-sticky-date--visible' : ''}`}>
+                  {formatStickyDate(chatStickyDate)}
                 </div>
               )}
-              <div key={activeSessionId ?? 'none'} className="chat-feed-session">
-                {sendError && <div className="chat-error-banner">{sendError}</div>}
-                {showSessionFeedPlaceholder && <ChatSessionLoadingPreview />}
-                {!warmTransitionShell && (
-                  <ChatMessageVirtualList
-                    messages={messages}
-                    assistantById={assistantById}
-                    streamingAssistantId={streamingAssistantId}
-                    fileTranslateProgress={fileTranslateProgress}
-                    onRetranslate={handleRetranslate}
-                    scrollElementRef={feedRef}
-                  />
-                )}
-              </div>
             </div>
             <ChatInputBar
               draft={draft}
@@ -752,7 +809,6 @@ export default function App() {
               filePickError={filePickError}
               attachmentValidationError={attachmentValidationError}
               onAttachClick={handleOpenFilePicker}
-              onClearPendingFile={clearPendingFile}
               onUserChoseFilePath={ingestFilePath}
               onNotifyPickError={onNotifyPickError}
             />

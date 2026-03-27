@@ -36,15 +36,15 @@
   --avatar-fg: #ffffff;
   --bubble-user-bg: linear-gradient(
     135deg,
-    rgba(255, 154, 158, 0.14) 0%,
-    rgba(254, 207, 239, 0.1) 60%,
-    rgba(250, 208, 196, 0.12) 100%
+    rgba(255, 154, 158, 0.38) 0%,
+    rgba(254, 207, 239, 0.32) 60%,
+    rgba(250, 208, 196, 0.36) 100%
   );
   --bubble-assistant-bg: linear-gradient(
     135deg,
-    rgba(137, 247, 254, 0.14) 0%,
-    rgba(161, 227, 226, 0.1) 55%,
-    rgba(209, 253, 255, 0.12) 100%
+    rgba(137, 247, 254, 0.38) 0%,
+    rgba(161, 227, 226, 0.32) 55%,
+    rgba(209, 253, 255, 0.36) 100%
   );
   --panel-src-bg: linear-gradient(180deg, rgba(137, 247, 254, 0.14) 0%, rgba(255, 255, 255, 0) 60%);
   --panel-dest-bg: linear-gradient(180deg, rgba(255, 154, 158, 0.12) 0%, rgba(255, 255, 255, 0) 60%);
@@ -78,15 +78,15 @@
   --ring-assistant: #22d3ee;
   --bubble-user-bg: linear-gradient(
     135deg,
-    rgba(244, 114, 182, 0.2) 0%,
-    rgba(251, 113, 133, 0.14) 55%,
-    rgba(251, 207, 232, 0.16) 100%
+    rgba(244, 114, 182, 0.22) 0%,
+    rgba(251, 113, 133, 0.18) 50%,
+    rgba(251, 207, 232, 0.15) 100%
   );
   --bubble-assistant-bg: linear-gradient(
     135deg,
-    rgba(34, 211, 238, 0.2) 0%,
-    rgba(103, 232, 249, 0.14) 55%,
-    rgba(165, 243, 252, 0.16) 100%
+    rgba(34, 211, 238, 0.28) 0%,
+    rgba(103, 232, 249, 0.2) 55%,
+    rgba(165, 243, 252, 0.24) 100%
   );
   --panel-src-bg: linear-gradient(180deg, rgba(34, 211, 238, 0.1) 0%, rgba(15, 23, 42, 0) 60%);
   --panel-dest-bg: linear-gradient(180deg, rgba(244, 114, 182, 0.1) 0%, rgba(15, 23, 42, 0) 60%);

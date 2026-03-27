@@ -7,9 +7,12 @@ import (
 	"unicode/utf8"
 )
 
-// Heuristic aligned with FE `utils/languageDetect.ts` — when true, use explicit "vi → target" prompts (stricter than "auto").
-var reVietnameseDiacritics = regexp.MustCompile(
-	`(?i)[àáâãèéêìíòóôõùúýăđơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ]`)
+// reVietnameseSpecific matches characters that are unique to Vietnamese
+// and not found in French, Spanish, Portuguese, or other Latin-script languages.
+// This avoids false positives on English documents containing words like "café" or "résumé".
+// Unique Vietnamese chars: ă/Ă, đ/Đ, ơ/Ơ, ư/Ư, and tone-marked compounds using these bases.
+var reVietnameseSpecific = regexp.MustCompile(
+	`(?i)[ăđơưắằẳẵặấầẩẫậếềểễệốồổỗộớờởỡợứừửữự]`)
 
 func containsEastAsianScript(text string) bool {
 	for _, r := range text {
@@ -51,7 +54,7 @@ func chunkLooksMostlyEnglish(text string) bool {
 
 // SourceLangForTranslate returns "vi" / "en" when rõ ràng; else "auto" (nhánh detect — dễ lẫn ngôn ngữ hơn).
 func SourceLangForTranslate(text string) string {
-	if reVietnameseDiacritics.MatchString(text) {
+	if reVietnameseSpecific.MatchString(text) {
 		return "vi"
 	}
 	if containsEastAsianScript(text) {

@@ -40,15 +40,47 @@ func estimateTokens(s string) int {
 }
 
 func (c *controller) runFileTranslate(ctx context.Context, p fileTranslateParams) {
+	defer func() {
+		c.cancelMu.Lock()
+		cancel, ok := c.cancels[p.FileID]
+		delete(c.cancels, p.FileID)
+		c.cancelMu.Unlock()
+		if ok {
+			cancel() // giải phóng context resource (no-op nếu đã cancel rồi)
+		}
+	}()
+
 	fail := func(msg string) {
-		_ = c.reg.File().UpdateStatus(ctx, p.FileID, "error", msg)
-		runtime.EventsEmit(ctx, "translation:error", msg)
-		runtime.EventsEmit(ctx, "file:error", msg)
+		bgCtx := context.Background()
+		if ctx.Err() != nil {
+			_ = c.reg.File().UpdateStatus(bgCtx, p.FileID, "cancelled", "")
+			runtime.EventsEmit(ctx, "file:cancelled", map[string]string{
+				"fileId":    p.FileID,
+				"sessionId": p.SessionID,
+			})
+		} else {
+			_ = c.reg.File().UpdateStatus(bgCtx, p.FileID, "error", msg)
+			runtime.EventsEmit(ctx, "translation:error", msg)
+			runtime.EventsEmit(ctx, "file:error", msg)
+		}
 	}
 
 	ext := fileExt(p.FilePath)
 
-	// Extract for display (GFM with structure)
+	if ext == ".docx" {
+		c.runDocxTranslate(ctx, p, fail)
+	} else {
+		c.runPlainTranslate(ctx, p, ext, fail)
+	}
+}
+
+// runDocxTranslate handles DOCX files using the XML-level translation pipeline.
+// Structure (tables, images, columns) is preserved; only <w:t> text nodes are translated.
+func (c *controller) runDocxTranslate(ctx context.Context, p fileTranslateParams, fail func(string)) {
+	fmt.Printf("[DEBUG] runDocxTranslate — file=%s\n", filepath.Base(p.FilePath))
+	ext := ".docx"
+
+	// Extract plain text for preview display (source.md).
 	plain, err := extractSourceMarkdown(p.FilePath, ext)
 	if err != nil {
 		fail(err.Error())
@@ -60,10 +92,132 @@ func (c *controller) runFileTranslate(ctx context.Context, p fileTranslateParams
 		return
 	}
 
-	// Extract for AI translation (plain text — consistent across all file types)
+	dir, err := userFilesDir()
+	if err != nil {
+		fail(err.Error())
+		return
+	}
+	subDir := filepath.Join(dir, p.FileID)
+	if err := os.MkdirAll(subDir, 0o755); err != nil {
+		fail(fmt.Sprintf("không tạo được thư mục lưu: %v", err))
+		return
+	}
+	sourcePath := filepath.Join(subDir, "source.md")
+	if err := os.WriteFile(sourcePath, []byte(sourceMD), 0o644); err != nil {
+		fail(fmt.Sprintf("không ghi được source.md: %v", err))
+		return
+	}
+
+	charCount, pageCount := charAndPageCount(sourceMD, ext, p.PageCount)
+	if err := c.reg.File().UpdateExtracted(ctx, p.FileID, sourcePath, charCount, pageCount); err != nil {
+		fail(err.Error())
+		return
+	}
+
+	// Detect source language.
+	docSrcHint := gateway.SourceLangForTranslate(sourceMD)
+	if docSrcHint != "auto" {
+		_ = c.reg.Message().UpdateSourceLang(ctx, p.UserID, docSrcHint)
+		_ = c.reg.Message().UpdateSourceLang(ctx, p.AssistantID, docSrcHint)
+	}
+
+	runtime.EventsEmit(ctx, "file:source", map[string]string{
+		"sessionId":          p.SessionID,
+		"assistantMessageId": p.AssistantID,
+	})
+
+	// Parse DOCX XML structure.
+	df, err := ParseDocx(p.FilePath)
+	if err != nil {
+		fail(fmt.Sprintf("không đọc được cấu trúc DOCX: %v", err))
+		return
+	}
+	if len(df.Paragraphs) == 0 {
+		fail("DOCX không có nội dung văn bản")
+		return
+	}
+
+	totalBatches := len(chunkDocxParagraphs(df.Paragraphs, charsPerChunk))
+
+	// Translate all paragraphs via XML pipeline.
+	// onProgress receives (completedBatches, totalBatches) — called after each batch finishes.
+	translations, totalTokens, err := c.translateDocxFile(ctx, df, docSrcHint, p.TargetLang, p.Style, p.Provider,
+		func(completed, total int) {
+			pct := 0
+			if total > 0 {
+				pct = (completed * 100) / total
+			}
+			runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{
+				Chunk:   completed,
+				Total:   total,
+				Percent: pct,
+			})
+		},
+	)
+	if err != nil {
+		fail(err.Error())
+		return
+	}
+
+	runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{
+		Chunk:   totalBatches,
+		Total:   totalBatches,
+		Percent: 100,
+	})
+
+	// Write translated DOCX.
+	translatedPath := filepath.Join(subDir, "translated.docx")
+	if err := WriteTranslatedDocx(df, translations, translatedPath); err != nil {
+		fail(fmt.Sprintf("không tạo được file DOCX đã dịch: %v", err))
+		return
+	}
+
+	usedTokens := totalTokens
+	if usedTokens == 0 {
+		usedTokens = estimateTokens(sourceMD)
+	}
+	if err := c.reg.Message().UpdateTranslated(ctx, p.AssistantID, sourceMD, usedTokens); err != nil {
+		fail(err.Error())
+		return
+	}
+
+	if err := c.reg.File().UpdateTranslated(ctx, p.FileID, sourcePath, translatedPath, charCount, pageCount, p.ModelUsed); err != nil {
+		fail(err.Error())
+		return
+	}
+
+	msg, err := c.reg.Message().GetByID(ctx, p.AssistantID)
+	if err != nil || msg == nil {
+		fail("không tải được tin nhắn sau khi dịch file")
+		return
+	}
+	runtime.EventsEmit(ctx, "translation:done", *msg)
+
+	runtime.EventsEmit(ctx, "file:done", bridge.FileResult{
+		FileID:    p.FileID,
+		FileName:  filepath.Base(p.FilePath),
+		FileType:  "docx",
+		CharCount: charCount,
+		PageCount: pageCount,
+	})
+}
+
+// runPlainTranslate handles non-DOCX files (PDF) using the existing text pipeline.
+func (c *controller) runPlainTranslate(ctx context.Context, p fileTranslateParams, ext string, fail func(string)) {
+	plain, err := extractSourceMarkdown(p.FilePath, ext)
+	if err != nil {
+		fail(err.Error())
+		return
+	}
+	sourceMD := sourceMarkdownFromPlain(plain)
+	if sourceMD == "" {
+		fail("không trích được văn bản từ tệp")
+		return
+	}
+
 	translationText, err := extractTranslationText(p.FilePath, ext)
 	if err != nil || translationText == "" {
-		translationText = sourceMD // fallback to display text
+		translationText = sourceMD
 	}
 
 	chunks := chunkMarkdownByParagraphs(translationText, charsPerChunk)
@@ -99,8 +253,6 @@ func (c *controller) runFileTranslate(ctx context.Context, p fileTranslateParams
 		return
 	}
 
-	// Detect source language before emitting file:source so the frontend loads messages
-	// with the correct sourceLang (e.g. "vi") instead of the initial "auto" placeholder.
 	docSrcHint := gateway.SourceLangForTranslate(sourceMD)
 	if docSrcHint != "auto" {
 		_ = c.reg.Message().UpdateSourceLang(ctx, p.UserID, docSrcHint)
@@ -115,7 +267,7 @@ func (c *controller) runFileTranslate(ctx context.Context, p fileTranslateParams
 
 	total := len(chunks)
 	var cumulative strings.Builder
-	preserveMD := true // bilingual-friendly output
+	var totalTokens int
 
 	for i, chunk := range chunks {
 		pct := 0
@@ -128,17 +280,21 @@ func (c *controller) runFileTranslate(ctx context.Context, p fileTranslateParams
 			Percent: pct,
 		})
 
-		srcHint := docSrcHint
-		translated, err := c.streamTranslate(ctx, p.Provider, chunk, srcHint, p.TargetLang, p.Style, preserveMD, func(delta string) {
+		translated, tokens, err := c.streamTranslate(ctx, p.Provider, chunk, docSrcHint, p.TargetLang, p.Style, true, func(delta string) {
 			runtime.EventsEmit(ctx, "translation:chunk", delta)
 		})
 		if err != nil {
 			fail(err.Error())
 			return
 		}
+		totalTokens += tokens
 		cumulative.WriteString(translated)
 		sum := cumulative.String()
-		if err := c.reg.Message().UpdateTranslated(ctx, p.AssistantID, sum, estimateTokens(sum)); err != nil {
+		usedTokens := totalTokens
+		if usedTokens == 0 {
+			usedTokens = estimateTokens(sum)
+		}
+		if err := c.reg.Message().UpdateTranslated(ctx, p.AssistantID, sum, usedTokens); err != nil {
 			fail(err.Error())
 			return
 		}
@@ -173,16 +329,23 @@ func (c *controller) runFileTranslate(ctx context.Context, p fileTranslateParams
 	}
 	runtime.EventsEmit(ctx, "translation:done", *msg)
 
+	finalTokens := totalTokens
+	if finalTokens == 0 {
+		finalTokens = estimateTokens(cumulative.String())
+	}
 	runtime.EventsEmit(ctx, "file:done", bridge.FileResult{
 		FileID:     p.FileID,
 		FileName:   filepath.Base(p.FilePath),
 		FileType:   strings.TrimPrefix(ext, "."),
 		CharCount:  charCount,
 		PageCount:  pageCount,
-		TokensUsed: estimateTokens(fullTranslated),
+		TokensUsed: finalTokens,
 	})
 }
 
+// streamTranslate streams a translation and returns (text, tokensUsed, error).
+// tokensUsed is the real API token count when the provider reports it (OpenAI),
+// or 0 for providers that don't emit usage events (Ollama, Gemini).
 func (c *controller) streamTranslate(
 	ctx context.Context,
 	provider gateway.AIProvider,
@@ -190,7 +353,7 @@ func (c *controller) streamTranslate(
 	style model.TranslationStyle,
 	preserveMD bool,
 	onDelta func(string),
-) (string, error) {
+) (string, int, error) {
 	events := make(chan gateway.StreamEvent, 64)
 	errCh := make(chan error, 1)
 	go func() {
@@ -198,6 +361,7 @@ func (c *controller) streamTranslate(
 	}()
 
 	var full strings.Builder
+	var tokensUsed int
 	for ev := range events {
 		switch ev.Type {
 		case "chunk":
@@ -207,22 +371,22 @@ func (c *controller) streamTranslate(
 					onDelta(ev.Content)
 				}
 			}
+		case "usage":
+			tokensUsed = ev.TokensUsed
 		case "error":
 			errMsg := errors.New("translation failed")
 			if ev.Error != nil {
 				errMsg = ev.Error
 			}
 			<-errCh
-			return "", errMsg
-		case "done":
+			return "", 0, errMsg
 		}
 	}
 
-	streamErr := <-errCh
-	if streamErr != nil {
-		return "", streamErr
+	if streamErr := <-errCh; streamErr != nil {
+		return "", 0, streamErr
 	}
-	return full.String(), nil
+	return full.String(), tokensUsed, nil
 }
 
 func userFilesDir() (string, error) {

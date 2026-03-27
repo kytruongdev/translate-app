@@ -1,34 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
+import { Paperclip, ChevronDown, Send } from 'lucide-react'
 import { CanResolveFilePaths, ResolveFilePaths } from '../../wailsjs/runtime/runtime'
 import { useSettingsStore } from '@/stores/settings/settingsStore'
 import { useUIStore } from '@/stores/ui/uiStore'
 import { STYLE_OPTIONS, TARGET_LANG_OPTIONS } from '@/constants/inputOptions'
 import type { TranslationStyle } from '@/types/session'
 import type { PendingFilePick } from '@/types/ipc'
-import { FileAttachment } from '@/components/FileAttachment'
 
-const IconAttach = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
-    />
-  </svg>
-)
-
-const IconChevronDown = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-  </svg>
-)
-
-const IconSend = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-  </svg>
-)
 
 type Popover = null | 'style' | 'lang'
 
@@ -42,7 +20,6 @@ export function ChatInputBar({
   filePickError,
   attachmentValidationError,
   onAttachClick,
-  onClearPendingFile,
   onUserChoseFilePath,
   onNotifyPickError,
 }: {
@@ -56,7 +33,6 @@ export function ChatInputBar({
   filePickError: string | null
   attachmentValidationError: string | null
   onAttachClick: () => void
-  onClearPendingFile: () => void
   onUserChoseFilePath: (path: string) => Promise<void>
   onNotifyPickError: (message: string) => void
 }) {
@@ -165,15 +141,19 @@ export function ChatInputBar({
       }
       const nameLower = f.name.toLowerCase()
       const ref = (path ?? f.name).toLowerCase()
-      if (!ref.endsWith('.pdf') && !ref.endsWith('.docx')) {
-        onNotifyPickError('Chỉ hỗ trợ PDF và DOCX')
+      if (ref.endsWith('.pdf')) {
+        onNotifyPickError('PDF chưa được hỗ trợ ở phiên bản này')
+        return
+      }
+      if (!ref.endsWith('.docx')) {
+        onNotifyPickError('Chỉ hỗ trợ DOCX')
         return
       }
       if (!path) {
-        if (nameLower.endsWith('.pdf') || nameLower.endsWith('.docx')) {
+        if (nameLower.endsWith('.docx')) {
           onNotifyPickError('Không lấy được đường dẫn tệp — hãy dùng nút đính kèm hoặc bản build Wails')
         } else {
-          onNotifyPickError('Chỉ hỗ trợ PDF và DOCX')
+          onNotifyPickError('Chỉ hỗ trợ DOCX')
         }
         return
       }
@@ -218,13 +198,10 @@ export function ChatInputBar({
               Thả file vào đây
             </div>
           )}
-          {pendingFile && (
-            <FileAttachment
-              fileInfo={pendingFile.info}
-              onRemove={onClearPendingFile}
-              error={attachmentValidationError ?? undefined}
-              loading={pendingFile.loading}
-            />
+          {attachmentValidationError && (
+            <p className="file-pick-error" role="alert">
+              {attachmentValidationError}
+            </p>
           )}
           {filePickError && !pendingFile && (
             <p className="file-pick-error" role="alert">
@@ -260,7 +237,7 @@ export function ChatInputBar({
                 disabled={blockAttach}
                 onClick={() => onAttachClick()}
               >
-                <IconAttach />
+                <Paperclip size={18} aria-hidden />
               </button>
               <div className="input-chip-wrap">
                 <button
@@ -271,7 +248,7 @@ export function ChatInputBar({
                   onClick={() => setPopover((p) => (p === 'style' ? null : 'style'))}
                 >
                   <span>{styleLabel}</span>
-                  <IconChevronDown />
+                  <ChevronDown size={14} aria-hidden />
                 </button>
                 {popover === 'style' && (
                   <div className="input-popover" role="listbox">
@@ -298,7 +275,7 @@ export function ChatInputBar({
                   onClick={() => setPopover((p) => (p === 'lang' ? null : 'lang'))}
                 >
                   <span>{langChip}</span>
-                  <IconChevronDown />
+                  <ChevronDown size={14} aria-hidden />
                 </button>
                 {popover === 'lang' && (
                   <div className="input-popover input-popover-wide" role="listbox">
@@ -325,7 +302,7 @@ export function ChatInputBar({
                 aria-label="Gửi"
                 onClick={() => onSend()}
               >
-                <IconSend />
+                <Send size={18} aria-hidden />
               </button>
             </div>
           </div>

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { Message } from '@/types/session'
 import { WailsService } from '@/services/wailsService'
+import { useUIStore } from '@/stores/ui/uiStore'
 
 /**
  * Số tin mỗi lần gọi GetMessages (BE: ORDER BY display_order DESC).
@@ -48,6 +49,7 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
     try {
       const page = await WailsService.getMessages(sessionId, 0, MESSAGE_PAGE_SIZE)
       const sorted = [...page.messages].sort((a, b) => a.displayOrder - b.displayOrder)
+      useUIStore.getState().setCancelledFileIds(page.cancelledFileIds ?? [])
       set((s) => ({
         messages: { ...s.messages, [sessionId]: sorted },
         cursors: { ...s.cursors, [sessionId]: page.nextCursor },

@@ -102,6 +102,7 @@ export namespace bridge {
 	    messages: model.Message[];
 	    nextCursor: number;
 	    hasMore: boolean;
+	    cancelledFileIds: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new MessagesPage(source);
@@ -112,6 +113,7 @@ export namespace bridge {
 	        this.messages = this.convertValues(source["messages"], model.Message);
 	        this.nextCursor = source["nextCursor"];
 	        this.hasMore = source["hasMore"];
+	        this.cancelledFileIds = source["cancelledFileIds"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

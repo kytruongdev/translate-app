@@ -75,9 +75,10 @@ type FileResult struct {
 
 // MessagesPage — paginated messages.
 type MessagesPage struct {
-	Messages   []model.Message `json:"messages"`
-	NextCursor int             `json:"nextCursor"`
-	HasMore    bool            `json:"hasMore"`
+	Messages         []model.Message `json:"messages"`
+	NextCursor       int             `json:"nextCursor"`
+	HasMore          bool            `json:"hasMore"`
+	CancelledFileIds []string        `json:"cancelledFileIds"`
 }
 
 // FileProgress — file:progress event.
