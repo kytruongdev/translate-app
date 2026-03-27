@@ -335,8 +335,9 @@ function TranslationCardView({
   const footerOutside = formatMessageFooterTime(m.updatedAt)
 
   const handleExport = async (format: 'pdf' | 'docx') => {
+    if (!m.fileId) return
     try {
-      await WailsService.exportMessage(m.id, format)
+      await WailsService.exportFile(m.fileId, format)
     } catch (e) {
       window.alert(e instanceof Error ? e.message : String(e))
     }

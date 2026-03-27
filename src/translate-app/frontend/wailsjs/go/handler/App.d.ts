@@ -13,10 +13,6 @@ export function CreateSessionAndSend(arg1:bridge.CreateSessionAndSendRequest):Pr
 
 export function ExportFile(arg1:string,arg2:string):Promise<string>;
 
-export function ExportMessage(arg1:string,arg2:string):Promise<string>;
-
-export function ExportSession(arg1:string,arg2:string):Promise<string>;
-
 export function GetFileContent(arg1:string):Promise<bridge.FileContent>;
 
 export function GetMessages(arg1:string,arg2:number,arg3:number):Promise<bridge.MessagesPage>;

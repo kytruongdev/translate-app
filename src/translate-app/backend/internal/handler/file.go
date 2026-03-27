@@ -1,8 +1,6 @@
 package handler
 
 import (
-	"errors"
-
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -34,16 +32,6 @@ func (a *App) GetFileContent(fileID string) (*FileContent, error) {
 // ExportFile exports a translated file — E7.
 func (a *App) ExportFile(fileID string, format string) (string, error) {
 	return a.ctrl.File.ExportFile(a.appCtx(), fileID, format)
-}
-
-// ExportMessage exports one assistant message — E7.
-func (a *App) ExportMessage(id string, format string) (string, error) {
-	return "", errors.New("not implemented")
-}
-
-// ExportSession exports a whole session — E7.
-func (a *App) ExportSession(id string, format string) (string, error) {
-	return "", errors.New("not implemented")
 }
 
 // CopyTranslation copies translated text to the system clipboard and returns it — E7.

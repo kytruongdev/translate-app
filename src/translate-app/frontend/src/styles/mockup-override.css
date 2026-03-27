@@ -116,10 +116,17 @@
 
 /* Danh sách theo ngày trong mockup HTML dùng .today-group (hover rgba + shadow), không dùng .day-group. */
 .session-item:hover {
-  background: var(--active);
+  background: #d3d3d3;
+  box-shadow: var(--shadow-elev1);
 }
 
 .session-item.active {
+  background: #d3d3d3;
+  box-shadow: var(--shadow-elev1);
+}
+
+[data-theme='dark'] .session-item:hover,
+[data-theme='dark'] .session-item.active {
   background: var(--active);
 }
 

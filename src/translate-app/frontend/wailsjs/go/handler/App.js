@@ -22,14 +22,6 @@ export function ExportFile(arg1, arg2) {
   return window['go']['handler']['App']['ExportFile'](arg1, arg2);
 }
 
-export function ExportMessage(arg1, arg2) {
-  return window['go']['handler']['App']['ExportMessage'](arg1, arg2);
-}
-
-export function ExportSession(arg1, arg2) {
-  return window['go']['handler']['App']['ExportSession'](arg1, arg2);
-}
-
 export function GetFileContent(arg1) {
   return window['go']['handler']['App']['GetFileContent'](arg1);
 }
