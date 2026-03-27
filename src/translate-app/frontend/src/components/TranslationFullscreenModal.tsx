@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Download, RefreshCw, Copy, X, Maximize2 } from 'lucide-react'
 import { LazyChunkedMarkdown, LazyChunkedPlainText } from '@/components/LazyChunkedMarkdown'
 import { LARGE_DOCUMENT_COPY_DISABLED_TOOLTIP } from '@/utils/messageDisplay'
 import { createPortal } from 'react-dom'
@@ -15,55 +16,11 @@ import {
 
 export type PanelMode = 'bilingual' | 'dest' | 'src'
 
-const IconExport = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width={18} height={18} aria-hidden>
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M4 16v4a2 2 0 002 2h12a2 2 0 002-2v-4M8 12l4 4 4-4M12 8v8"
-    />
-  </svg>
-)
-
-const IconRetranslate = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width={18} height={18} aria-hidden>
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-    />
-  </svg>
-)
-
-const IconCopy = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width={18} height={18} aria-hidden>
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-    />
-  </svg>
-)
-
-const IconClose = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width={18} height={18} aria-hidden>
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-  </svg>
-)
-
-const IconFullscreen = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width={18} height={18} aria-hidden>
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"
-    />
-  </svg>
-)
+const IconExport = () => <Download size={18} aria-hidden />
+const IconRetranslate = () => <RefreshCw size={18} aria-hidden />
+const IconCopy = () => <Copy size={18} aria-hidden />
+const IconClose = () => <X size={18} aria-hidden />
+const IconFullscreen = () => <Maximize2 size={18} aria-hidden />
 
 export function TranslationFullscreenModal({
   open,
@@ -241,24 +198,28 @@ export function TranslationFullscreenModal({
               </div>
               <div className="card-topbar-right">
                 <div className="card-inline-actions">
-                  <button
-                    ref={exportBtnRef}
-                    type="button"
-                    className="btn-icon"
-                    aria-label="Export"
-                    disabled={streaming}
-                    onClick={() => {
-                      setRetranslateOpen(false)
-                      setExportOpen((v) => !v)
-                    }}
-                  >
-                    <IconExport />
-                  </button>
+                  {topBarTitle && (
+                    <button
+                      ref={exportBtnRef}
+                      type="button"
+                      className="btn-icon"
+                      aria-label="Export"
+                      data-tooltip="Export PDF / Word"
+                      disabled={streaming}
+                      onClick={() => {
+                        setRetranslateOpen(false)
+                        setExportOpen((v) => !v)
+                      }}
+                    >
+                      <IconExport />
+                    </button>
+                  )}
                   <button
                     ref={retranslateBtnRef}
                     type="button"
                     className="btn-icon"
                     aria-label="Dịch lại"
+                    data-tooltip="Dịch lại"
                     disabled={streaming || retranslateDisabled}
                     onClick={() => {
                       setExportOpen(false)
@@ -283,7 +244,7 @@ export function TranslationFullscreenModal({
                       </button>
                     </span>
                   ) : (
-                    <button type="button" className="btn-icon" aria-label="Sao chép bản dịch" onClick={onCopy}>
+                    <button type="button" className="btn-icon" aria-label="Sao chép bản dịch" data-tooltip="Sao chép bản dịch" onClick={onCopy}>
                       {copied ? '✓' : <IconCopy />}
                     </button>
                   )}
