@@ -15,6 +15,7 @@ type FileRepo interface {
 	UpdateExtracted(ctx context.Context, id, sourcePath string, charCount, pageCount int) error
 	UpdateTranslated(ctx context.Context, id, sourcePath, translatedPath string, charCount, pageCount int, modelUsed string) error
 	GetByID(ctx context.Context, id string) (*model.File, error)
+	DeleteByID(ctx context.Context, id string) error
 }
 
 type fileRepo struct {
@@ -73,6 +74,10 @@ func (r *fileRepo) UpdateTranslated(ctx context.Context, id, sourcePath, transla
 		UpdatedAt:      time.Now().UTC().Format(time.RFC3339),
 		ID:             id,
 	})
+}
+
+func (r *fileRepo) DeleteByID(ctx context.Context, id string) error {
+	return r.q.DeleteFileByID(ctx, id)
 }
 
 func (r *fileRepo) GetByID(ctx context.Context, id string) (*model.File, error) {

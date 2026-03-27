@@ -130,7 +130,12 @@ func (c *controller) TranslateFile(ctx context.Context, req bridge.FileRequest) 
 		"sessionId": req.SessionID,
 	})
 
-	go c.runFileTranslate(ctx, fileTranslateParams{
+	jobCtx, cancel := context.WithCancel(ctx)
+	c.cancelMu.Lock()
+	c.cancels[fileID] = cancel
+	c.cancelMu.Unlock()
+
+	go c.runFileTranslate(jobCtx, fileTranslateParams{
 		SessionID:   req.SessionID,
 		FilePath:    clean,
 		FileID:      fileID,

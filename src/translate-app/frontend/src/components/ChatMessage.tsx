@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import {
   memo,
   useCallback,
@@ -41,7 +42,7 @@ import {
   IconFullscreen,
 } from '@/components/TranslationFullscreenModal'
 import { LazyChunkedMarkdown, LazyChunkedPlainText } from '@/components/LazyChunkedMarkdown'
-import { Copy, ChevronDown, FileText, ClipboardList } from 'lucide-react'
+import { Copy, ChevronDown, FileText, ClipboardList, X } from 'lucide-react'
 
 
 /** Snippet trích từ bản dịch gốc — giống mockup (≈140 ký tự). */
@@ -619,8 +620,11 @@ function FileTranslationCard({
   fileTranslateProgress?: FileProgress | null
   precedingUserContent?: string
 }) {
+  const cancelledFileIds = useUIStore((s) => s.cancelledFileIds)
+  const cancelledByUser = Boolean(m.fileId && cancelledFileIds.includes(m.fileId))
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
+  const [cancelPopoverOpen, setCancelPopoverOpen] = useState(false)
 
   const fileName =
     parseFileAttachmentDisplayName(precedingUserContent ?? '') ??
@@ -657,14 +661,26 @@ function FileTranslationCard({
   }
 
   return (
+    <>
     <div className="file-translation-card-wrap">
       <div className="file-translation-card">
         {/* Main row: icon + info */}
         <div className="file-translation-card-main">
-          <div className={`file-card-icon-wrap${streaming ? ' file-card-icon-wrap--streaming' : ''}`} aria-hidden>
-            <div className="user-file-bubble-icon" aria-hidden>
-              <FileText size={20} strokeWidth={1.5} />
-            </div>
+          <div className={`file-card-icon-wrap${streaming ? ' file-card-icon-wrap--streaming' : ''}`}>
+            {streaming ? (
+              <button
+                type="button"
+                className="file-card-cancel-btn"
+                aria-label="Hủy phiên dịch"
+                onClick={() => setCancelPopoverOpen((v) => !v)}
+              >
+                <X size={18} strokeWidth={2} />
+              </button>
+            ) : (
+              <div className="user-file-bubble-icon" aria-hidden>
+                <FileText size={20} strokeWidth={1.5} />
+              </div>
+            )}
             {streaming && (
               <svg className="file-card-progress-ring" viewBox="0 0 40 40" aria-hidden>
                 <defs>
@@ -683,11 +699,13 @@ function FileTranslationCard({
             )}
           </div>
           <div className="file-translation-card-info">
-            <span className="file-translation-card-name" title={fileName}>
+            <span className={`file-translation-card-name${cancelledByUser ? ' file-translation-card-name--cancelled' : ''}`} title={fileName}>
               {fileName}
             </span>
             <span className="file-translation-card-sub">
-              {streaming ? (
+              {cancelledByUser ? (
+                <span className="file-translation-card-cancelled">Đã hủy phiên dịch</span>
+              ) : streaming ? (
                 indeterminate ? 'Đang dịch...' : `Đang dịch · ${pct}%`
               ) : downloadError ? (
                 <span className="file-translation-card-error">{downloadError}</span>
@@ -707,7 +725,7 @@ function FileTranslationCard({
           className="btn-icon file-card-action-btn"
           aria-label="Tải file đã dịch"
           data-tooltip="Tải file đã dịch"
-          disabled={streaming || downloading || !m.fileId}
+          disabled={streaming || downloading || !m.fileId || cancelledByUser}
           onClick={() => void handleDownload()}
         >
           <IconDownload />
@@ -715,6 +733,42 @@ function FileTranslationCard({
       </div>
 
     </div>
+    {/* Cancel confirm popover — rendered via portal to escape transform stacking context */}
+    {cancelPopoverOpen && createPortal(
+      <div className="file-cancel-popover-backdrop" onClick={() => setCancelPopoverOpen(false)}>
+        <div
+          className="file-cancel-popover"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="file-cancel-popover-title"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p id="file-cancel-popover-title" className="file-cancel-popover-title">Hủy phiên dịch này</p>
+          <p className="file-cancel-popover-body">Bạn có chắc muốn hủy phiên dịch file <strong>{fileName}</strong>?</p>
+          <div className="file-cancel-popover-actions">
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => setCancelPopoverOpen(false)}
+            >
+              Thoát
+            </button>
+            <button
+              type="button"
+              className="btn-danger"
+              onClick={() => {
+                setCancelPopoverOpen(false)
+                if (m.fileId) void WailsService.cancelFileTranslate(m.fileId).catch(() => {})
+              }}
+            >
+              Hủy
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body,
+    )}
+    </>
   )
 }
 
@@ -883,7 +937,7 @@ function ChatMessageImpl({
             streaming={streaming}
             fileTranslateProgress={fileTranslateProgress}
             precedingUserContent={precedingUserContent}
-          />
+            />
           {!streaming && (
             <div className="card-footer-outside">
               {formatMessageFooterTime(m.updatedAt)}

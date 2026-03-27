@@ -10,6 +10,13 @@ import (
 	"database/sql"
 )
 
+const deleteMessagesByFileID = `DELETE FROM messages WHERE file_id = ?`
+
+func (q *Queries) DeleteMessagesByFileID(ctx context.Context, fileID string) error {
+	_, err := q.db.ExecContext(ctx, deleteMessagesByFileID, fileID)
+	return err
+}
+
 const getMaxDisplayOrder = `-- name: GetMaxDisplayOrder :one
 SELECT COALESCE(MAX(display_order), 0) AS max_order FROM messages WHERE session_id = ?
 `

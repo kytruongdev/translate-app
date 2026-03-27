@@ -2879,3 +2879,118 @@
   font-size: 12px;
   color: var(--error, #ef4444);
 }
+
+/* ── Cancel state ── */
+.file-translation-card-cancelled {
+  font-size: 12px;
+  color: var(--error, #ef4444);
+  font-weight: 500;
+}
+
+.file-translation-card-name--cancelled {
+  color: var(--text-secondary);
+}
+
+/* Cancel button (replaces docx icon while streaming, inside progress ring) */
+.file-card-cancel-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+  position: relative;
+  z-index: 1;
+}
+
+.file-card-cancel-btn:hover {
+  color: var(--error, #ef4444);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+/* ── Cancel confirm popover ── */
+.file-cancel-popover-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: transparent;
+}
+
+.file-cancel-popover {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, rgba(0,0,0,0.08));
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+  padding: 20px;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  z-index: 301;
+}
+
+.file-cancel-popover-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 8px;
+}
+
+.file-cancel-popover-body {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+.file-cancel-popover-body strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.file-cancel-popover-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.btn-secondary {
+  padding: 7px 14px;
+  border-radius: 7px;
+  border: 1px solid var(--border, rgba(0,0,0,0.12));
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  font-family: inherit;
+}
+
+.btn-secondary:hover {
+  background: var(--active, rgba(0,0,0,0.04));
+}
+
+.btn-danger {
+  padding: 7px 14px;
+  border-radius: 7px;
+  border: none;
+  background: var(--error, #ef4444);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  font-family: inherit;
+}
+
+.btn-danger:hover {
+  background: #dc2626;
+}

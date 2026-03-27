@@ -40,10 +40,30 @@ func estimateTokens(s string) int {
 }
 
 func (c *controller) runFileTranslate(ctx context.Context, p fileTranslateParams) {
+	defer func() {
+		c.cancelMu.Lock()
+		cancel, ok := c.cancels[p.FileID]
+		delete(c.cancels, p.FileID)
+		c.cancelMu.Unlock()
+		if ok {
+			cancel() // giải phóng context resource (no-op nếu đã cancel rồi)
+		}
+	}()
+
 	fail := func(msg string) {
-		_ = c.reg.File().UpdateStatus(ctx, p.FileID, "error", msg)
-		runtime.EventsEmit(ctx, "translation:error", msg)
-		runtime.EventsEmit(ctx, "file:error", msg)
+		bgCtx := context.Background()
+		if ctx.Err() != nil {
+			_ = c.reg.Message().DeleteByFileID(bgCtx, p.FileID)
+			_ = c.reg.File().DeleteByID(bgCtx, p.FileID)
+			runtime.EventsEmit(ctx, "file:cancelled", map[string]string{
+				"fileId":    p.FileID,
+				"sessionId": p.SessionID,
+			})
+		} else {
+			_ = c.reg.File().UpdateStatus(bgCtx, p.FileID, "error", msg)
+			runtime.EventsEmit(ctx, "translation:error", msg)
+			runtime.EventsEmit(ctx, "file:error", msg)
+		}
 	}
 
 	ext := fileExt(p.FilePath)
@@ -121,14 +141,15 @@ func (c *controller) runDocxTranslate(ctx context.Context, p fileTranslateParams
 	totalBatches := len(chunkDocxParagraphs(df.Paragraphs, charsPerChunk))
 
 	// Translate all paragraphs via XML pipeline.
+	// onProgress receives (completedBatches, totalBatches) — called after each batch finishes.
 	translations, totalTokens, err := c.translateDocxFile(ctx, df, docSrcHint, p.TargetLang, p.Style, p.Provider,
-		func(batchIdx, total int) {
+		func(completed, total int) {
 			pct := 0
 			if total > 0 {
-				pct = (batchIdx * 100) / total
+				pct = (completed * 100) / total
 			}
 			runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{
-				Chunk:   batchIdx + 1,
+				Chunk:   completed,
 				Total:   total,
 				Percent: pct,
 			})
