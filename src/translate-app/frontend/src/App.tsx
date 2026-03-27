@@ -410,6 +410,7 @@ export default function App() {
         setPendingFile(null)
         setDraft('')
         await loadMessages(sessionId)
+        void loadSessions()
         scrollFeedToBottom()
       } catch (e) {
         setSendError(e instanceof Error ? e.message : String(e))
@@ -475,6 +476,7 @@ export default function App() {
             style,
           })
           await loadMessages(sessionId)
+          void loadSessions()
           scrollFeedToBottom()
         } catch (e) {
           removeMessage(sessionId, optimistic.id)
@@ -561,6 +563,7 @@ export default function App() {
             fileDisplayContent: p.fileDisplayContent,
           })
           await loadMessages(sessionId)
+          void loadSessions()
           scrollFeedToBottom()
         } catch (e) {
           removeMessage(sessionId, optimistic.id)
@@ -619,6 +622,12 @@ export default function App() {
   const listSessions = useMemo(() => sessions.filter((s) => s.status !== 'pinned'), [sessions])
   const dayGroups = useMemo(() => groupSessionsByDay(listSessions), [listSessions])
 
+  const [sidebarAnimReady, setSidebarAnimReady] = useState(false)
+  useEffect(() => {
+    const t = window.setTimeout(() => setSidebarAnimReady(true), 400)
+    return () => window.clearTimeout(t)
+  }, [])
+
   const sidebarList =
     listSessions.length === 0
       ? null
@@ -626,7 +635,7 @@ export default function App() {
           <div key={g.key} className="sidebar-group today-group">
             <div className="sidebar-group-label">{g.label}</div>
             {g.sessions.map((sess) => (
-              <SessionRow key={sess.id} sess={sess} active={sess.id === activeSessionId} />
+              <SessionRow key={`${g.key}-${sess.id}`} sess={sess} active={sess.id === activeSessionId} />
             ))}
           </div>
         ))
@@ -662,12 +671,12 @@ export default function App() {
           <IconPlus />
           <span className="sidebar-label">Bắt đầu phiên dịch mới</span>
         </button>
-        <div className="sidebar-groups">
+        <div className={`sidebar-groups${sidebarAnimReady ? ' sidebar-anim-ready' : ''}`}>
           {pinnedSessions.length > 0 && (
             <div className="sidebar-group pinned-group">
               <div className="sidebar-group-label">Ghim</div>
               {pinnedSessions.map((sess) => (
-                <SessionRow key={sess.id} sess={sess} active={sess.id === activeSessionId} />
+                <SessionRow key={`pinned-${sess.id}`} sess={sess} active={sess.id === activeSessionId} />
               ))}
             </div>
           )}
