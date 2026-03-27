@@ -45,8 +45,13 @@ func (c *controller) GetMessages(ctx context.Context, sessionID string, cursor, 
 	if err != nil {
 		return nil, err
 	}
+	cancelledIDs, _ := c.reg.File().ListCancelledIDsBySession(ctx, sessionID)
+	if cancelledIDs == nil {
+		cancelledIDs = []string{}
+	}
+
 	if len(rows) == 0 {
-		return &bridge.MessagesPage{Messages: []model.Message{}, NextCursor: 0, HasMore: false}, nil
+		return &bridge.MessagesPage{Messages: []model.Message{}, NextCursor: 0, HasMore: false, CancelledFileIds: cancelledIDs}, nil
 	}
 
 	msgs := make([]model.Message, len(rows))
@@ -70,9 +75,10 @@ func (c *controller) GetMessages(ctx context.Context, sessionID string, cursor, 
 	}
 
 	return &bridge.MessagesPage{
-		Messages:   msgs,
-		NextCursor: nextCursor,
-		HasMore:    hasMore,
+		Messages:         msgs,
+		NextCursor:       nextCursor,
+		HasMore:          hasMore,
+		CancelledFileIds: cancelledIDs,
 	}, nil
 }
 
