@@ -12,4 +12,5 @@ type (
 	FileContent                 = bridge.FileContent
 	FileResult                  = bridge.FileResult
 	MessagesPage                = bridge.MessagesPage
+	SearchResult                = bridge.SearchResult
 )

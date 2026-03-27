@@ -21,6 +21,8 @@ type Controller interface {
 	CreateEmptySession(ctx context.Context, title, targetLang, style string) (string, error)
 	// CopyTranslationText returns trimmed translated text for an assistant message (clipboard set in handler).
 	CopyTranslationText(ctx context.Context, messageID string) (string, error)
+	// SearchMessages searches across all sessions.
+	SearchMessages(ctx context.Context, query string) ([]bridge.SearchResult, error)
 }
 
 type controller struct {
@@ -95,4 +97,8 @@ func (c *controller) CopyTranslationText(ctx context.Context, messageID string) 
 		return "", errors.New("translation is empty")
 	}
 	return t, nil
+}
+
+func (c *controller) SearchMessages(ctx context.Context, query string) ([]bridge.SearchResult, error) {
+	return c.reg.Message().SearchMessages(ctx, query)
 }

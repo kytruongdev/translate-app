@@ -3,8 +3,10 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 
+	"translate-app/internal/bridge"
 	"translate-app/internal/model"
 	"translate-app/internal/repository/sqlcgen"
 )
@@ -17,10 +19,12 @@ type MessageRepo interface {
 	UpdateSourceLang(ctx context.Context, id, sourceLang string) error
 	GetByID(ctx context.Context, id string) (*model.Message, error)
 	DeleteByFileID(ctx context.Context, fileID string) error
+	SearchMessages(ctx context.Context, query string) ([]bridge.SearchResult, error)
 }
 
 type messageRepo struct {
-	q *sqlcgen.Queries
+	q  *sqlcgen.Queries
+	db *sql.DB
 }
 
 func (r *messageRepo) Insert(ctx context.Context, msg *model.Message) error {
@@ -126,4 +130,87 @@ func (r *messageRepo) GetByID(ctx context.Context, id string) (*model.Message, e
 		return nil, err
 	}
 	return &m, nil
+}
+
+func (r *messageRepo) SearchMessages(ctx context.Context, query string) ([]bridge.SearchResult, error) {
+	if strings.TrimSpace(query) == "" {
+		return []bridge.SearchResult{}, nil
+	}
+	const searchSQL = `
+		SELECT m.id, m.session_id, m.role, m.original_content, m.translated_content, m.created_at,
+		       s.title AS session_title
+		FROM messages m
+		JOIN sessions s ON s.id = m.session_id
+		WHERE s.status NOT IN ('deleted', 'archived')
+		  AND (
+		    LOWER(m.original_content)   LIKE '%' || LOWER(?) || '%'
+		    OR LOWER(m.translated_content) LIKE '%' || LOWER(?) || '%'
+		  )
+		ORDER BY m.created_at DESC
+		LIMIT 50
+	`
+	rows, err := r.db.QueryContext(ctx, searchSQL, query, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []bridge.SearchResult
+	for rows.Next() {
+		var (
+			id, sessionID, role, originalContent, createdAt, sessionTitle string
+			translatedContent                                              sql.NullString
+		)
+		if err := rows.Scan(&id, &sessionID, &role, &originalContent, &translatedContent, &createdAt, &sessionTitle); err != nil {
+			return nil, err
+		}
+		content := originalContent
+		if translatedContent.Valid && translatedContent.String != "" {
+			content = translatedContent.String
+		}
+		results = append(results, bridge.SearchResult{
+			MessageID:    id,
+			SessionID:    sessionID,
+			SessionTitle: sessionTitle,
+			Role:         role,
+			Snippet:      extractSnippet(content, query),
+			CreatedAt:    createdAt,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if results == nil {
+		return []bridge.SearchResult{}, nil
+	}
+	return results, nil
+}
+
+func extractSnippet(content, query string) string {
+	const maxLen = 120
+	content = strings.ReplaceAll(content, "\n", " ")
+	if len(content) <= maxLen {
+		return content
+	}
+	lower := strings.ToLower(content)
+	idx := strings.Index(lower, strings.ToLower(query))
+	if idx == -1 {
+		return content[:maxLen] + "…"
+	}
+	start := idx - 40
+	if start < 0 {
+		start = 0
+	}
+	end := idx + len(query) + 60
+	if end > len(content) {
+		end = len(content)
+	}
+	snippet := content[start:end]
+	if start > 0 {
+		snippet = "…" + snippet
+	}
+	if end < len(content) {
+		snippet += "…"
+	}
+	return snippet
 }

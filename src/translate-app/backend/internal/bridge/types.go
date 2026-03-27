@@ -87,3 +87,13 @@ type FileProgress struct {
 	Total   int `json:"total"`
 	Percent int `json:"percent"`
 }
+
+// SearchResult — one hit from SearchMessages.
+type SearchResult struct {
+	MessageID    string `json:"messageId"`
+	SessionID    string `json:"sessionId"`
+	SessionTitle string `json:"sessionTitle"`
+	Role         string `json:"role"`
+	Snippet      string `json:"snippet"`
+	CreatedAt    string `json:"createdAt"`
+}

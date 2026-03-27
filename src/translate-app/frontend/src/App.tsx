@@ -24,7 +24,7 @@ import { ChatMessageVirtualList, formatStickyDate } from '@/components/ChatMessa
 import type { RetranslatePayload } from '@/components/ChatMessage'
 import { ChatSessionLoadingPreview } from '@/components/ChatSessionLoadingPreview'
 import { ChatInputBar } from '@/components/ChatInputBar'
-import type { FileInfo, PendingFilePick } from '@/types/ipc'
+import type { FileInfo, PendingFilePick, SearchResult } from '@/types/ipc'
 import { MAX_FILE_PAGE_COUNT, type FileProgress } from '@/types/file'
 import { titleFromFileName } from '@/utils/fileTitle'
 import { SettingsPopover } from '@/components/SettingsPopover'
@@ -63,6 +63,18 @@ const IconSettings = () => (
       strokeWidth={2}
       d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
     />
+  </svg>
+)
+
+const IconSearch = () => (
+  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m0 0A7.5 7.5 0 104.5 4.5a7.5 7.5 0 0012.15 12.15z" />
+  </svg>
+)
+
+const IconArrowLeft = () => (
+  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
   </svg>
 )
 
@@ -128,6 +140,15 @@ export default function App() {
   const [fileTranslateProgress, setFileTranslateProgress] = useState<FileProgress | null>(null)
   const addCancelledFileId = useUIStore((s) => s.addCancelledFileId)
 
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [scrollToMessageId, setScrollToMessageId] = useState<string | null>(null)
+  const [highlightMessageId, setHighlightMessageId] = useState<string | null>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const feedRef = useRef<HTMLDivElement>(null)
   const sendLockRef = useRef(false)
   const settingsAnchorRef = useRef<HTMLDivElement>(null)
@@ -154,6 +175,48 @@ export default function App() {
       })
     })
   }, [])
+
+  const handleSearchQueryChange = useCallback((q: string) => {
+    setSearchQuery(q)
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
+    if (!q.trim()) { setSearchResults([]); setSearchLoading(false); return }
+    setSearchLoading(true)
+    searchDebounceRef.current = setTimeout(async () => {
+      try {
+        const results = await WailsService.searchMessages(q.trim())
+        setSearchResults(results)
+      } catch {
+        setSearchResults([])
+      } finally {
+        setSearchLoading(false)
+      }
+    }, 300)
+  }, [])
+
+  const handleJumpToMessage = useCallback((result: SearchResult) => {
+    setSearchOpen(false)
+    setScrollToMessageId(result.messageId)
+    setActiveSession(result.sessionId)
+  }, [setActiveSession])
+
+  const handleScrollToMessageDone = useCallback(() => {
+    const id = scrollToMessageId
+    setScrollToMessageId(null)
+    setHighlightMessageId(id)
+    setTimeout(() => setHighlightMessageId(null), 1800)
+  }, [scrollToMessageId])
+
+  // If scrollToMessageId target not yet loaded, load more pages until found.
+  useEffect(() => {
+    if (!scrollToMessageId || !activeSessionId) return
+    const found = messages.some((m) => m.id === scrollToMessageId)
+    if (found) return
+    if (hasMoreMap[activeSessionId]) {
+      void loadMoreMessages(activeSessionId)
+    } else {
+      setScrollToMessageId(null)
+    }
+  }, [scrollToMessageId, messages, activeSessionId, hasMoreMap, loadMoreMessages])
 
   useEffect(() => {
     void loadSettings()
@@ -654,6 +717,53 @@ export default function App() {
   return (
     <div className="layout">
       <aside className={drawerClass}>
+        {searchOpen && (
+          <div className="search-panel">
+            <div className="search-panel-header">
+              <button
+                type="button"
+                className="search-panel-back"
+                onClick={() => { setSearchOpen(false); setSearchQuery(''); setSearchResults([]) }}
+                aria-label="Đóng tìm kiếm"
+              >
+                <IconArrowLeft />
+              </button>
+              <input
+                ref={searchInputRef}
+                type="text"
+                className="search-panel-input"
+                placeholder="Tìm kiếm trong tất cả phiên…"
+                value={searchQuery}
+                onChange={(e) => handleSearchQueryChange(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="search-panel-body">
+              {searchLoading && (
+                <div className="search-panel-state">Đang tìm kiếm…</div>
+              )}
+              {!searchLoading && searchQuery.trim() && searchResults.length === 0 && (
+                <div className="search-panel-state">Không tìm thấy kết quả</div>
+              )}
+              {!searchLoading && searchResults.map((r) => (
+                <button
+                  key={r.messageId}
+                  type="button"
+                  className="search-result-item"
+                  onClick={() => handleJumpToMessage(r)}
+                >
+                  <div className="search-result-session">{r.sessionTitle}</div>
+                  <div className="search-result-snippet">{r.snippet}</div>
+                  <div className="search-result-meta">
+                    {r.role === 'assistant' ? 'Bản dịch' : 'Văn bản gốc'}
+                    {' · '}
+                    {new Date(r.createdAt).toLocaleDateString('vi-VN')}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="drawer-header">
           <button
             type="button"
@@ -694,6 +804,15 @@ export default function App() {
           {sidebarList}
         </div>
         <div className="sidebar-footer">
+          <button
+            type="button"
+            className="btn-sidebar-search"
+            onClick={() => setSearchOpen(true)}
+            aria-label="Tìm kiếm"
+          >
+            <IconSearch />
+            <span className="sidebar-label">Tìm kiếm</span>
+          </button>
           <div className="settings-anchor" ref={settingsAnchorRef}>
             <button
               type="button"
@@ -789,6 +908,9 @@ export default function App() {
                       onRetranslate={handleRetranslate}
                       scrollElementRef={feedRef}
                       onScrollDate={handleScrollDate}
+                      scrollToMessageId={scrollToMessageId}
+                      onScrollToMessageDone={handleScrollToMessageDone}
+                      highlightMessageId={highlightMessageId}
                     />
                   )}
                 </div>

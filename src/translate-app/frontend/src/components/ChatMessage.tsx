@@ -925,6 +925,8 @@ type ChatMessageProps = {
   /** Tin assistant ngay sau user dịch lại (`originalMessageId`). */
   retranslateFollowUp?: boolean
   onRetranslate?: (p: RetranslatePayload) => Promise<void>
+  /** Highlight this message (from search jump). */
+  highlight?: boolean
 }
 
 function ChatMessageImpl({
@@ -936,6 +938,7 @@ function ChatMessageImpl({
   retranslateQuoteAssistant,
   retranslateFollowUp,
   onRetranslate,
+  highlight,
 }: ChatMessageProps) {
   const selectStreamBuf = useCallback(
     (s: MessageStore) => {
@@ -994,7 +997,7 @@ function ChatMessageImpl({
       )
     }
     return (
-      <div className="chat-msg user" id={`chat-msg-${m.id}`}>
+      <div className={`chat-msg user${highlight ? ' chat-msg--highlight' : ''}`} id={`chat-msg-${m.id}`}>
         <div className="avatar" aria-hidden>
           U
         </div>
@@ -1019,7 +1022,7 @@ function ChatMessageImpl({
 
   if (m.displayMode === 'file') {
     return (
-      <div className="chat-msg assistant" id={`chat-msg-${m.id}`}>
+      <div className={`chat-msg assistant${highlight ? ' chat-msg--highlight' : ''}`} id={`chat-msg-${m.id}`}>
         <div className="avatar assistant-avatar" aria-hidden>
           ✦
         </div>
@@ -1043,7 +1046,7 @@ function ChatMessageImpl({
   if (m.displayMode === 'bilingual') {
     return (
       <div
-        className={`chat-msg assistant${retranslateFollowUp ? ' retranslate-reply' : ''}`}
+        className={`chat-msg assistant${retranslateFollowUp ? ' retranslate-reply' : ''}${highlight ? ' chat-msg--highlight' : ''}`}
         id={`chat-msg-${m.id}`}
       >
         <div className="avatar assistant-avatar" aria-hidden>
@@ -1076,7 +1079,7 @@ function ChatMessageImpl({
   }
 
   return (
-    <div className={`chat-msg assistant${retranslateFollowUp ? ' retranslate-reply' : ''}`} id={`chat-msg-${m.id}`}>
+    <div className={`chat-msg assistant${retranslateFollowUp ? ' retranslate-reply' : ''}${highlight ? ' chat-msg--highlight' : ''}`} id={`chat-msg-${m.id}`}>
       <div className="avatar assistant-avatar" aria-hidden>
         ✦
       </div>
@@ -1129,7 +1132,8 @@ function chatMessagePropsEqual(a: ChatMessageProps, b: ChatMessageProps): boolea
     a.precedingUserContent === b.precedingUserContent &&
     a.retranslateFollowUp === b.retranslateFollowUp &&
     a.retranslateQuoteAssistant === b.retranslateQuoteAssistant &&
-    a.nextAssistant === b.nextAssistant
+    a.nextAssistant === b.nextAssistant &&
+    a.highlight === b.highlight
   )
 }
 
