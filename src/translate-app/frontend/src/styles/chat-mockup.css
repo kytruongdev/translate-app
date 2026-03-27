@@ -42,6 +42,7 @@
   background: var(--active);
 }
 
+
 .session-item-menu-wrap {
   position: relative;
   flex-shrink: 0;
@@ -214,6 +215,15 @@
 }
 
 /* ─── Chat feed ─── */
+.chat-feed-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 .chat-feed {
   flex: 1;
   overflow-y: auto;
@@ -257,6 +267,53 @@
   padding: 12px 0 4px;
   font-size: 12px;
   color: var(--text-tertiary);
+}
+
+/* ── Date separator between different-day messages ── */
+.chat-date-sep {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  width: 100%;
+  padding: 8px 0 20px;
+}
+
+.chat-date-sep-pill {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  padding: 3px 12px;
+  border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+  border-radius: 20px;
+  background: var(--surface);
+  backdrop-filter: blur(6px);
+  white-space: nowrap;
+}
+
+/* ── Sticky date badge ── */
+.chat-sticky-date {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  padding: 3px 12px;
+  border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+  border-radius: 20px;
+  background: var(--surface);
+  backdrop-filter: blur(6px);
+  white-space: nowrap;
+}
+
+.chat-sticky-date--visible {
+  opacity: 1;
 }
 
 .chat-load-more-ring {
@@ -356,13 +413,13 @@
 .chat-msg.user .chat-bubble {
   background: var(--bubble-user-bg);
   color: var(--text);
-  border-bottom-right-radius: 4px;
+  border-top-right-radius: 4px;
 }
 
 .chat-msg.assistant .chat-bubble {
   background: var(--bubble-assistant-bg);
   color: var(--text);
-  border-bottom-left-radius: 4px;
+  border-top-left-radius: 4px;
   /* 0 = đích nội suy khi tắt streaming — tránh nhảy đột ngột từ min-width/min-height lớn về “xin chào” ngắn */
   min-width: 0;
   min-height: 0;
@@ -477,6 +534,18 @@
   margin-top: 2px;
 }
 
+.chat-msg.user .chat-lang-label {
+  text-align: right;
+}
+
+.chat-bubble-inner-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  opacity: 0.7;
+  text-align: right;
+  margin-top: 4px;
+}
+
 /* Văn bản dài đã dán — mockup .user-text-upload / .text-upload-bubble (không lặp full text trong bubble user) */
 .chat-msg.user.user-text-upload .text-upload-bubble {
   display: flex;
@@ -485,7 +554,7 @@
   gap: 6px;
   padding: 12px 16px;
   border-radius: var(--r-large);
-  border-bottom-right-radius: 4px;
+  border-top-right-radius: 4px;
   background: var(--bubble-user-bg);
   box-shadow: var(--shadow-elev1);
   max-width: 100%;
@@ -497,7 +566,7 @@
   gap: 10px;
 }
 
-.chat-msg.user.user-text-upload .text-upload-bubble svg {
+.chat-msg.user.user-text-upload .text-upload-bubble:not(.user-file-bubble) svg {
   width: 20px;
   height: 20px;
   color: var(--text-secondary);
@@ -514,6 +583,101 @@
 .chat-msg.user.user-file-attachment .text-upload-bubble .preview-title {
   white-space: normal;
   word-break: break-word;
+}
+
+/* User file attachment bubble — redesigned */
+.user-file-bubble {
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding: 10px 14px !important;
+}
+
+.file-card-icon-wrap {
+  position: relative;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+}
+
+.user-file-bubble-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--text-secondary);
+  transition: opacity 0.2s ease;
+}
+
+
+.file-card-icon-wrap--streaming .user-file-bubble-icon {
+  opacity: 0.5;
+}
+
+/* ── Circular progress ring ── */
+.file-card-progress-ring {
+  position: absolute;
+  inset: 0;
+  width: 40px;
+  height: 40px;
+  transform: rotate(-90deg);
+  pointer-events: none;
+}
+
+.file-card-progress-track {
+  fill: none;
+  stroke: color-mix(in srgb, var(--ring-assistant) 25%, transparent);
+  stroke-width: 2.5;
+}
+
+.file-card-progress-arc {
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 119.4;
+  stroke-dashoffset: 119.4;
+  transition: stroke-dashoffset 0.4s ease;
+}
+
+.file-card-progress-arc--spin {
+  stroke-dasharray: 30 89.4;
+  stroke-dashoffset: 0;
+  animation: file-card-arc-spin 0.9s linear infinite;
+}
+
+@keyframes file-card-arc-spin {
+  to { stroke-dashoffset: -119.4; }
+}
+
+[data-theme='dark'] .user-file-bubble-icon {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+
+
+.user-file-bubble-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.user-file-bubble-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: normal;
+  word-break: break-word;
+}
+
+.user-file-bubble-size {
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 
 .chat-msg.user.user-text-upload .chat-msg-body > .chat-lang-label {
@@ -855,6 +1019,8 @@
 
 .card-topbar-left {
   min-width: 0;
+  display: flex;
+  align-items: center;
 }
 
 .card-topbar-center {
@@ -883,6 +1049,25 @@
 
 .card-inline-title:empty {
   display: none;
+}
+
+.card-inline-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.card-inline-meta-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.card-inline-meta-sub {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
 }
 
 .card-inline-actions {
@@ -2223,7 +2408,8 @@
   pointer-events: auto;
 }
 
-.assistant-bubble-actions .btn-icon {
+.assistant-bubble-actions .btn-icon,
+.file-translation-card-actions .btn-icon {
   width: 32px;
   height: 32px;
 }
@@ -2233,7 +2419,9 @@
  * Style gần mockup .m3-tooltip — hiện phía trên nút.
  */
 .assistant-bubble-actions .btn-icon[data-tooltip],
-.translation-card .card-inline-actions .btn-icon[data-tooltip] {
+.translation-card .card-inline-actions .btn-icon[data-tooltip],
+.fullscreen-modal .card-inline-actions .btn-icon[data-tooltip],
+.file-translation-card-actions .btn-icon[data-tooltip] {
   position: relative;
 }
 
@@ -2264,6 +2452,50 @@
   transition:
     opacity 0.12s var(--ease),
     visibility 0.12s var(--ease);
+}
+
+/* File card actions nằm ngoài card → tooltip phía trên, không bị clip */
+.file-translation-card-actions .btn-icon[data-tooltip]::before {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  translate: -50% 0;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(17, 24, 39, 0.92);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  z-index: 100;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.12);
+  transition: opacity 0.12s var(--ease), visibility 0.12s var(--ease);
+}
+
+/* Fullscreen modal — tooltip phía dưới nút (topbar ở trên cùng, lên trên bị clip) */
+.fullscreen-modal .card-inline-actions .btn-icon[data-tooltip]::before {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  translate: -50% 0;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(17, 24, 39, 0.92);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  z-index: 100;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.12);
+  transition: opacity 0.12s var(--ease), visibility 0.12s var(--ease);
 }
 
 /* Card có overflow:hidden — tooltip phía trên bị cắt → đặt dưới nút */
@@ -2307,7 +2539,11 @@
 .assistant-bubble-actions .btn-icon[data-tooltip]:hover::before,
 .assistant-bubble-actions .btn-icon[data-tooltip]:focus-visible::before,
 .translation-card .card-inline-actions .btn-icon[data-tooltip]:hover::before,
-.translation-card .card-inline-actions .btn-icon[data-tooltip]:focus-visible::before {
+.translation-card .card-inline-actions .btn-icon[data-tooltip]:focus-visible::before,
+.fullscreen-modal .card-inline-actions .btn-icon[data-tooltip]:hover::before,
+.fullscreen-modal .card-inline-actions .btn-icon[data-tooltip]:focus-visible::before,
+.file-translation-card-actions .btn-icon[data-tooltip]:hover::before,
+.file-translation-card-actions .btn-icon[data-tooltip]:focus-visible::before {
   opacity: 1;
   visibility: visible;
 }
@@ -2507,4 +2743,309 @@
 .input-popover button.is-active {
   font-weight: 600;
   background: var(--active);
+}
+
+/* ── File Translation Card ───────────────────────────────────────────────── */
+/* ── File translation card ── */
+.file-translation-card-wrap {
+  position: relative;
+}
+
+.file-translation-card {
+  background: var(--bubble-assistant-bg);
+  border-radius: var(--r-large);
+  border-top-left-radius: 4px;
+  overflow: hidden;
+  box-shadow: var(--shadow-elev1);
+  transition: box-shadow 0.25s var(--ease);
+  width: fit-content;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+}
+
+.file-translation-card-wrap:hover .file-translation-card {
+  box-shadow: var(--shadow-elev2);
+}
+
+/* Main row */
+.file-translation-card-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 14px 12px;
+}
+
+/* Word "W" icon */
+.file-translation-card-word-icon {
+  width: 40px;
+  height: 40px;
+  background: #2b579a;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.file-translation-card-word-icon span {
+  color: #fff;
+  font-size: 20px;
+  font-weight: 700;
+  font-family: sans-serif;
+  line-height: 1;
+}
+
+/* File info */
+.file-translation-card-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.file-translation-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-translation-card-sub {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* Action buttons — float above card, hidden until hover (like assistant-bubble-actions) */
+.file-translation-card-actions {
+  position: absolute;
+  top: -12px;
+  right: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--surface);
+  border-radius: 20px;
+  box-shadow: var(--shadow-elev1);
+  padding: 2px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+.file-translation-card-wrap:hover .file-translation-card-actions,
+.file-translation-card-wrap:focus-within .file-translation-card-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.file-card-action-btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Progress bar */
+.file-translation-card-progress {
+  padding: 0 14px 12px;
+}
+
+.file-translation-card-progress-bar {
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.file-translation-card-progress-fill {
+  height: 100%;
+  background: var(--accent, #6366f1);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.file-translation-card-progress-fill.indeterminate {
+  width: 40%;
+  animation: progress-indeterminate 1.4s ease-in-out infinite;
+}
+
+@keyframes progress-indeterminate {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+
+.file-translation-card-error {
+  font-size: 12px;
+  color: var(--error, #ef4444);
+}
+
+/* ── Cancel state ── */
+.file-translation-card-cancelled {
+  font-size: 12px;
+  color: var(--error, #f87171);
+  font-weight: 500;
+}
+
+.file-translation-card-name--cancelled {
+  color: var(--text-secondary);
+}
+
+/* Cancel button (replaces docx icon while streaming, inside progress ring) */
+.file-card-cancel-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s ease;
+  position: relative;
+  z-index: 1;
+}
+
+.file-card-cancel-btn svg {
+  transition: transform 0.15s ease;
+}
+
+.file-card-cancel-btn:hover {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.file-card-cancel-btn:hover svg {
+  transform: scale(1.25);
+}
+
+.file-cancel-btn-tooltip {
+  position: fixed;
+  transform: translate(-50%, -100%);
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(17, 24, 39, 0.92);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 400;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+/* ── Cancel confirm popover ── */
+.file-cancel-popover-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: transparent;
+}
+
+.file-cancel-popover {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-radius: 16px;
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.15),
+    0 4px 16px rgba(0, 0, 0, 0.08);
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  z-index: 301;
+  animation: popover-enter 0.2s var(--ease-out) forwards;
+}
+
+.file-cancel-popover::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  width: 12px;
+  height: 12px;
+  background: var(--surface);
+  box-shadow: -2px -2px 4px rgba(0, 0, 0, 0.06);
+}
+
+.file-cancel-popover.is-above::before {
+  top: auto;
+  bottom: -6px;
+  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+[data-theme='dark'] .file-cancel-popover {
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.35),
+    0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+[data-theme='dark'] .file-cancel-popover::before {
+  box-shadow: -2px -2px 4px rgba(0, 0, 0, 0.25);
+}
+
+[data-theme='dark'] .file-cancel-popover.is-above::before {
+  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.25);
+}
+
+.file-cancel-popover-header {
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.file-cancel-popover-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.file-cancel-popover-body {
+  padding: 10px 16px 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.file-cancel-popover-body strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.file-cancel-popover-actions {
+  padding: 10px 16px 12px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.file-cancel-popover-btn {
+  height: 40px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    filter 0.2s var(--ease),
+    background 0.2s var(--ease);
+}
+
+.file-cancel-popover-btn.cancel {
+  background: var(--input-bg);
+  color: var(--text);
+}
+
+.file-cancel-popover-btn.confirm {
+  background: var(--primary);
+  color: var(--primary-on);
+}
+
+.file-cancel-popover-btn:hover {
+  filter: brightness(0.97);
 }

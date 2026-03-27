@@ -20,6 +20,7 @@ type DisplayMode string
 const (
 	DisplayModeBubble    DisplayMode = "bubble"
 	DisplayModeBilingual DisplayMode = "bilingual"
+	DisplayModeFile      DisplayMode = "file"
 )
 
 type Message struct {

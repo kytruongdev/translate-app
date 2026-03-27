@@ -58,6 +58,14 @@ func Open() (*sql.DB, error) {
 }
 
 func runMigrations(db *sql.DB) error {
+	// Ensure migration tracking table exists.
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
+		filename   TEXT PRIMARY KEY,
+		applied_at TEXT NOT NULL
+	)`); err != nil {
+		return fmt.Errorf("create schema_migrations: %w", err)
+	}
+
 	entries, err := fs.ReadDir(migrationFS, "migrations")
 	if err != nil {
 		return err
@@ -70,13 +78,27 @@ func runMigrations(db *sql.DB) error {
 		names = append(names, e.Name())
 	}
 	sort.Strings(names)
+
 	for _, name := range names {
+		var count int
+		_ = db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE filename = ?`, name).Scan(&count)
+		if count > 0 {
+			continue // already applied
+		}
+
 		body, err := migrationFS.ReadFile(filepath.Join("migrations", name))
 		if err != nil {
 			return err
 		}
 		if _, err := db.Exec(string(body)); err != nil {
 			return fmt.Errorf("migration %s: %w", name, err)
+		}
+
+		if _, err := db.Exec(
+			`INSERT INTO schema_migrations (filename, applied_at) VALUES (?, ?)`,
+			name, time.Now().UTC().Format(time.RFC3339),
+		); err != nil {
+			return fmt.Errorf("record migration %s: %w", name, err)
 		}
 	}
 	return nil

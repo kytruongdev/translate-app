@@ -1,4 +1,5 @@
 import type { Session } from '@/types/session'
+import { formatDateLabel, dateGroupKey } from '@/utils/dateLabel'
 
 export interface SessionDayGroup {
   key: string
@@ -6,31 +7,12 @@ export interface SessionDayGroup {
   sessions: Session[]
 }
 
-function startOfDay(d: Date): Date {
-  const x = new Date(d)
-  x.setHours(0, 0, 0, 0)
-  return x
-}
-
-/** Số ngày (theo lịch) từ `day` đến `now` — 0 = cùng ngày. */
-function calendarDaysBefore(now: Date, day: Date): number {
-  const a = startOfDay(now).getTime()
-  const b = startOfDay(day).getTime()
-  return Math.round((a - b) / 86400000)
-}
-
 function labelForDay(now: Date, day: Date): { key: string; label: string } {
-  const n = calendarDaysBefore(now, day)
-  if (n === 0) return { key: 'today', label: 'Hôm nay' }
-  if (n === 1) return { key: 'yesterday', label: 'Hôm qua' }
-  if (n >= 2 && n < 7) return { key: `ago-${n}`, label: `${n} ngày trước` }
-  const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`
-  const label = day.toLocaleDateString('vi-VN', {
-    weekday: 'long',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  })
+  const key = dateGroupKey(day)
+  const label = formatDateLabel(day, now)
+  // sidebar dùng key cố định cho today/yesterday để CSS target dễ hơn
+  if (label === 'Hôm nay') return { key: 'today', label }
+  if (label === 'Hôm qua') return { key: 'yesterday', label }
   return { key, label }
 }
 

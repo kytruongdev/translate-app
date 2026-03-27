@@ -36,8 +36,6 @@ export function FileAttachment({
             ) : (
               <>
                 {formatFileSize(fileInfo.fileSize)}
-                {fileInfo.pageCount != null && fileInfo.pageCount > 0 ? ` · ${fileInfo.pageCount} trang` : ''}
-                {fileInfo.estimatedMinutes > 0 ? ` · ~${fileInfo.estimatedMinutes} phút` : ''}
               </>
             )}
           </span>

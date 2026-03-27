@@ -9,14 +9,21 @@ import (
 )
 
 type StreamEvent struct {
-	Type    string // "chunk" | "done" | "error"
-	Content string
-	Error   error
+	Type       string // "chunk" | "done" | "error" | "usage"
+	Content    string
+	Error      error
+	TokensUsed int // set on Type=="usage" (OpenAI only; 0 for other providers)
 }
 
 type AIProvider interface {
 	// TranslateStream streams translated text. preserveMarkdown adds §9.1 Markdown preservation when true (e.g. displayMode bilingual).
 	TranslateStream(ctx context.Context, text, from, to, style string, preserveMarkdown bool, events chan<- StreamEvent) error
+	// TranslateBatchStream streams a DOCX paragraph batch translation using a dedicated system prompt
+	// that explicitly preserves <<<N>>> markers without conflicting "output-only" instructions.
+	TranslateBatchStream(ctx context.Context, text, from, to, style string, events chan<- StreamEvent) error
+	// MaxBatchConcurrency returns how many DOCX batches can run in parallel.
+	// Local providers (Ollama) return 1; cloud providers return higher values.
+	MaxBatchConcurrency() int
 }
 
 // NewFromSettings returns the default AI client from persisted settings.

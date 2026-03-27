@@ -142,7 +142,29 @@
 }
 
 [data-theme='dark'] .sidebar-group.pinned-group {
-  background: color-mix(in srgb, var(--card-bg) 70%, #000);
+  background: color-mix(in srgb, var(--sidebar) 95%, white);
+}
+
+@keyframes session-arrive {
+  0% {
+    opacity: 0;
+    transform: translateY(-6px);
+    background: color-mix(in srgb, var(--accent, #6366f1) 12%, transparent);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(0);
+    background: color-mix(in srgb, var(--accent, #6366f1) 12%, transparent);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+    background: transparent;
+  }
+}
+
+.sidebar-anim-ready .session-item {
+  animation: session-arrive 0.55s ease-out both;
 }
 
 .sidebar-group.pinned-group .sidebar-group-label {
@@ -245,7 +267,7 @@
 }
 
 [data-theme='dark'] .sidebar-group.today-group:hover {
-  background: color-mix(in srgb, var(--card-bg) 70%, #000);
+  background: color-mix(in srgb, var(--sidebar) 95%, white);
 }
 
 .sidebar-group-label {

@@ -16,6 +16,7 @@ type MessageRepo interface {
 	UpdateOriginalContent(ctx context.Context, id, original string) error
 	UpdateSourceLang(ctx context.Context, id, sourceLang string) error
 	GetByID(ctx context.Context, id string) (*model.Message, error)
+	DeleteByFileID(ctx context.Context, fileID string) error
 }
 
 type messageRepo struct {
@@ -106,6 +107,10 @@ func (r *messageRepo) UpdateOriginalContent(ctx context.Context, id, original st
 		UpdatedAt:       time.Now().UTC().Format(time.RFC3339),
 		ID:              id,
 	})
+}
+
+func (r *messageRepo) DeleteByFileID(ctx context.Context, fileID string) error {
+	return r.q.DeleteMessagesByFileID(ctx, fileID)
 }
 
 func (r *messageRepo) GetByID(ctx context.Context, id string) (*model.Message, error) {

@@ -7,6 +7,50 @@ import (
 
 const defaultChunkRunes = 2500
 
+// chunkDocxParagraphs groups DocxParagraph slices into batches for translation.
+// Each batch contains as many paragraphs as fit within maxChars (rune count).
+// A single paragraph that exceeds maxChars is placed in its own batch.
+// Paragraph boundaries are never split.
+func chunkDocxParagraphs(paras []DocxParagraph, maxChars int) [][]DocxParagraph {
+	if maxChars < 1 {
+		maxChars = defaultChunkRunes
+	}
+	var batches [][]DocxParagraph
+	var cur []DocxParagraph
+	curRunes := 0
+
+	for i := range paras {
+		p := paras[i]
+		r := utf8.RuneCountInString(p.Text)
+		if r == 0 {
+			// Empty paragraph: include in current batch as a no-op placeholder
+			// so index alignment with translations slice is preserved.
+			cur = append(cur, p)
+			continue
+		}
+		add := r
+		if len(cur) > 0 {
+			add++ // account for separator between paragraphs
+		}
+		if curRunes+add <= maxChars {
+			cur = append(cur, p)
+			curRunes += add
+			continue
+		}
+		if len(cur) > 0 {
+			batches = append(batches, cur)
+			cur = nil
+			curRunes = 0
+		}
+		cur = append(cur, p)
+		curRunes = r
+	}
+	if len(cur) > 0 {
+		batches = append(batches, cur)
+	}
+	return batches
+}
+
 func chunkRunes(s string, maxRunes int) []string {
 	if maxRunes < 1 {
 		maxRunes = defaultChunkRunes

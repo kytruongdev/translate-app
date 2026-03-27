@@ -21,6 +21,11 @@ func (a *App) TranslateFile(req FileRequest) error {
 	return a.ctrl.File.TranslateFile(a.appCtx(), req)
 }
 
+// CancelFileTranslate cancels an in-progress file translation and deletes its records — E6.
+func (a *App) CancelFileTranslate(fileID string) error {
+	return a.ctrl.File.CancelFileTranslate(a.appCtx(), fileID)
+}
+
 // GetFileContent loads source + translated markdown from disk — E6.
 func (a *App) GetFileContent(fileID string) (*FileContent, error) {
 	return a.ctrl.File.GetFileContent(a.appCtx(), fileID)

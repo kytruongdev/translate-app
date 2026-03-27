@@ -24,7 +24,10 @@ export function ModelAIModal({ onClose }: { onClose: () => void }) {
   async function onSave() {
     setSaving(true)
     try {
-      const activeModel = provider === 'ollama' ? 'qwen2.5:7b' : 'gemini-2.0-flash'
+      const activeModel =
+        provider === 'ollama' ? 'qwen2.5:7b'
+        : provider === 'openai' ? 'gpt-4o-mini'
+        : 'gemini-2.0-flash'
       await saveSettings({
         activeProvider: provider,
         activeModel,
@@ -53,6 +56,7 @@ export function ModelAIModal({ onClose }: { onClose: () => void }) {
               onChange={(e) => setProvider(e.target.value as ActiveProvider)}
             >
               <option value="gemini">Online (Gemini Flash)</option>
+              <option value="openai">Online (ChatGPT 4o-mini)</option>
               <option value="ollama">Offline (Qwen2.5:7b)</option>
             </select>
           </label>
