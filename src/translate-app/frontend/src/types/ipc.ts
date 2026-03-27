@@ -65,3 +65,12 @@ export interface MessagesPage {
   hasMore: boolean
   cancelledFileIds: string[]
 }
+
+export interface SearchResult {
+  messageId: string
+  sessionId: string
+  sessionTitle: string
+  role: string
+  snippet: string
+  createdAt: string
+}

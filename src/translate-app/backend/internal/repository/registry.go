@@ -26,7 +26,7 @@ func New(db *sql.DB) Registry {
 }
 
 func (r *registry) Session() SessionRepo { return &sessionRepo{q: r.q} }
-func (r *registry) Message() MessageRepo { return &messageRepo{q: r.q} }
+func (r *registry) Message() MessageRepo { return &messageRepo{q: r.q, db: r.db} }
 func (r *registry) File() FileRepo       { return &fileRepo{q: r.q} }
 func (r *registry) Settings() SettingsRepo {
 	return &settingsRepo{q: r.q}
@@ -38,7 +38,7 @@ func (r *registry) DoInTx(ctx context.Context, fn func(Registry) error) error {
 		return err
 	}
 	qtx := r.q.WithTx(tx)
-	txReg := &registryTx{q: qtx}
+	txReg := &registryTx{q: qtx, db: r.db}
 	if err := fn(txReg); err != nil {
 		_ = tx.Rollback()
 		return err
@@ -50,11 +50,12 @@ func (r *registry) DoInTx(ctx context.Context, fn func(Registry) error) error {
 }
 
 type registryTx struct {
-	q *sqlcgen.Queries
+	q  *sqlcgen.Queries
+	db *sql.DB
 }
 
 func (r *registryTx) Session() SessionRepo   { return &sessionRepo{q: r.q} }
-func (r *registryTx) Message() MessageRepo   { return &messageRepo{q: r.q} }
+func (r *registryTx) Message() MessageRepo   { return &messageRepo{q: r.q, db: r.db} }
 func (r *registryTx) File() FileRepo         { return &fileRepo{q: r.q} }
 func (r *registryTx) Settings() SettingsRepo { return &settingsRepo{q: r.q} }
 func (r *registryTx) DoInTx(context.Context, func(Registry) error) error {

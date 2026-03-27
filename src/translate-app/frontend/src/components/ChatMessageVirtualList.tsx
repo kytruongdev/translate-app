@@ -24,6 +24,11 @@ type Props = {
   scrollElementRef: RefObject<HTMLElement | null>
   /** Callback khi scroll: trả về date của tin đầu tiên visible */
   onScrollDate?: (date: string | null, visible: boolean) => void
+  /** Jump to a specific message by id */
+  scrollToMessageId?: string | null
+  onScrollToMessageDone?: () => void
+  /** Highlight a specific message by id */
+  highlightMessageId?: string | null
 }
 
 const ROW_GAP = 16
@@ -39,6 +44,9 @@ function ChatMessageVirtualListImpl({
   onRetranslate,
   scrollElementRef,
   onScrollDate,
+  scrollToMessageId,
+  onScrollToMessageDone,
+  highlightMessageId,
 }: Props) {
   const count = messages.length
   const initialScrollDone = useRef(false)
@@ -110,6 +118,16 @@ function ChatMessageVirtualListImpl({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [count])
 
+  // Jump to a specific message by id when requested.
+  useEffect(() => {
+    if (!scrollToMessageId) return
+    const idx = messages.findIndex((m) => m.id === scrollToMessageId)
+    if (idx !== -1) {
+      virtualizer.scrollToIndex(idx, { align: 'center' })
+      onScrollToMessageDone?.()
+    }
+  }, [scrollToMessageId, messages, virtualizer, onScrollToMessageDone])
+
   if (count === 0) return null
 
   return (
@@ -169,6 +187,7 @@ function ChatMessageVirtualListImpl({
                 retranslateQuoteAssistant={retranslateQuoteAssistant}
                 retranslateFollowUp={retranslateFollowUp}
                 onRetranslate={onRetranslate}
+                highlight={highlightMessageId === m.id}
               />
             </div>
           )

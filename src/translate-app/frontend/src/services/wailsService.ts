@@ -9,6 +9,7 @@ import type {
   FileInfo,
   FileRequest,
   MessagesPage,
+  SearchResult,
   SendRequest,
 } from '@/types/ipc'
 
@@ -75,6 +76,7 @@ export const WailsService = {
   exportFile: (fileId: string, format: string) => Go.ExportFile(fileId, format),
   cancelFileTranslate: (fileId: string) => Go.CancelFileTranslate(fileId),
   copyTranslation: (messageId: string) => Go.CopyTranslation(messageId),
+  searchMessages: (query: string) => Go.SearchMessages(query) as Promise<SearchResult[]>,
   getSettings: () => Go.GetSettings() as Promise<Settings>,
   saveSettings: (s: Settings) => Go.SaveSettings(s),
 }

@@ -9,3 +9,8 @@ func (a *App) GetMessages(sessionID string, cursor int, limit int) (*MessagesPag
 func (a *App) SendMessage(req SendRequest) (string, error) {
 	return a.ctrl.Message.SendMessage(a.appCtx(), req)
 }
+
+// SearchMessages searches messages across all sessions.
+func (a *App) SearchMessages(query string) ([]SearchResult, error) {
+	return a.ctrl.Message.SearchMessages(a.appCtx(), query)
+}
