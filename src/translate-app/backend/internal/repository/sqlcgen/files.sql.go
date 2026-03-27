@@ -17,6 +17,25 @@ func (q *Queries) DeleteFileByID(ctx context.Context, id string) error {
 	return err
 }
 
+const getCancelledFileIdsBySession = `SELECT id FROM files WHERE session_id = ? AND status = 'cancelled'`
+
+func (q *Queries) GetCancelledFileIdsBySession(ctx context.Context, sessionID string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, getCancelledFileIdsBySession, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 const getFileById = `-- name: GetFileById :one
 SELECT id, session_id, file_name, file_type, file_size, original_path, source_path, translated_path, char_count, page_count, style, model_used, status, error_msg, created_at, updated_at FROM files WHERE id = ? LIMIT 1
 `

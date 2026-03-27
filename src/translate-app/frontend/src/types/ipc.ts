@@ -63,4 +63,5 @@ export interface MessagesPage {
   messages: Message[]
   nextCursor: number
   hasMore: boolean
+  cancelledFileIds: string[]
 }

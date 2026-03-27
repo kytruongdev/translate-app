@@ -21,6 +21,7 @@ export interface UIStore {
   setSessionInlineRenameId: (id: string | null) => void
   setPendingTranslationFullscreenMessageId: (id: string | null) => void
   addCancelledFileId: (fileId: string) => void
+  setCancelledFileIds: (ids: string[]) => void
 }
 
 export const useUIStore = create<UIStore>((set) => ({
@@ -40,4 +41,5 @@ export const useUIStore = create<UIStore>((set) => ({
     set({ pendingTranslationFullscreenMessageId }),
   addCancelledFileId: (fileId) =>
     set((s) => ({ cancelledFileIds: [...s.cancelledFileIds, fileId] })),
+  setCancelledFileIds: (ids) => set({ cancelledFileIds: ids }),
 }))

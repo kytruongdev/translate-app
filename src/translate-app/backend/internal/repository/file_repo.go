@@ -16,6 +16,7 @@ type FileRepo interface {
 	UpdateTranslated(ctx context.Context, id, sourcePath, translatedPath string, charCount, pageCount int, modelUsed string) error
 	GetByID(ctx context.Context, id string) (*model.File, error)
 	DeleteByID(ctx context.Context, id string) error
+	ListCancelledIDsBySession(ctx context.Context, sessionID string) ([]string, error)
 }
 
 type fileRepo struct {
@@ -78,6 +79,10 @@ func (r *fileRepo) UpdateTranslated(ctx context.Context, id, sourcePath, transla
 
 func (r *fileRepo) DeleteByID(ctx context.Context, id string) error {
 	return r.q.DeleteFileByID(ctx, id)
+}
+
+func (r *fileRepo) ListCancelledIDsBySession(ctx context.Context, sessionID string) ([]string, error) {
+	return r.q.GetCancelledFileIdsBySession(ctx, sessionID)
 }
 
 func (r *fileRepo) GetByID(ctx context.Context, id string) (*model.File, error) {

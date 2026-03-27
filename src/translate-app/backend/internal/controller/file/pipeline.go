@@ -53,8 +53,7 @@ func (c *controller) runFileTranslate(ctx context.Context, p fileTranslateParams
 	fail := func(msg string) {
 		bgCtx := context.Background()
 		if ctx.Err() != nil {
-			_ = c.reg.Message().DeleteByFileID(bgCtx, p.FileID)
-			_ = c.reg.File().DeleteByID(bgCtx, p.FileID)
+			_ = c.reg.File().UpdateStatus(bgCtx, p.FileID, "cancelled", "")
 			runtime.EventsEmit(ctx, "file:cancelled", map[string]string{
 				"fileId":    p.FileID,
 				"sessionId": p.SessionID,
