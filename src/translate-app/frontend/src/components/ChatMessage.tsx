@@ -817,13 +817,42 @@ function FileTranslationCard({
 function BubbleActions({
   messageId,
   heavyInlineNoExpand,
+  m,
+  streaming,
+  precedingUserContent,
+  onRetranslate,
 }: {
   messageId: string
   heavyInlineNoExpand: boolean
+  m: Message
+  streaming: boolean
+  precedingUserContent?: string
+  onRetranslate?: (p: RetranslatePayload) => Promise<void>
 }) {
   const [flash, setFlash] = useState(false)
+  const [retranslateOpen, setRetranslateOpen] = useState(false)
+  const retranslateRef = useRef<HTMLButtonElement | null>(null)
+  const { activeProvider, activeModel } = useSettingsStore()
+  const modelLabel = `${activeProvider} · ${activeModel}`
+  const sourceContent = m.originalContent?.trim() || precedingUserContent?.trim() || ''
+  const canRetranslate = Boolean(sourceContent && onRetranslate)
+
   return (
+    <>
     <div className="assistant-bubble-actions">
+      {canRetranslate && (
+        <button
+          ref={retranslateRef}
+          type="button"
+          className="btn-icon"
+          aria-label="Dịch lại"
+          disabled={streaming}
+          data-tooltip="Dịch lại"
+          onClick={() => setRetranslateOpen((v) => !v)}
+        >
+          <IconRetranslate />
+        </button>
+      )}
       {heavyInlineNoExpand ? (
         <span
           className="btn-icon-tooltip-host"
@@ -858,6 +887,26 @@ function BubbleActions({
         </button>
       )}
     </div>
+    <CardRetranslatePopover
+      open={retranslateOpen}
+      anchorRef={retranslateRef}
+      onClose={() => setRetranslateOpen(false)}
+      initialStyle={m.style ?? 'casual'}
+      modelLabel={modelLabel}
+      onConfirm={(style) => {
+        setRetranslateOpen(false)
+        if (!onRetranslate) return
+        void onRetranslate({
+          sourceContent,
+          assistantMessageId: m.id,
+          displayMode: 'bubble',
+          sourceLang: m.sourceLang ?? 'auto',
+          targetLang: m.targetLang ?? 'en-US',
+          style,
+        })
+      }}
+    />
+    </>
   )
 }
 
@@ -1026,13 +1075,19 @@ function ChatMessageImpl({
   }
 
   return (
-    <div className="chat-msg assistant" id={`chat-msg-${m.id}`}>
+    <div className={`chat-msg assistant${retranslateFollowUp ? ' retranslate-reply' : ''}`} id={`chat-msg-${m.id}`}>
       <div className="avatar assistant-avatar" aria-hidden>
         ✦
       </div>
       <div className="chat-msg-body">
+        {retranslateFollowUp && retranslateQuoteAssistant && (
+          <RetranslateReplyQuote
+            quotedAssistantId={retranslateQuoteAssistant.id}
+            snippet={quotedSnippet}
+          />
+        )}
         <div className="assistant-bubble-wrap">
-          <BubbleActions messageId={m.id} heavyInlineNoExpand={bubbleHeavyInline} />
+          <BubbleActions messageId={m.id} heavyInlineNoExpand={bubbleHeavyInline} m={m} streaming={streaming} precedingUserContent={precedingUserContent} onRetranslate={onRetranslate} />
           <div className={`chat-bubble assistant${streaming ? ' chat-bubble--streaming' : ''}`}>
             {streaming && !destText ? (
               <div className="assistant-bubble-stream-placeholder" aria-busy="true" aria-label="Đang dịch">
