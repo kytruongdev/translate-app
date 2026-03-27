@@ -625,6 +625,27 @@ function FileTranslationCard({
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
   const [cancelPopoverOpen, setCancelPopoverOpen] = useState(false)
+  const [cancelTooltipPos, setCancelTooltipPos] = useState<{ top: number; left: number } | null>(null)
+  const cancelBtnRef = useRef<HTMLButtonElement | null>(null)
+  const [cancelPopoverPos, setCancelPopoverPos] = useState<{ top: number; left: number; width: number; isAbove: boolean } | null>(null)
+
+  useLayoutEffect(() => {
+    if (!cancelPopoverOpen || !cancelBtnRef.current) {
+      setCancelPopoverPos(null)
+      return
+    }
+    const r = cancelBtnRef.current.getBoundingClientRect()
+    const width = Math.min(300, window.innerWidth - 24)
+    let left = r.left + r.width / 2 - width / 2
+    left = Math.max(12, Math.min(left, window.innerWidth - width - 12))
+    let top = r.bottom + 8
+    let isAbove = false
+    if (top + 160 > window.innerHeight - 12) {
+      top = Math.max(12, r.top - 160 - 8)
+      isAbove = true
+    }
+    setCancelPopoverPos({ top, left, width, isAbove })
+  }, [cancelPopoverOpen])
 
   const fileName =
     parseFileAttachmentDisplayName(precedingUserContent ?? '') ??
@@ -669,10 +690,17 @@ function FileTranslationCard({
           <div className={`file-card-icon-wrap${streaming ? ' file-card-icon-wrap--streaming' : ''}`}>
             {streaming ? (
               <button
+                ref={cancelBtnRef}
                 type="button"
                 className="file-card-cancel-btn"
-                aria-label="Hủy phiên dịch"
-                onClick={() => setCancelPopoverOpen((v) => !v)}
+                aria-label="Hủy phiên dịch này"
+                onMouseEnter={() => {
+                  if (!cancelBtnRef.current) return
+                  const r = cancelBtnRef.current.getBoundingClientRect()
+                  setCancelTooltipPos({ top: r.top - 8, left: r.left + r.width / 2 })
+                }}
+                onMouseLeave={() => setCancelTooltipPos(null)}
+                onClick={() => { setCancelTooltipPos(null); setCancelPopoverOpen((v) => !v) }}
               >
                 <X size={18} strokeWidth={2} />
               </button>
@@ -734,28 +762,33 @@ function FileTranslationCard({
 
     </div>
     {/* Cancel confirm popover — rendered via portal to escape transform stacking context */}
-    {cancelPopoverOpen && createPortal(
+    {cancelPopoverOpen && cancelPopoverPos && createPortal(
       <div className="file-cancel-popover-backdrop" onClick={() => setCancelPopoverOpen(false)}>
         <div
-          className="file-cancel-popover"
+          className={`file-cancel-popover${cancelPopoverPos.isAbove ? ' is-above' : ''}`}
           role="dialog"
           aria-modal="true"
           aria-labelledby="file-cancel-popover-title"
+          style={{ top: cancelPopoverPos.top, left: cancelPopoverPos.left, width: cancelPopoverPos.width }}
           onClick={(e) => e.stopPropagation()}
         >
-          <p id="file-cancel-popover-title" className="file-cancel-popover-title">Hủy phiên dịch này</p>
-          <p className="file-cancel-popover-body">Bạn có chắc muốn hủy phiên dịch file <strong>{fileName}</strong>?</p>
+          <div className="file-cancel-popover-header">
+            <span id="file-cancel-popover-title" className="file-cancel-popover-title">Hủy phiên dịch này</span>
+          </div>
+          <div className="file-cancel-popover-body">
+            Bạn có chắc muốn hủy phiên dịch file <strong>{fileName}</strong>?
+          </div>
           <div className="file-cancel-popover-actions">
             <button
               type="button"
-              className="btn-secondary"
+              className="file-cancel-popover-btn cancel"
               onClick={() => setCancelPopoverOpen(false)}
             >
               Thoát
             </button>
             <button
               type="button"
-              className="btn-danger"
+              className="file-cancel-popover-btn confirm"
               onClick={() => {
                 setCancelPopoverOpen(false)
                 if (m.fileId) void WailsService.cancelFileTranslate(m.fileId).catch(() => {})
@@ -765,6 +798,15 @@ function FileTranslationCard({
             </button>
           </div>
         </div>
+      </div>,
+      document.body,
+    )}
+    {cancelTooltipPos && createPortal(
+      <div
+        className="file-cancel-btn-tooltip"
+        style={{ top: cancelTooltipPos.top, left: cancelTooltipPos.left }}
+      >
+        Hủy phiên dịch này
       </div>,
       document.body,
     )}
