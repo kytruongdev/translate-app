@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -20,6 +21,7 @@ type Controller interface {
 	OpenFileDialog(ctx context.Context) (string, error)
 	ReadFileInfo(ctx context.Context, path string) (*bridge.FileInfo, error)
 	TranslateFile(ctx context.Context, req bridge.FileRequest) error
+	CancelFileTranslate(ctx context.Context, fileID string) error
 	GetFileContent(ctx context.Context, fileID string) (*bridge.FileContent, error)
 	ExportFile(ctx context.Context, fileID, format string) (string, error)
 	// RunRetranslateContent re-runs the chunked pipeline on already-extracted markdown (retranslate flow).
@@ -27,8 +29,10 @@ type Controller interface {
 }
 
 type controller struct {
-	reg  repository.Registry
-	keys *config.APIKeys
+	reg      repository.Registry
+	keys     *config.APIKeys
+	cancelMu sync.Mutex
+	cancels  map[string]context.CancelFunc // fileID → cancel func for active jobs
 }
 
 // New constructs a file controller.
@@ -36,7 +40,22 @@ func New(reg repository.Registry, keys *config.APIKeys) Controller {
 	if keys == nil {
 		keys = &config.APIKeys{}
 	}
-	return &controller{reg: reg, keys: keys}
+	return &controller{
+		reg:     reg,
+		keys:    keys,
+		cancels: make(map[string]context.CancelFunc),
+	}
+}
+
+func (c *controller) CancelFileTranslate(ctx context.Context, fileID string) error {
+	c.cancelMu.Lock()
+	cancel, ok := c.cancels[fileID]
+	c.cancelMu.Unlock()
+	if !ok {
+		return errors.New("không tìm thấy tiến trình dịch đang chạy")
+	}
+	cancel()
+	return nil
 }
 
 func (c *controller) GetFileContent(ctx context.Context, fileID string) (*bridge.FileContent, error) {

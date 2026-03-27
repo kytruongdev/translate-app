@@ -75,6 +75,7 @@ export const WailsService = {
   exportMessage: (id: string, format: string) => Go.ExportMessage(id, format),
   exportSession: (id: string, format: string) => Go.ExportSession(id, format),
   exportFile: (fileId: string, format: string) => Go.ExportFile(fileId, format),
+  cancelFileTranslate: (fileId: string) => Go.CancelFileTranslate(fileId),
   copyTranslation: (messageId: string) => Go.CopyTranslation(messageId),
   getSettings: () => Go.GetSettings() as Promise<Settings>,
   saveSettings: (s: Settings) => Go.SaveSettings(s),
@@ -108,4 +109,6 @@ export const WailsEvents = {
     EventsOn('file:done', (...a: unknown[]) => cb(a[0] as FileResult)),
   onFileError: (cb: (err: string) => void) =>
     EventsOn('file:error', (...a: unknown[]) => cb(a[0] as string)),
+  onFileCancelled: (cb: (p: { fileId: string; sessionId: string }) => void) =>
+    EventsOn('file:cancelled', (...a: unknown[]) => cb(a[0] as { fileId: string; sessionId: string })),
 }

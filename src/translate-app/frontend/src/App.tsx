@@ -126,6 +126,7 @@ export default function App() {
   const [pendingFile, setPendingFile] = useState<PendingFilePick | null>(null)
   const [filePickError, setFilePickError] = useState<string | null>(null)
   const [fileTranslateProgress, setFileTranslateProgress] = useState<FileProgress | null>(null)
+  const addCancelledFileId = useUIStore((s) => s.addCancelledFileId)
 
   const feedRef = useRef<HTMLDivElement>(null)
   const sendLockRef = useRef(false)
@@ -202,6 +203,15 @@ export default function App() {
       setFileTranslateProgress(null)
       setStreamingFileJobActive(false)
     })
+    const uf4 = WailsEvents.onFileCancelled((p) => {
+      flushStreamingTextCoalescerSync()
+      setStreamingAssistantId(null)
+      setStreamStatus('idle')
+      clearStreamingText()
+      setFileTranslateProgress(null)
+      setStreamingFileJobActive(false)
+      addCancelledFileId(p.fileId)
+    })
     const uf0 = WailsEvents.onFileSource((p) => {
       const sid = p.sessionId?.trim()
       if (sid) void loadMessages(sid)
@@ -221,6 +231,7 @@ export default function App() {
       uf1()
       uf2()
       uf3()
+      uf4()
       resetStreamingTextCoalescer()
       setStreamingFileJobActive(false)
     }

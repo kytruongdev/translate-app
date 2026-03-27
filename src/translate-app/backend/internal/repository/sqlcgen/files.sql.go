@@ -10,6 +10,13 @@ import (
 	"database/sql"
 )
 
+const deleteFileByID = `DELETE FROM files WHERE id = ?`
+
+func (q *Queries) DeleteFileByID(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, deleteFileByID, id)
+	return err
+}
+
 const getFileById = `-- name: GetFileById :one
 SELECT id, session_id, file_name, file_type, file_size, original_path, source_path, translated_path, char_count, page_count, style, model_used, status, error_msg, created_at, updated_at FROM files WHERE id = ? LIMIT 1
 `

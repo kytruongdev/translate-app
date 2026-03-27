@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"translate-app/internal/gateway"
@@ -61,6 +62,7 @@ func (c *controller) translateDocxFile(
 	}
 	resultCh := make(chan batchResult, len(batches))
 
+	var completedBatches int32
 	var wg sync.WaitGroup
 	for batchIdx, batch := range batches {
 		wg.Add(1)
@@ -68,10 +70,6 @@ func (c *controller) translateDocxFile(
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-
-			if onProgress != nil {
-				onProgress(batchIdx, len(batches))
-			}
 
 			globalBase := batchGlobalStart[batchIdx]
 
@@ -85,6 +83,10 @@ func (c *controller) translateDocxFile(
 			}
 
 			if len(translatableLocal) == 0 {
+				done := int(atomic.AddInt32(&completedBatches, 1))
+				if onProgress != nil {
+					onProgress(done, len(batches))
+				}
 				resultCh <- batchResult{batchIdx: batchIdx}
 				return
 			}
@@ -108,6 +110,10 @@ func (c *controller) translateDocxFile(
 				results[globalBase+localIdx] = text
 			}
 
+			done := int(atomic.AddInt32(&completedBatches, 1))
+			if onProgress != nil {
+				onProgress(done, len(batches))
+			}
 			resultCh <- batchResult{batchIdx: batchIdx, tokens: tokens}
 		}(batchIdx, batch)
 	}
