@@ -72,8 +72,6 @@ export const WailsService = {
       }),
     ),
   getFileContent: (fileId: string) => Go.GetFileContent(fileId),
-  exportMessage: (id: string, format: string) => Go.ExportMessage(id, format),
-  exportSession: (id: string, format: string) => Go.ExportSession(id, format),
   exportFile: (fileId: string, format: string) => Go.ExportFile(fileId, format),
   cancelFileTranslate: (fileId: string) => Go.CancelFileTranslate(fileId),
   copyTranslation: (messageId: string) => Go.CopyTranslation(messageId),

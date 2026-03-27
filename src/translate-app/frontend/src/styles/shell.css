@@ -132,7 +132,7 @@
 
 /* Ghim — nền section giống mockup */
 .sidebar-group.pinned-group {
-  background: var(--active);
+  background: #e6e6e6;
   border-radius: 0;
   padding: 0 0 10px;
   margin: 0;
@@ -164,7 +164,7 @@
 }
 
 .sidebar-anim-ready .session-item {
-  animation: session-arrive 0.55s ease-out both;
+  animation: session-arrive 0.55s ease-out backwards;
 }
 
 .sidebar-group.pinned-group .sidebar-group-label {
@@ -176,12 +176,14 @@
   margin: 0 12px 1px;
 }
 
-.sidebar-group.pinned-group .session-item:hover {
-  background: rgba(0, 0, 0, 0.06);
+.sidebar-group.pinned-group .session-item:hover,
+.sidebar-group.pinned-group .session-item.active {
+  background: #d3d3d3;
   box-shadow: var(--shadow-elev1);
 }
 
-[data-theme='dark'] .sidebar-group.pinned-group .session-item:hover {
+[data-theme='dark'] .sidebar-group.pinned-group .session-item:hover,
+[data-theme='dark'] .sidebar-group.pinned-group .session-item.active {
   background: rgba(255, 255, 255, 0.08);
   box-shadow: var(--shadow-elev1);
 }
@@ -211,44 +213,26 @@
   margin: 0 12px 1px;
 }
 
-.sidebar-group.today-group .session-item:hover {
-  background: rgba(0, 0, 0, 0.06);
+.sidebar-group.today-group .session-item:hover,
+.sidebar-group.today-group .session-item.active {
+  background: #d3d3d3;
   box-shadow: var(--shadow-elev1);
 }
 
-[data-theme='dark'] .sidebar-group.today-group .session-item:hover {
+[data-theme='dark'] .sidebar-group.today-group .session-item:hover,
+[data-theme='dark'] .sidebar-group.today-group .session-item.active {
   background: rgba(255, 255, 255, 0.08);
   box-shadow: var(--shadow-elev1);
 }
 
-/* Phiên đang mở: cùng kiểu “focus” nhẹ như hover — chỉ thêm độ ưu tiên vì .today-group/.pinned-group .session-item { transparent } đè .session-item.active */
-.sidebar-group.today-group .session-item.active {
-  background: rgba(0, 0, 0, 0.06);
-  box-shadow: var(--shadow-elev1);
-}
-
-.sidebar-group.today-group .session-item.active:hover {
-  background: rgba(0, 0, 0, 0.08);
-  box-shadow: var(--shadow-elev1);
-}
-
+/* Phiên đang mở */
 [data-theme='dark'] .sidebar-group.today-group .session-item.active {
   background: rgba(255, 255, 255, 0.08);
   box-shadow: var(--shadow-elev1);
 }
 
 [data-theme='dark'] .sidebar-group.today-group .session-item.active:hover {
-  background: rgba(255, 255, 255, 0.1);
-  box-shadow: var(--shadow-elev1);
-}
-
-.sidebar-group.pinned-group .session-item.active {
-  background: rgba(0, 0, 0, 0.06);
-  box-shadow: var(--shadow-elev1);
-}
-
-.sidebar-group.pinned-group .session-item.active:hover {
-  background: rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.10);
   box-shadow: var(--shadow-elev1);
 }
 
@@ -258,7 +242,7 @@
 }
 
 [data-theme='dark'] .sidebar-group.pinned-group .session-item.active:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.10);
   box-shadow: var(--shadow-elev1);
 }
 
