@@ -96,10 +96,13 @@ function ChatMessageVirtualListImpl({
     }
   }, [scrollElementRef, virtualizer, messages, onScrollDate])
 
-  // Lần đầu tiên có tin: scroll xuống cuối.
+  // Lần đầu tiên có tin: scroll xuống cuối — skip nếu đang có search jump target.
   useEffect(() => {
     if (count === 0 || initialScrollDone.current) return
     initialScrollDone.current = true
+
+    // Search jump sẽ tự handle scroll — không snap to bottom
+    if (scrollToMessageId) return
 
     const el = scrollElementRef.current
     const spacer = spacerRef.current
@@ -122,10 +125,25 @@ function ChatMessageVirtualListImpl({
   useEffect(() => {
     if (!scrollToMessageId) return
     const idx = messages.findIndex((m) => m.id === scrollToMessageId)
-    if (idx !== -1) {
-      virtualizer.scrollToIndex(idx, { align: 'center' })
-      onScrollToMessageDone?.()
+    if (idx === -1) return
+
+    // Bước 1: scroll virtualizer để bring item vào render range (dùng estimated size)
+    virtualizer.scrollToIndex(idx, { align: 'center' })
+
+    // Bước 2: poll cho đến khi DOM element xuất hiện, rồi scrollIntoView cho chính xác
+    let cancelled = false
+    const tryScroll = (attemptsLeft: number) => {
+      if (cancelled) return
+      const el = document.getElementById(`chat-msg-${scrollToMessageId}`)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        onScrollToMessageDone?.()
+      } else if (attemptsLeft > 0) {
+        window.setTimeout(() => tryScroll(attemptsLeft - 1), 100)
+      }
     }
+    window.setTimeout(() => tryScroll(8), 80)
+    return () => { cancelled = true }
   }, [scrollToMessageId, messages, virtualizer, onScrollToMessageDone])
 
   if (count === 0) return null

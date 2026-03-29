@@ -54,6 +54,10 @@ export function SaveSettings(arg1) {
   return window['go']['handler']['App']['SaveSettings'](arg1);
 }
 
+export function SearchMessages(arg1) {
+  return window['go']['handler']['App']['SearchMessages'](arg1);
+}
+
 export function SendMessage(arg1) {
   return window['go']['handler']['App']['SendMessage'](arg1);
 }
