@@ -27,6 +27,7 @@ import {
 } from '@/utils/messageDisplay'
 import { formatFileSize } from '@/utils/formatFileSize'
 import { MessageMarkdown } from '@/components/MessageMarkdown'
+import { useBilingualHoverSync } from '@/hooks/useBilingualHoverSync'
 import { CardExportPopover, CardRetranslatePopover } from '@/components/MessageCardPopovers'
 import {
   FileJobBilingualEdgeRail,
@@ -173,8 +174,8 @@ function translationCardIsCollapsible(src: string, dest: string, streaming: bool
 }
 
 /** Nguồn trong thẻ: không parse lại Markdown mỗi chunk stream (src ổn định trong lượt dịch). */
-const MemoMessageMarkdown = memo(function MemoMessageMarkdown({ content }: { content: string }) {
-  return <MessageMarkdown content={content} />
+const MemoMessageMarkdown = memo(function MemoMessageMarkdown({ content, wrapSentences }: { content: string; wrapSentences?: boolean }) {
+  return <MessageMarkdown content={content} wrapSentences={wrapSentences} />
 })
 
 /** Đang stream: plain text — tránh react-markdown + GFM mỗi chunk (rất nặng khi văn bản dài). */
@@ -245,7 +246,7 @@ function TranslationCardView({
       ) : heavyInlineNoExpand ? (
         <LazyChunkedMarkdown content={src} scrollRootRef={srcPanelScrollRef} />
       ) : (
-        <MemoMessageMarkdown content={src} />
+        <MemoMessageMarkdown content={src} wrapSentences={!streaming && !heavyInlineNoExpand} />
       )}
     </div>
   )
@@ -279,7 +280,7 @@ function TranslationCardView({
       ) : heavyInlineNoExpand ? (
         <LazyChunkedMarkdown content={dest} scrollRootRef={srcPanelScrollRef} />
       ) : (
-        <MessageMarkdown content={dest} />
+        <MessageMarkdown content={dest} wrapSentences={!streaming && !heavyInlineNoExpand} />
       )}
     </div>
   )
@@ -304,6 +305,8 @@ function TranslationCardView({
   useEffect(() => {
     if (heavyInlineNoExpand) setBodyExpanded(false)
   }, [heavyInlineNoExpand])
+
+  useBilingualHoverSync(bilingualRef, src, dest, streaming)
 
   useEffect(() => {
     const upd = () => setCollapsedCapPx(Math.min(240, Math.round(window.innerHeight * 0.42)))

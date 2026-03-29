@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useBilingualHoverSync } from '@/hooks/useBilingualHoverSync'
 import { Download, RefreshCw, Copy, X, Maximize2 } from 'lucide-react'
 import { LazyChunkedMarkdown, LazyChunkedPlainText } from '@/components/LazyChunkedMarkdown'
 import { LARGE_DOCUMENT_COPY_DISABLED_TOOLTIP } from '@/utils/messageDisplay'
@@ -74,6 +75,9 @@ export function TranslationFullscreenModal({
   const retranslateBtnRef = useRef<HTMLButtonElement>(null)
   const fsSrcScrollRef = useRef<HTMLDivElement>(null)
   const fsDestScrollRef = useRef<HTMLDivElement>(null)
+  const bilingualContainerRef = useRef<HTMLDivElement>(null)
+
+  useBilingualHoverSync(bilingualContainerRef, src, dest, streaming, open)
 
   useEffect(() => {
     if (open) setMode(initialMode)
@@ -110,7 +114,7 @@ export function TranslationFullscreenModal({
       {streaming && src.length >= HEAVY_FILE_INLINE_CHAR_THRESHOLD ? (
         <LazyChunkedPlainText content={src} scrollRootRef={fsSrcScrollRef} />
       ) : (
-        <LazyChunkedMarkdown content={src} scrollRootRef={fsSrcScrollRef} className="panel-body-text" />
+        <LazyChunkedMarkdown content={src} scrollRootRef={fsSrcScrollRef} className="panel-body-text" wrapSentences={!streaming} />
       )}
     </div>
   )
@@ -142,7 +146,7 @@ export function TranslationFullscreenModal({
       ) : streaming && dest ? (
         <div className="message-md panel-body-text stream-dest-plain">{dest}</div>
       ) : (
-        <LazyChunkedMarkdown content={dest} scrollRootRef={fsDestScrollRef} className="panel-body-text" />
+        <LazyChunkedMarkdown content={dest} scrollRootRef={fsDestScrollRef} className="panel-body-text" wrapSentences={!streaming} />
       )}
     </div>
   )
@@ -257,6 +261,7 @@ export function TranslationFullscreenModal({
           </div>
           <div className="fullscreen-content">
             <div
+              ref={bilingualContainerRef}
               className="bilingual-view"
               data-mode={mode}
               data-file-rail={showFileBuffer ? 'active' : 'idle'}
