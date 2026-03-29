@@ -70,6 +70,7 @@ type Props = {
   /** Phần tử có overflow-y: auto (panel-body fullscreen). */
   scrollRootRef: RefObject<HTMLElement | null>
   className?: string
+  wrapSentences?: boolean
 }
 
 /**
@@ -80,6 +81,7 @@ export const LazyChunkedMarkdown = memo(function LazyChunkedMarkdown({
   content,
   scrollRootRef,
   className,
+  wrapSentences,
 }: Props) {
   const chunks = useMemo(
     () => splitMarkdownIntoChunks(content, CHUNK_TARGET_CHARS),
@@ -116,7 +118,7 @@ export const LazyChunkedMarkdown = memo(function LazyChunkedMarkdown({
   if (!content) return null
 
   if (content.length < FULLSCREEN_LAZY_MD_CHAR_THRESHOLD) {
-    return <MessageMarkdown content={content} className={className} />
+    return <MessageMarkdown content={content} className={className} wrapSentences={wrapSentences} />
   }
 
   const slice = chunks.slice(0, visibleCount)
@@ -125,7 +127,7 @@ export const LazyChunkedMarkdown = memo(function LazyChunkedMarkdown({
     <div className="lazy-md-stack">
       {slice.map((chunk, i) => (
         <div key={i} className="lazy-md-chunk">
-          <MessageMarkdown content={chunk} className={className} />
+          <MessageMarkdown content={chunk} className={className} wrapSentences={wrapSentences} />
         </div>
       ))}
       {visibleCount < chunks.length ? (

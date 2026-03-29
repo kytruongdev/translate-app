@@ -2166,6 +2166,31 @@
   word-break: break-word;
 }
 
+/* Transition đặt trên element gốc → animation mượt 2 chiều (fade-in & fade-out) */
+.translation-panel--bilingual-body .message-md > * {
+  transition: background-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.bl-sent {
+  border-radius: 3px;
+  transition: background-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+/* Bilingual hover sync: block được pair-highlight */
+.bl-para-hover {
+  background-color: color-mix(in srgb, var(--accent) 14%, var(--active));
+  border-radius: 4px;
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 14%, var(--active));
+}
+
+/* Sentence-level hover: câu pair in đậm */
+.bl-sent-hover {
+  font-weight: 600;
+}
+[data-theme='dark'] .bl-sent-hover {
+  color: color-mix(in srgb, var(--accent) 40%, #fff);
+}
+
 /* Stream buffer: cùng typography .message-md, không parse markdown từng chunk */
 .stream-dest-plain,
 .stream-src-plain {
