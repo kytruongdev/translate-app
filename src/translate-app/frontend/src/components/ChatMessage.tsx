@@ -950,6 +950,23 @@ function ChatMessageImpl({
   )
   const streamBuf = useMessageStore(selectStreamBuf)
 
+  // Highlight toàn bộ row khi jump từ search — áp background lên virtual row (parent của chat-msg).
+  // onScrollToMessageDone đã chờ scroll dừng hẳn → không cần delay.
+  useEffect(() => {
+    if (!highlight) return
+    const msgEl = document.getElementById(`chat-msg-${m.id}`)
+    const row = msgEl?.parentElement as HTMLElement | null
+    if (!row) return
+    row.classList.remove('row-highlight')
+    void row.offsetWidth
+    row.classList.add('row-highlight')
+    const t = window.setTimeout(() => row.classList.remove('row-highlight'), 2500)
+    return () => {
+      window.clearTimeout(t)
+      row.classList.remove('row-highlight')
+    }
+  }, [highlight, m.id])
+
   const pairedAssistantLongForm = useMemo(() => {
     if (m.role !== 'user' || nextAssistant?.role !== 'assistant') return false
     return assistantMessageIsLongForm(nextAssistant, {
