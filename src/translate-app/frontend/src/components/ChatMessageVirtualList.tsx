@@ -54,6 +54,7 @@ function ChatMessageVirtualListImpl({
   const hideTimerRef = useRef<number>(0)
 
   const overscan = count <= SMALL_SESSION_THRESHOLD ? count : OVERSCAN_LARGE
+  const scrollPollRef = useRef<{ cancelled: boolean; targetId: string } | null>(null)
 
   const virtualizer = useVirtualizer({
     count,
@@ -122,28 +123,61 @@ function ChatMessageVirtualListImpl({
   }, [count])
 
   // Jump to a specific message by id when requested.
+  // scrollPollRef: poll tồn tại qua các lần re-render (virtualizer measure, messages update).
+  // Chỉ cancel khi scrollToMessageId thay đổi sang target khác — không dùng cleanup function.
   useEffect(() => {
+    // Cancel poll cũ nếu target mới khác target cũ
+    if (scrollPollRef.current && scrollPollRef.current.targetId !== scrollToMessageId) {
+      scrollPollRef.current.cancelled = true
+      scrollPollRef.current = null
+    }
+
     if (!scrollToMessageId) return
     const idx = messages.findIndex((m) => m.id === scrollToMessageId)
     if (idx === -1) return
 
-    // Bước 1: scroll virtualizer để bring item vào render range (dùng estimated size)
+    // Bước 1: scroll virtualizer để bring item vào render range
     virtualizer.scrollToIndex(idx, { align: 'center' })
 
-    // Bước 2: poll cho đến khi DOM element xuất hiện, rồi scrollIntoView cho chính xác
-    let cancelled = false
+    // Poll đang chạy cho đúng target này — không khởi động lại
+    if (scrollPollRef.current?.targetId === scrollToMessageId) return
+
+    const poll = { cancelled: false, targetId: scrollToMessageId }
+    scrollPollRef.current = poll
+
     const tryScroll = (attemptsLeft: number) => {
-      if (cancelled) return
+      if (poll.cancelled) return
       const el = document.getElementById(`chat-msg-${scrollToMessageId}`)
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        onScrollToMessageDone?.()
+        // Chờ scroll dừng hẳn mới signal done — tránh highlight bắn giữa chừng
+        const scrollEl = scrollElementRef.current
+        if (!scrollEl) { onScrollToMessageDone?.(); scrollPollRef.current = null; return }
+        let prevTop = scrollEl.scrollTop
+        let stable = 0
+        const deadline = Date.now() + 1200
+        const check = () => {
+          if (poll.cancelled) return
+          const curTop = scrollEl.scrollTop
+          if (curTop === prevTop) {
+            stable++
+            if (stable >= 3 || Date.now() >= deadline) {
+              onScrollToMessageDone?.()
+              scrollPollRef.current = null
+              return
+            }
+          } else {
+            stable = 0
+            prevTop = curTop
+          }
+          window.setTimeout(check, 50)
+        }
+        window.setTimeout(check, 50)
       } else if (attemptsLeft > 0) {
         window.setTimeout(() => tryScroll(attemptsLeft - 1), 100)
       }
     }
     window.setTimeout(() => tryScroll(8), 80)
-    return () => { cancelled = true }
   }, [scrollToMessageId, messages, virtualizer, onScrollToMessageDone])
 
   if (count === 0) return null
@@ -178,7 +212,7 @@ function ChatMessageVirtualListImpl({
               key={virtualRow.key}
               data-index={virtualRow.index}
               ref={virtualizer.measureElement}
-              className={`chat-feed-virtual-row${alignEnd ? ' chat-feed-virtual-row--user' : ' chat-feed-virtual-row--assistant'}`}
+              className={`chat-feed-virtual-row${alignEnd ? ' chat-feed-virtual-row--user' : ' chat-feed-virtual-row--assistant'}${showDateSep ? ' chat-feed-virtual-row--has-date' : ''}`}
               style={{
                 position: 'absolute',
                 top: 0,

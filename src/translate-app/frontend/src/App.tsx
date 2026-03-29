@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSessionStore } from '@/stores/session/sessionStore'
 import { useSettingsStore } from '@/stores/settings/settingsStore'
 import { useUIStore } from '@/stores/ui/uiStore'
@@ -35,6 +35,15 @@ import '@/styles/animations.css'
 import '@/styles/shell.css'
 import '@/styles/chat-mockup.css'
 import '@/styles/mockup-override.css'
+
+function highlightKeyword(text: string, keyword: string): React.ReactNode {
+  if (!keyword.trim()) return text
+  const regex = new RegExp(`(${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
+  const parts = text.split(regex)
+  return parts.map((part, i) =>
+    regex.test(part) ? <mark key={i} className="search-keyword-mark">{part}</mark> : part
+  )
+}
 
 const IconMenu = () => (
   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
@@ -195,9 +204,18 @@ export default function App() {
   }, [])
 
   const handleJumpToMessage = useCallback((result: SearchResult) => {
-    setSearchOpen(false)
-    scrollToMessageIdRef.current = result.messageId
-    setScrollToMessageId(result.messageId)
+    let targetId = result.messageId
+    // Văn bản gốc (user) được hiển thị bên trong bilingual card của assistant kế tiếp.
+    // Scroll tới assistant message để highlight đúng bilingual card.
+    if (result.role === 'user') {
+      const msgs = useMessageStore.getState().messages[result.sessionId] ?? []
+      const idx = msgs.findIndex((m) => m.id === result.messageId)
+      if (idx !== -1 && msgs[idx + 1]?.role === 'assistant') {
+        targetId = msgs[idx + 1].id
+      }
+    }
+    scrollToMessageIdRef.current = targetId
+    setScrollToMessageId(targetId)
     setActiveSession(result.sessionId)
   }, [setActiveSession])
 
@@ -206,7 +224,7 @@ export default function App() {
     scrollToMessageIdRef.current = null
     setScrollToMessageId(null)
     setHighlightMessageId(id)
-    setTimeout(() => setHighlightMessageId(null), 1800)
+    setTimeout(() => setHighlightMessageId(null), 2500)
   }, [scrollToMessageId])
 
   // If scrollToMessageId target not yet loaded, load more pages until found.
@@ -741,6 +759,9 @@ export default function App() {
                 placeholder="Tìm kiếm trong tất cả phiên…"
                 value={searchQuery}
                 onChange={(e) => handleSearchQueryChange(e.target.value)}
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
                 autoFocus
               />
             </div>
@@ -759,7 +780,7 @@ export default function App() {
                   onClick={() => handleJumpToMessage(r)}
                 >
                   <div className="search-result-session">{r.sessionTitle}</div>
-                  <div className="search-result-snippet">{r.snippet}</div>
+                  <div className="search-result-snippet">{highlightKeyword(r.snippet, searchQuery)}</div>
                   <div className="search-result-meta">
                     {r.role === 'assistant' ? 'Bản dịch' : 'Văn bản gốc'}
                     {' · '}

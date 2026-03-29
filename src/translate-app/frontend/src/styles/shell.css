@@ -1453,6 +1453,12 @@
   margin-top: 4px;
 }
 
+.search-keyword-mark {
+  background: none;
+  color: inherit;
+  font-weight: 700;
+}
+
 /* Sidebar search button */
 .btn-sidebar-search {
   margin: 0;
@@ -1496,16 +1502,38 @@
   display: none;
 }
 
-/* Highlight a message found via search */
-@keyframes search-highlight-pulse {
-  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 50%, transparent); }
-  40%  { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 20%, transparent); }
-  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); }
+/* Search highlight: full-width background flash khi jump từ search.
+   ::before với left/right âm để extend vào padding 24px của .chat-feed.
+   User: tông hồng (--ring-user), Assistant: tông xanh (--ring-assistant). */
+@keyframes rowFlashUserBg {
+  0%   { opacity: 0; }
+  15%  { opacity: 1; }
+  65%  { opacity: 1; }
+  100% { opacity: 0; }
 }
 
-.chat-msg--highlight .chat-bubble,
-.chat-msg--highlight .translation-card,
-.chat-msg--highlight .file-translation-card {
-  animation: search-highlight-pulse 1.8s ease-out forwards;
+.chat-feed-virtual-row.row-highlight::before {
+  content: '';
+  position: absolute;
+  top: -10px;
+  bottom: -5px;
+  left: -24px;
+  right: -24px;
+  z-index: -1;
+  pointer-events: none;
+  animation: rowFlashUserBg 2.5s ease-out 1 forwards;
+}
+
+.chat-feed-virtual-row--user.row-highlight::before {
+  background-color: color-mix(in srgb, var(--ring-user) 18%, transparent);
+}
+
+.chat-feed-virtual-row--assistant.row-highlight::before {
+  background-color: color-mix(in srgb, var(--ring-assistant) 15%, transparent);
+}
+
+/* Khi có date separator ở đầu row: đẩy background xuống dưới phần date */
+.chat-feed-virtual-row--has-date.row-highlight::before {
+  top: 44px;
 }
 
