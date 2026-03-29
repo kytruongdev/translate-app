@@ -134,6 +134,28 @@ export namespace bridge {
 		    return a;
 		}
 	}
+	export class SearchResult {
+	    messageId: string;
+	    sessionId: string;
+	    sessionTitle: string;
+	    role: string;
+	    snippet: string;
+	    createdAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SearchResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.messageId = source["messageId"];
+	        this.sessionId = source["sessionId"];
+	        this.sessionTitle = source["sessionTitle"];
+	        this.role = source["role"];
+	        this.snippet = source["snippet"];
+	        this.createdAt = source["createdAt"];
+	    }
+	}
 	export class SendRequest {
 	    sessionId: string;
 	    content: string;

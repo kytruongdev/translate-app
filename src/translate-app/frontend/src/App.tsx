@@ -145,6 +145,7 @@ export default function App() {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
   const [scrollToMessageId, setScrollToMessageId] = useState<string | null>(null)
+  const scrollToMessageIdRef = useRef<string | null>(null)
   const [highlightMessageId, setHighlightMessageId] = useState<string | null>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -195,12 +196,14 @@ export default function App() {
 
   const handleJumpToMessage = useCallback((result: SearchResult) => {
     setSearchOpen(false)
+    scrollToMessageIdRef.current = result.messageId
     setScrollToMessageId(result.messageId)
     setActiveSession(result.sessionId)
   }, [setActiveSession])
 
   const handleScrollToMessageDone = useCallback(() => {
     const id = scrollToMessageId
+    scrollToMessageIdRef.current = null
     setScrollToMessageId(null)
     setHighlightMessageId(id)
     setTimeout(() => setHighlightMessageId(null), 1800)
@@ -211,6 +214,8 @@ export default function App() {
     if (!scrollToMessageId || !activeSessionId) return
     const found = messages.some((m) => m.id === scrollToMessageId)
     if (found) return
+    // undefined = loadMessages hasn't completed yet for this session — wait for it
+    if (hasMoreMap[activeSessionId] === undefined) return
     if (hasMoreMap[activeSessionId]) {
       void loadMoreMessages(activeSessionId)
     } else {
@@ -307,6 +312,7 @@ export default function App() {
     void loadMessages(sid).then(() => {
       if (cancelled) return
       if (useSessionStore.getState().activeSessionId !== sid) return
+      if (scrollToMessageIdRef.current) return // search jump will handle scroll
       scrollFeedToBottom()
     })
 
@@ -331,7 +337,7 @@ export default function App() {
         hold = window.setTimeout(() => {
           if (cancelled) return
           useSessionStore.getState().clearSessionTransition()
-          scrollFeedToBottom()
+          if (!scrollToMessageIdRef.current) scrollFeedToBottom()
         }, 110)
       })
     })

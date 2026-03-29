@@ -29,6 +29,8 @@ export function RenameSession(arg1:string,arg2:string):Promise<void>;
 
 export function SaveSettings(arg1:model.Settings):Promise<void>;
 
+export function SearchMessages(arg1:string):Promise<Array<bridge.SearchResult>>;
+
 export function SendMessage(arg1:bridge.SendRequest):Promise<string>;
 
 export function TranslateFile(arg1:bridge.FileRequest):Promise<void>;
