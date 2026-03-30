@@ -34,7 +34,7 @@ export function useBilingualHoverSync(
     const findBlock = (target: HTMLElement): { el: HTMLElement; side: 'src' | 'dest'; idx: number } | null => {
       let el: HTMLElement | null = target
       while (el && el !== container) {
-        const parent = el.parentElement
+        const parent: HTMLElement | null = el.parentElement
         if (parent?.classList.contains('message-md')) {
           const side: 'src' | 'dest' = parent.closest('.translation-panel--bilingual-body.src') ? 'src' : 'dest'
           const blocks = side === 'src' ? getBlocks().src : getBlocks().dest

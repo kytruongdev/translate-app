@@ -3,10 +3,11 @@
 PANDOC_VERSION := 3.6.4
 PANDOC_ARCH    := $(shell uname -m)
 APP_BUNDLE     := build/bin/translate-app.app/Contents/MacOS
+WAILS          := $(HOME)/go/bin/wails
 
 # Run from this directory (backend = Wails module root).
 dev:
-	wails dev
+	$(WAILS) dev
 
 # Download pandoc binary for the current platform into bin/pandoc.
 fetch-pandoc:
@@ -20,7 +21,7 @@ fetch-pandoc:
 
 # Build Wails app and bundle pandoc binary inside the .app.
 build: bin/pandoc
-	wails build
+	$(WAILS) build
 	cp bin/pandoc "$(APP_BUNDLE)/pandoc"
 	chmod +x "$(APP_BUNDLE)/pandoc"
 

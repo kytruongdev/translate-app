@@ -11,7 +11,7 @@ func (c *controller) OpenFileDialog(ctx context.Context) (string, error) {
 	path, err := runtime.OpenFileDialog(ctx, runtime.OpenDialogOptions{
 		Title: "Chọn tệp Word",
 		Filters: []runtime.FileFilter{
-			{DisplayName: "Word (*.docx)", Pattern: "*.docx"},
+			{DisplayName: "Word Documents (*.docx, *.doc)", Pattern: "*.docx;*.doc"},
 		},
 	})
 	if err != nil {
