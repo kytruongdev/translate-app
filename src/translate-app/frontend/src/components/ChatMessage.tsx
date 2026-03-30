@@ -996,7 +996,7 @@ function ChatMessageImpl({
       return (
         <div className="chat-msg user user-text-upload user-file-attachment" id={`chat-msg-${m.id}`}>
           <div className="avatar" aria-hidden>
-            U
+            G
           </div>
           <div className="chat-msg-body">
             <UserFileAttachmentBubble fileName={fileAttachName} meta={userMeta} fileSize={m.fileSize} />
@@ -1008,7 +1008,7 @@ function ChatMessageImpl({
       return (
         <div className="chat-msg user user-text-upload" id={`chat-msg-${m.id}`}>
           <div className="avatar" aria-hidden>
-            U
+            G
           </div>
           <div className="chat-msg-body">
             <UserPastedLongTextBubble meta={userMeta} charCount={m.originalContent?.length} />
@@ -1019,7 +1019,7 @@ function ChatMessageImpl({
     return (
       <div className={`chat-msg user${highlight ? ' chat-msg--highlight' : ''}`} id={`chat-msg-${m.id}`}>
         <div className="avatar" aria-hidden>
-          U
+          G
         </div>
         <div className="chat-msg-body">
           <div className="chat-bubble">
@@ -1044,7 +1044,7 @@ function ChatMessageImpl({
     return (
       <div className={`chat-msg assistant${highlight ? ' chat-msg--highlight' : ''}`} id={`chat-msg-${m.id}`}>
         <div className="avatar assistant-avatar" aria-hidden>
-          ✦
+          J
         </div>
         <div className="chat-msg-body">
           <FileTranslationCard
@@ -1070,7 +1070,7 @@ function ChatMessageImpl({
         id={`chat-msg-${m.id}`}
       >
         <div className="avatar assistant-avatar" aria-hidden>
-          ✦
+          J
         </div>
         <div className="chat-msg-body translation-card-wrap">
           {retranslateFollowUp && retranslateQuoteAssistant ? (

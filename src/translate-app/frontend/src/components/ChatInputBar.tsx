@@ -94,8 +94,8 @@ export function ChatInputBar({
         onNotifyPickError('PDF chưa được hỗ trợ ở phiên bản này')
         return
       }
-      if (!lower.endsWith('.docx') && !lower.endsWith('.doc')) {
-        onNotifyPickError('Chỉ hỗ trợ DOCX và DOC')
+      if (!lower.endsWith('.docx')) {
+        onNotifyPickError('Chỉ hỗ trợ DOCX')
         return
       }
       void onUserChoseFilePath(path)

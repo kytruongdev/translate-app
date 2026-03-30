@@ -205,13 +205,17 @@ export default function App() {
 
   const handleJumpToMessage = useCallback((result: SearchResult) => {
     let targetId = result.messageId
-    // Văn bản gốc (user) được hiển thị bên trong bilingual card của assistant kế tiếp.
-    // Scroll tới assistant message để highlight đúng bilingual card.
+    // Remap user → assistant khi user message không hiển thị bubble riêng:
+    // - Bilingual/file: source text nằm trong assistant card
+    // - Retranslate: user message render dạng invisible placeholder
     if (result.role === 'user') {
       const msgs = useMessageStore.getState().messages[result.sessionId] ?? []
       const idx = msgs.findIndex((m) => m.id === result.messageId)
-      if (idx !== -1 && msgs[idx + 1]?.role === 'assistant') {
-        targetId = msgs[idx + 1].id
+      const userMsg = idx !== -1 ? msgs[idx] : undefined
+      const next = idx !== -1 ? msgs[idx + 1] : undefined
+      const isRetranslate = Boolean(userMsg?.originalMessageId)
+      if (next?.role === 'assistant' && (next.displayMode !== 'bubble' || isRetranslate)) {
+        targetId = next.id
       }
     }
     scrollToMessageIdRef.current = targetId
@@ -421,13 +425,13 @@ export default function App() {
       setPendingFile(null)
       return
     }
-    if (!lower.endsWith('.docx') && !lower.endsWith('.doc')) {
-      setFilePickError('Chỉ hỗ trợ DOCX và DOC')
+    if (!lower.endsWith('.docx')) {
+      setFilePickError('Chỉ hỗ trợ DOCX')
       setPendingFile(null)
       return
     }
     const name = path.replace(/^.*[/\\]/, '') || path
-    const type: FileInfo['type'] = lower.endsWith('.doc') ? 'doc' : 'docx'
+    const type: FileInfo['type'] = 'docx'
     const placeholder: FileInfo = {
       name,
       type,
