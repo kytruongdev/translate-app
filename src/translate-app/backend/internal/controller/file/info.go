@@ -54,10 +54,8 @@ func (c *controller) ReadFileInfo(ctx context.Context, path string) (*bridge.Fil
 		return nil, errors.New("PDF chưa được hỗ trợ ở phiên bản này")
 	case ".docx":
 		return readDocxInfo(clean, name, size)
-	case ".doc":
-		return readDocInfo(clean, name, size)
 	default:
-		return nil, errors.New("chỉ hỗ trợ DOCX và DOC")
+		return nil, errors.New("chỉ hỗ trợ DOCX")
 	}
 }
 
@@ -121,27 +119,6 @@ func readDocxInfo(path, name string, size int64) (*bridge.FileInfo, error) {
 
 	pages := max(1, (charCount+docxCharsPerPage-1)/docxCharsPerPage)
 	return buildFileInfo(name, "docx", size, pages, charCount, false), nil
-}
-
-// readDocInfo converts a .doc file to a temporary .docx, reads its metadata, then removes the temp file.
-func readDocInfo(path, name string, size int64) (*bridge.FileInfo, error) {
-	tmp, err := os.CreateTemp("", "translate-doc-*.docx")
-	if err != nil {
-		return nil, fmt.Errorf("không tạo được file tạm: %w", err)
-	}
-	tmpPath := tmp.Name()
-	tmp.Close()
-	defer os.Remove(tmpPath)
-
-	if err := convertDocToDocx(path, tmpPath); err != nil {
-		return nil, fmt.Errorf("không chuyển đổi được DOC: %w", err)
-	}
-	info, err := readDocxInfo(tmpPath, name, size)
-	if err != nil {
-		return nil, err
-	}
-	info.Type = "doc"
-	return info, nil
 }
 
 func buildFileInfo(name, typ string, size int64, pageCount, charCount int, isScanned bool) *bridge.FileInfo {

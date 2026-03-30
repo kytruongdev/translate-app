@@ -960,22 +960,18 @@
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  border: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
   pointer-events: none;
   opacity: 0;
-  animation: jumpFlash 1.2s var(--ease-out) 1;
+  animation: jumpFlash 2.5s var(--ease-out) 1;
 }
 
 @keyframes jumpFlash {
-  0% {
-    opacity: 0;
-  }
-  20% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-  }
+  0%   { opacity: 0; }
+  8%   { opacity: 1; }
+  60%  { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 /* Topbar thẻ dịch: giống mockup — 3 cột minmax(0,1fr) để segment luôn đủ chỗ, không bị overflow:hidden cắt */

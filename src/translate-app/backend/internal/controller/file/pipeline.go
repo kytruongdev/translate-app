@@ -67,27 +67,6 @@ func (c *controller) runFileTranslate(ctx context.Context, p fileTranslateParams
 
 	ext := fileExt(p.FilePath)
 
-	// Convert .doc → converted.docx before routing so the DOCX pipeline can process it.
-	if ext == ".doc" {
-		dir, err := userFilesDir()
-		if err != nil {
-			fail(err.Error())
-			return
-		}
-		subDir := filepath.Join(dir, p.FileID)
-		if err := os.MkdirAll(subDir, 0o755); err != nil {
-			fail(fmt.Sprintf("không tạo được thư mục lưu: %v", err))
-			return
-		}
-		convertedPath := filepath.Join(subDir, "converted.docx")
-		if err := convertDocToDocx(p.FilePath, convertedPath); err != nil {
-			fail(fmt.Sprintf("không chuyển đổi được DOC: %v", err))
-			return
-		}
-		p.FilePath = convertedPath
-		ext = ".docx"
-	}
-
 	if ext == ".docx" {
 		c.runDocxTranslate(ctx, p, fail)
 	} else {

@@ -71,18 +71,6 @@ func extractDocxPlainText(pandocPath, docxPath string) (string, error) {
 	return strings.TrimSpace(text), nil
 }
 
-// convertDocToDocx converts a legacy .doc file to .docx using macOS textutil.
-// Note: textutil may include Apple-specific XML that causes Word to show a
-// "unreadable content" recovery prompt on first open. This is a known limitation
-// of DOC support — table structure and formatting are preserved correctly.
-func convertDocToDocx(src, dst string) error {
-	out, err := exec.Command("textutil", "-convert", "docx", "-output", dst, src).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("textutil doc→docx: %w\n%s", err, strings.TrimSpace(string(out)))
-	}
-	return nil
-}
-
 // cleanPandocOutput removes noise from pandoc GFM output that would
 // confuse the AI translation prompt.
 func cleanPandocOutput(md string) string {

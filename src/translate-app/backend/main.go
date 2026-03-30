@@ -31,7 +31,7 @@ func main() {
 	app, onStartup := handler.New(ctrls)
 
 	err = wails.Run(&options.App{
-		Title:  "translate-app",
+		Title:  "GnJ",
 		Width:  1024,
 		Height: 768,
 		AssetServer: &assetserver.Options{
