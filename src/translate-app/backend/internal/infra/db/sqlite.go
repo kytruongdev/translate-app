@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -86,7 +87,7 @@ func runMigrations(db *sql.DB) error {
 			continue // already applied
 		}
 
-		body, err := migrationFS.ReadFile(filepath.Join("migrations", name))
+		body, err := migrationFS.ReadFile(path.Join("migrations", name))
 		if err != nil {
 			return err
 		}
