@@ -1101,7 +1101,7 @@ function ChatMessageImpl({
   return (
     <div className={`chat-msg assistant${retranslateFollowUp ? ' retranslate-reply' : ''}${highlight ? ' chat-msg--highlight' : ''}`} id={`chat-msg-${m.id}`}>
       <div className="avatar assistant-avatar" aria-hidden>
-        ✦
+        J
       </div>
       <div className="chat-msg-body">
         {retranslateFollowUp && retranslateQuoteAssistant && (
