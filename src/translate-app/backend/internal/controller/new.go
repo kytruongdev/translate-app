@@ -6,6 +6,7 @@ import (
 	"translate-app/internal/controller/message"
 	"translate-app/internal/controller/session"
 	"translate-app/internal/controller/settings"
+	"translate-app/internal/logger"
 	"translate-app/internal/repository"
 )
 
@@ -18,13 +19,13 @@ type Controllers struct {
 }
 
 // New wires all controllers. API keys are used by the message controller to build AI clients per request from settings + optional overrides.
-func New(reg repository.Registry, keys *config.APIKeys) *Controllers {
-	fileCtrl := file.New(reg, keys)
-	msg := message.New(reg, keys, fileCtrl)
+func New(reg repository.Registry, keys *config.APIKeys, log logger.Logger) *Controllers {
+	fileCtrl := file.New(reg, keys, log)
+	msg := message.New(reg, keys, fileCtrl, log)
 	return &Controllers{
 		Session:  session.New(reg, msg),
 		Message:  msg,
 		File:     fileCtrl,
-		Settings: settings.New(reg),
+		Settings: settings.New(reg, log),
 	}
 }

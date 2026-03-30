@@ -13,6 +13,7 @@ import (
 
 	"translate-app/config"
 	"translate-app/internal/bridge"
+	"translate-app/internal/logger"
 	"translate-app/internal/repository"
 )
 
@@ -31,18 +32,20 @@ type Controller interface {
 type controller struct {
 	reg      repository.Registry
 	keys     *config.APIKeys
+	log      logger.Logger
 	cancelMu sync.Mutex
 	cancels  map[string]context.CancelFunc // fileID → cancel func for active jobs
 }
 
 // New constructs a file controller.
-func New(reg repository.Registry, keys *config.APIKeys) Controller {
+func New(reg repository.Registry, keys *config.APIKeys, log logger.Logger) Controller {
 	if keys == nil {
 		keys = &config.APIKeys{}
 	}
 	return &controller{
 		reg:     reg,
 		keys:    keys,
+		log:     log,
 		cancels: make(map[string]context.CancelFunc),
 	}
 }

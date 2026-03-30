@@ -8,6 +8,11 @@
   "frontend:build": "npm run build",
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
+  "info": {
+    "productName": "G & J",
+    "productVersion": "1.0.0",
+    "companyName": "GnJ"
+  },
   "author": {
     "name": "Mai Nguyen",
     "email": "mai.nguyen@s3corp.com.vn"

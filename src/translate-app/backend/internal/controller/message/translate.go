@@ -3,6 +3,7 @@ package message
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -22,6 +23,7 @@ func (c *controller) runTranslationStream(
 	preserveMarkdown bool,
 	provider gateway.AIProvider,
 ) {
+	startTime := time.Now()
 	events := make(chan gateway.StreamEvent, 64)
 	errCh := make(chan error, 1)
 	go func() {
@@ -42,6 +44,9 @@ func (c *controller) runTranslationStream(
 				errMsg = ev.Error.Error()
 			}
 			<-errCh
+			c.log.Error("TranslationFailed",
+				"msgId", assistantMsgID, "sessionId", sessionID,
+				"durationMs", time.Since(startTime).Milliseconds(), "error", errMsg)
 			runtime.EventsEmit(ctx, "translation:error", errMsg)
 			return
 		case "done":
@@ -51,6 +56,9 @@ func (c *controller) runTranslationStream(
 
 	streamErr := <-errCh
 	if streamErr != nil {
+		c.log.Error("TranslationFailed",
+			"msgId", assistantMsgID, "sessionId", sessionID,
+			"durationMs", time.Since(startTime).Milliseconds(), "error", streamErr.Error())
 		runtime.EventsEmit(ctx, "translation:error", streamErr.Error())
 		return
 	}
@@ -65,6 +73,9 @@ func (c *controller) runTranslationStream(
 		runtime.EventsEmit(ctx, "translation:error", "failed to load message after translate")
 		return
 	}
+	c.log.Info("TranslationDone",
+		"msgId", assistantMsgID, "sessionId", sessionID,
+		"durationMs", time.Since(startTime).Milliseconds(), "tokens", tokens)
 	runtime.EventsEmit(ctx, "translation:done", *msg)
 }
 

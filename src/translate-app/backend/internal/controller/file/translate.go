@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -125,6 +126,11 @@ func (c *controller) TranslateFile(ctx context.Context, req bridge.FileRequest) 
 
 	_ = c.reg.Settings().Upsert(ctx, "last_target_lang", targetLang)
 
+	c.log.Info("FileTranslateStarted",
+		"sessionId", req.SessionID, "fileId", fileID, "fileName", filepath.Base(clean),
+		"fileSize", info.FileSize, "charCount", info.CharCount, "pageCount", info.PageCount,
+		"model", modelUsed, "style", style, "targetLang", targetLang)
+
 	runtime.EventsEmit(ctx, "translation:start", map[string]string{
 		"messageId": assistantID,
 		"sessionId": req.SessionID,
@@ -146,6 +152,7 @@ func (c *controller) TranslateFile(ctx context.Context, req bridge.FileRequest) 
 		ModelUsed:   modelUsed,
 		PageCount:   info.PageCount,
 		Provider:    provider,
+		StartTime:   time.Now(),
 	})
 	return nil
 }

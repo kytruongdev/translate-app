@@ -2,7 +2,7 @@
 
 PANDOC_VERSION := 3.6.4
 PANDOC_ARCH    := $(shell uname -m)
-APP_BUNDLE     := build/bin/translate-app.app/Contents/MacOS
+APP_BUNDLE     := build/bin/GnJ.app/Contents/MacOS
 WAILS          := $(HOME)/go/bin/wails
 
 # Run from this directory (backend = Wails module root).
