@@ -421,13 +421,13 @@ export default function App() {
       setPendingFile(null)
       return
     }
-    if (!lower.endsWith('.docx')) {
-      setFilePickError('Chỉ hỗ trợ DOCX')
+    if (!lower.endsWith('.docx') && !lower.endsWith('.doc')) {
+      setFilePickError('Chỉ hỗ trợ DOCX và DOC')
       setPendingFile(null)
       return
     }
     const name = path.replace(/^.*[/\\]/, '') || path
-    const type: FileInfo['type'] = 'docx'
+    const type: FileInfo['type'] = lower.endsWith('.doc') ? 'doc' : 'docx'
     const placeholder: FileInfo = {
       name,
       type,
@@ -436,12 +436,14 @@ export default function App() {
       estimatedChunks: 1,
       estimatedMinutes: 1,
     }
+    autoSendOnReadyRef.current = true
     setFilePickError(null)
     setPendingFile({ path, info: placeholder, loading: true })
     try {
       const info = await WailsService.readFileInfo(path)
       setPendingFile({ path, info, loading: false })
     } catch (err) {
+      autoSendOnReadyRef.current = false
       setPendingFile(null)
       setFilePickError(err instanceof Error ? err.message : String(err))
     }
@@ -457,7 +459,6 @@ export default function App() {
       try {
         const path = await WailsService.openFileDialog()
         if (!path) return
-        autoSendOnReadyRef.current = true
         await ingestFilePath(path)
       } catch (e) {
         autoSendOnReadyRef.current = false

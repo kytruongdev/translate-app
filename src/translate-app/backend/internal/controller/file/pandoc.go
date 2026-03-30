@@ -18,11 +18,17 @@ var (
 )
 
 // findPandoc returns the path to the pandoc binary.
-// Search order: bundled next to executable → system PATH.
+// Search order: bundled next to executable → bin/ relative to cwd (dev mode) → system PATH.
 // Returns "" if pandoc is not found.
 func findPandoc() string {
 	if exe, err := os.Executable(); err == nil {
 		candidate := filepath.Join(filepath.Dir(exe), "pandoc")
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		candidate := filepath.Join(cwd, "bin", "pandoc")
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate
 		}
@@ -63,6 +69,18 @@ func extractDocxPlainText(pandocPath, docxPath string) (string, error) {
 	}
 	text := rePandocEmptyLines.ReplaceAllString(string(out), "\n\n")
 	return strings.TrimSpace(text), nil
+}
+
+// convertDocToDocx converts a legacy .doc file to .docx using macOS textutil.
+// Note: textutil may include Apple-specific XML that causes Word to show a
+// "unreadable content" recovery prompt on first open. This is a known limitation
+// of DOC support — table structure and formatting are preserved correctly.
+func convertDocToDocx(src, dst string) error {
+	out, err := exec.Command("textutil", "-convert", "docx", "-output", dst, src).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("textutil doc→docx: %w\n%s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 // cleanPandocOutput removes noise from pandoc GFM output that would

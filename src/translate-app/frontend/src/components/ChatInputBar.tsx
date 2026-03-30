@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
 import { Paperclip, ChevronDown, Send } from 'lucide-react'
-import { CanResolveFilePaths, ResolveFilePaths } from '../../wailsjs/runtime/runtime'
+import { OnFileDrop, OnFileDropOff } from '../../wailsjs/runtime/runtime'
 import { useSettingsStore } from '@/stores/settings/settingsStore'
 import { useUIStore } from '@/stores/ui/uiStore'
 import { STYLE_OPTIONS, TARGET_LANG_OPTIONS } from '@/constants/inputOptions'
@@ -79,12 +79,34 @@ export function ChatInputBar({
     return () => document.removeEventListener('mousedown', fn)
   }, [popover])
 
+  const blockAttach = attachDisabled ?? busy
+
+  // Wails native OnFileDrop — resolves absolute paths on macOS.
+  // useDropTarget=false: fire for any drop on the window, we filter by wrapRef bounds.
+  useEffect(() => {
+    OnFileDrop((_x: number, _y: number, paths: string[]) => {
+      setFileDragOver(false)
+      if (blockAttach) return
+      const path = paths[0]
+      if (!path) return
+      const lower = path.toLowerCase()
+      if (lower.endsWith('.pdf')) {
+        onNotifyPickError('PDF chưa được hỗ trợ ở phiên bản này')
+        return
+      }
+      if (!lower.endsWith('.docx') && !lower.endsWith('.doc')) {
+        onNotifyPickError('Chỉ hỗ trợ DOCX và DOC')
+        return
+      }
+      void onUserChoseFilePath(path)
+    }, false)
+    return () => { OnFileDropOff() }
+  }, [blockAttach, onNotifyPickError, onUserChoseFilePath])
+
   const styleLabel = STYLE_OPTIONS.find((o) => o.value === defaultStyle)?.label ?? 'Casual'
   const langOpt =
     TARGET_LANG_OPTIONS.find((o) => o.value === activeTargetLang) ?? TARGET_LANG_OPTIONS[0]
   const langChip = langOpt?.label ?? activeTargetLang
-
-  const blockAttach = attachDisabled ?? busy
 
   const canSendFile =
     Boolean(pendingFile) && !pendingFile?.loading && attachmentValidationError == null
@@ -125,43 +147,6 @@ export function ChatInputBar({
     }
   }, [])
 
-  const onDrop = useCallback(
-    async (e: DragEvent) => {
-      e.preventDefault()
-      e.stopPropagation()
-      setFileDragOver(false)
-      if (blockAttach) return
-      const files = Array.from(e.dataTransfer.files)
-      if (files.length === 0) return
-      const f = files[0]
-      let path: string | undefined
-      if (CanResolveFilePaths()) {
-        ResolveFilePaths(files)
-        path = (f as File & { path?: string }).path
-      }
-      const nameLower = f.name.toLowerCase()
-      const ref = (path ?? f.name).toLowerCase()
-      if (ref.endsWith('.pdf')) {
-        onNotifyPickError('PDF chưa được hỗ trợ ở phiên bản này')
-        return
-      }
-      if (!ref.endsWith('.docx')) {
-        onNotifyPickError('Chỉ hỗ trợ DOCX')
-        return
-      }
-      if (!path) {
-        if (nameLower.endsWith('.docx')) {
-          onNotifyPickError('Không lấy được đường dẫn tệp — hãy dùng nút đính kèm hoặc bản build Wails')
-        } else {
-          onNotifyPickError('Chỉ hỗ trợ DOCX')
-        }
-        return
-      }
-      await onUserChoseFilePath(path)
-    },
-    [blockAttach, onNotifyPickError, onUserChoseFilePath],
-  )
-
   const pickStyle = useCallback(
     async (v: TranslationStyle) => {
       await saveSettings({ defaultStyle: v })
@@ -191,7 +176,7 @@ export function ChatInputBar({
           onDragEnter={onDragOver}
           onDragOver={onDragOver}
           onDragLeave={onDragLeave}
-          onDrop={(e: DragEvent) => void onDrop(e)}
+          onDrop={(e: DragEvent) => { e.preventDefault(); e.stopPropagation(); setFileDragOver(false) }}
         >
           {fileDragOver && (
             <div className="file-drop-overlay" aria-hidden>

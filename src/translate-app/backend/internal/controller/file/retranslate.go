@@ -56,7 +56,22 @@ func (c *controller) retranslateDocx(ctx context.Context, p RetranslateContentPa
 		return
 	}
 
-	df, err := ParseDocx(fileRec.OriginalPath)
+	// .doc files: use pre-converted converted.docx stored alongside source.md.
+	// If not present (e.g. user moved the file), re-convert on the fly.
+	docxPath := fileRec.OriginalPath
+	if strings.ToLower(filepath.Ext(docxPath)) == ".doc" {
+		subDir := filepath.Dir(fileRec.SourcePath)
+		convertedPath := filepath.Join(subDir, "converted.docx")
+		if _, err := os.Stat(convertedPath); err != nil {
+			if err := convertDocToDocx(docxPath, convertedPath); err != nil {
+				fail(fmt.Sprintf("không chuyển đổi lại được DOC: %v", err))
+				return
+			}
+		}
+		docxPath = convertedPath
+	}
+
+	df, err := ParseDocx(docxPath)
 	if err != nil {
 		fail(fmt.Sprintf("không đọc được cấu trúc DOCX: %v", err))
 		return
