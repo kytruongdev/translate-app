@@ -1,4 +1,4 @@
-# TranslateApp — Project Reference
+# G & J — Project Reference
 
 > File này dùng cho cả Claude lẫn developer đọc lại. Cập nhật khi có thay đổi lớn về architecture hoặc flow.
 
@@ -6,18 +6,22 @@
 
 ## 1. Business Overview
 
-**TranslateApp** là desktop app dịch thuật AI dành cho người dùng cá nhân (primary target: người Việt).
+**G & J** (binary: `GnJ`) là desktop app dịch thuật AI dành cho người dùng cá nhân (primary target: người Việt).
 
-**Core value:** Dịch văn bản và tài liệu (DOC/DOCX) với chất lượng cao, lưu lịch sử theo session, hỗ trợ nhiều AI provider.
+**Core value:** Dịch văn bản và tài liệu (DOCX) với chất lượng cao, lưu lịch sử theo session, hỗ trợ AI provider online.
 
 **Tính năng chính:**
 - Dịch văn bản qua chat interface (bubble hoặc bilingual view)
-- Dịch toàn bộ file DOCX / DOC với progress tracking (DOC được convert sang DOCX qua Pandoc trước khi dịch)
+- Dịch toàn bộ file DOCX với progress tracking
 - Quản lý lịch sử session (tìm kiếm, pin, archive, rename)
 - Retranslate với language/style khác
-- Export file đã dịch
-- 2 AI provider: OpenAI, Ollama (local)
+- Export file đã dịch (DOCX)
+- AI provider: OpenAI (active) — Ollama disabled trên UI ("coming soon")
 - 3 translation style: casual / business / academic
+
+**UI identity:**
+- App name: `G & J` (wails.json productName), binary: `GnJ`
+- User avatar: chữ **G** (màu hồng), Assistant avatar: chữ **J** (màu xanh)
 
 ---
 
@@ -49,7 +53,9 @@ User gõ / paste text → chọn ngôn ngữ đích → Send
 User click attach icon → OpenFileDialog()
   → Native file picker, filter hiển thị: "Word (*.docx)" — chỉ gợi ý, không enforce ở OS level
 
-HOẶC drag-drop file vào chat → FE nhận path
+HOẶC drag-drop file vào chat → Wails OnFileDrop (native, resolve absolute path trên macOS)
+  → ChatInputBar dùng OnFileDrop(callback, false) — fire cho mọi drop trên window
+  → Chỉ accept .docx, reject .pdf và các định dạng khác
 
 → FE gọi ReadFileInfo(path)
 ```
@@ -60,7 +66,7 @@ HOẶC drag-drop file vào chat → FE nhận path
 2. path không tồn tại → error
 3. path là directory  → error
 4. ext = .pdf         → error "PDF chưa được hỗ trợ ở phiên bản này"
-5. ext ≠ .docx        → error "chỉ hỗ trợ DOCX"
+5. ext ≠ .docx        → error "chỉ hỗ trợ DOCX"  ← DOC không còn được hỗ trợ
 6. ext = .docx        → đọc word/document.xml từ zip (limit 32MiB)
                          → extract text → đếm rune
                          → tính pageCount  = ceil(charCount / 2800)
@@ -141,7 +147,9 @@ runFileTranslate → runDocxTranslate:
 - lỗi bất kỳ   → status = error     → emit `file:error` + `translation:error`
 ```
 
-**File storage:** `~/.config/TranslateApp/files/{fileId}/source.md` và `translated.docx`
+**File storage:**
+- macOS: `~/Library/Application Support/TranslateApp/files/{fileId}/source.md` và `translated.docx`
+- Windows: `%AppData%\TranslateApp\files\{fileId}\`
 
 ### Flow 3: Retranslate
 
@@ -297,11 +305,17 @@ type AIProvider interface {
 
 Factory: `gateway.ForProvider("openai"|"ollama", modelName, keys)`
 
+> **Lưu ý:** Ollama bị disable trên UI (option greyed out, `disabled` attribute). Code backend vẫn còn nguyên, chỉ ẩn khỏi UI để tránh non-tech user chọn nhầm.
+
 ---
 
 ## 4. Database Schema
 
-**DB path:** `~/.config/TranslateApp/data.db` (SQLite, WAL mode, foreign_keys ON)
+**DB path:**
+- macOS: `~/Library/Application Support/TranslateApp/data.db`
+- Windows: `%AppData%\TranslateApp\data.db`
+
+(SQLite, WAL mode, foreign_keys ON)
 
 ### sessions
 ```sql
@@ -324,7 +338,7 @@ CREATE TABLE files (
     id              TEXT PRIMARY KEY,       -- UUID v4
     session_id      TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
     file_name       TEXT NOT NULL,          -- tên file gốc (vd: "report.docx")
-    file_type       TEXT NOT NULL CHECK (file_type IN ('docx','doc')),
+    file_type       TEXT NOT NULL CHECK (file_type IN ('docx')),  -- DOC dropped (migration 005)
     file_size       INTEGER NOT NULL DEFAULT 0,   -- bytes
     original_path   TEXT,                   -- path file gốc user chọn
     source_path     TEXT,                   -- path source.md đã extract (disk)
@@ -397,13 +411,25 @@ CREATE TABLE settings (
 
 ```bash
 # Chạy dev (hot reload)
-cd backend && wails dev
+cd backend && make dev
 
-# Build production
+# Build production macOS
 cd backend && make build
+# Output: build/bin/GnJ.app (pandoc bundled bên trong)
 
-# Download pandoc binary (cần 1 lần)
+# Build production Windows (cross-compile từ Mac, cần mingw-w64)
+# brew install mingw-w64  ← cài 1 lần
+cd backend && CC=x86_64-w64-mingw32-gcc wails build --platform windows/amd64
+
+# Build Windows NSIS installer
+cd backend && CC=x86_64-w64-mingw32-gcc wails build --platform windows/amd64 -nsis
+# Output: build/bin/GnJ-amd64-installer.exe (pandoc bundled, tự cài WebView2)
+
+# Download pandoc binary macOS (cần 1 lần)
 cd backend && make fetch-pandoc
+
+# Download pandoc binary Windows (cần khi build Windows lần đầu)
+# Xem script trong Makefile hoặc download thủ công vào bin/pandoc.exe
 
 # Generate SQLC (sau khi thay đổi SQL queries)
 cd backend && sqlc generate
@@ -414,9 +440,55 @@ cd frontend && npm run build
 
 **Frontend output** → `backend/dist/` (embedded vào Go binary lúc build).
 
+**Distribution:**
+- macOS: zip `GnJ.app` → gửi user → unzip + kéo vào `/Applications` → chuột phải Open lần đầu
+- Windows: gửi `GnJ-amd64-installer.exe` → double-click → wizard cài đặt, tạo Desktop shortcut tự động
+
 ---
 
-## 6. Rules cho Claude
+## 6. Logging
+
+**Package:** `internal/logger` — inject vào controllers qua constructor DI.
+
+**Log file:**
+- macOS: `~/Library/Application Support/TranslateApp/app.log`
+- Windows: `%AppData%\TranslateApp\app.log`
+- Rotate khi > 10MB → `app.log.1`
+
+**Format:**
+```
+[2006-01-02 15:04:05] [INFO ] AppStarted | version=1.0.0
+[2006-01-02 15:04:05] [WARN ] PandocNotFound | fileName="report.docx" fallback="XML parser"
+[2006-01-02 15:04:05] [ERROR] TranslationFailed | msgId=abc sessionId=xyz durationMs=1234 error="rate limit"
+```
+
+**Levels:** `INFO` / `WARN` / `ERROR` (không có DEBUG)
+
+**Business events được log:**
+
+| Event | Level | Layer |
+|---|---|---|
+| AppStarted | INFO | main.go |
+| SessionCreated | INFO | message/ops.go |
+| MessageSent | INFO | message/ops.go |
+| RetranslateTriggered | INFO | message/ops.go |
+| TranslationDone | INFO | message/translate.go |
+| TranslationFailed | ERROR | message/translate.go |
+| FileTranslateStarted | INFO | file/translate.go |
+| FileTranslateDone | INFO | file/pipeline.go |
+| FileTranslateFailed | ERROR | file/pipeline.go |
+| FileTranslateCancelled | WARN | file/pipeline.go |
+| FileRetranslateStarted | INFO | file/retranslate.go |
+| FileRetranslateDone | INFO | file/retranslate.go |
+| FileRetranslateFailed | ERROR | file/retranslate.go |
+| PandocNotFound | WARN | file/pipeline.go |
+| SettingChanged | INFO | settings/new.go |
+
+**File log đặc biệt:** luôn có `fileName`, `durationMs`, `tokens`, `model`, `style`.
+
+---
+
+## 7. Rules cho Claude
 
 - Commit title phải có prefix `[claude]`
 - BE theo Clean Architecture — không để business logic vào `handler/`, không để DB logic vào `controller/`

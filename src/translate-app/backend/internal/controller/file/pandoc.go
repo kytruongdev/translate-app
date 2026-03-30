@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 )
 
@@ -17,18 +18,27 @@ var (
 	rePandocEmptyLines = regexp.MustCompile(`\n{3,}`)
 )
 
+// pandocBinaryName returns "pandoc.exe" on Windows, "pandoc" elsewhere.
+func pandocBinaryName() string {
+	if runtime.GOOS == "windows" {
+		return "pandoc.exe"
+	}
+	return "pandoc"
+}
+
 // findPandoc returns the path to the pandoc binary.
 // Search order: bundled next to executable → bin/ relative to cwd (dev mode) → system PATH.
 // Returns "" if pandoc is not found.
 func findPandoc() string {
+	name := pandocBinaryName()
 	if exe, err := os.Executable(); err == nil {
-		candidate := filepath.Join(filepath.Dir(exe), "pandoc")
+		candidate := filepath.Join(filepath.Dir(exe), name)
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate
 		}
 	}
 	if cwd, err := os.Getwd(); err == nil {
-		candidate := filepath.Join(cwd, "bin", "pandoc")
+		candidate := filepath.Join(cwd, "bin", name)
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate
 		}

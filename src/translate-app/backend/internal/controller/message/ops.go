@@ -91,6 +91,12 @@ func (c *controller) CreateSessionAndSend(ctx context.Context, req bridge.Create
 
 	_ = c.reg.Settings().Upsert(ctx, "last_target_lang", req.TargetLang)
 
+	c.log.Info("SessionCreated",
+		"sessionId", sessionID, "targetLang", req.TargetLang, "style", style, "model", modelUsed)
+	c.log.Info("MessageSent",
+		"sessionId", sessionID, "msgId", assistantID, "charCount", len(content),
+		"sourceLang", req.SourceLang, "targetLang", req.TargetLang, "style", style, "model", modelUsed)
+
 	runtime.EventsEmit(ctx, "translation:start", map[string]string{
 		"messageId": assistantID,
 		"sessionId": sessionID,
@@ -207,6 +213,16 @@ func (c *controller) SendMessage(ctx context.Context, req bridge.SendRequest) (s
 	}
 
 	_ = c.reg.Settings().Upsert(ctx, "last_target_lang", req.TargetLang)
+
+	if req.OriginalMessageID != "" {
+		c.log.Info("RetranslateTriggered",
+			"sessionId", req.SessionID, "originalMsgId", req.OriginalMessageID,
+			"newMsgId", assistantID, "style", style, "targetLang", req.TargetLang, "model", modelUsed)
+	} else {
+		c.log.Info("MessageSent",
+			"sessionId", req.SessionID, "msgId", assistantID, "charCount", len(content),
+			"sourceLang", req.SourceLang, "targetLang", req.TargetLang, "style", style, "model", modelUsed)
+	}
 
 	runtime.EventsEmit(ctx, "translation:start", map[string]string{
 		"messageId": assistantID,

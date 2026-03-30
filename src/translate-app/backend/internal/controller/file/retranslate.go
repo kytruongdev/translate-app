@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -32,6 +33,11 @@ type RetranslateContentParams struct {
 // PDF / plain-text files use the existing chunked-markdown pipeline.
 func (c *controller) RunRetranslateContent(ctx context.Context, p RetranslateContentParams) {
 	fail := func(msg string) {
+		if ctx.Err() != nil {
+			c.log.Warn("FileRetranslateCancelled", "sessionId", p.SessionID, "fileId", p.FileID)
+		} else {
+			c.log.Error("FileRetranslateFailed", "sessionId", p.SessionID, "fileId", p.FileID, "error", msg)
+		}
 		runtime.EventsEmit(ctx, "translation:error", msg)
 		runtime.EventsEmit(ctx, "file:error", msg)
 	}
@@ -45,12 +51,15 @@ func (c *controller) RunRetranslateContent(ctx context.Context, p RetranslateCon
 
 // retranslateDocx re-runs the XML pipeline on the original DOCX file.
 func (c *controller) retranslateDocx(ctx context.Context, p RetranslateContentParams, fail func(string)) {
+	startTime := time.Now()
 	fileRec, err := c.reg.File().GetByID(ctx, p.FileID)
 	if err != nil || fileRec == nil {
 		fail("không tìm thấy thông tin tệp để dịch lại")
 		return
 	}
-	fmt.Printf("[DEBUG] retranslateDocx — file=%s\n", filepath.Base(fileRec.OriginalPath))
+	c.log.Info("FileRetranslateStarted",
+		"sessionId", p.SessionID, "fileId", p.FileID, "fileName", filepath.Base(fileRec.OriginalPath),
+		"model", fileRec.ModelUsed, "style", p.Style, "targetLang", p.TargetLang)
 	if fileRec.OriginalPath == "" {
 		fail("không có đường dẫn tệp gốc để dịch lại")
 		return
@@ -131,6 +140,11 @@ func (c *controller) retranslateDocx(ctx context.Context, p RetranslateContentPa
 		fail("không tải được tin nhắn sau khi dịch lại")
 		return
 	}
+	c.log.Info("FileRetranslateDone",
+		"sessionId", p.SessionID, "fileId", p.FileID, "fileName", filepath.Base(fileRec.OriginalPath),
+		"durationMs", time.Since(startTime).Milliseconds(), "tokens", usedTokens,
+		"model", fileRec.ModelUsed, "style", p.Style)
+
 	runtime.EventsEmit(ctx, "translation:done", *msg)
 
 	runtime.EventsEmit(ctx, "file:done", bridge.FileResult{

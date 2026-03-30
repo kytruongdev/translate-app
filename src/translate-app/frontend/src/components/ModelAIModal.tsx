@@ -54,7 +54,7 @@ export function ModelAIModal({ onClose }: { onClose: () => void }) {
               onChange={(e) => setProvider(e.target.value as ActiveProvider)}
             >
               <option value="openai">Online (ChatGPT 4o-mini)</option>
-              <option value="ollama">Offline (Qwen2.5:7b)</option>
+              <option value="ollama" disabled>Offline (Qwen2.5:7b) — coming soon</option>
             </select>
           </label>
           <div className="settings-row compact column">
