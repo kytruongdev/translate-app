@@ -16,6 +16,11 @@ import (
 	"translate-app/internal/model"
 )
 
+const (
+	pdfCharsPerChunk    = 5000            // larger than DOCX (2500) — reduces API call count
+	pdfChunkTimeout     = 120 * time.Second // per-chunk timeout: prevents one stalled request hanging forever
+)
+
 // runPDFTranslate handles PDF files:
 // 1. Extract text page by page with rule-based cleaning + cross-page merge
 // 2. Chunk by character count
@@ -76,8 +81,8 @@ func (c *controller) runPDFTranslate(ctx context.Context, p fileTranslateParams,
 		"assistantMessageId": p.AssistantID,
 	})
 
-	// Step 2: Chunk text by paragraph boundaries.
-	chunks := chunkPlainText(text, charsPerChunk)
+	// Step 2: Chunk text by paragraph boundaries (larger chunks = fewer API calls).
+	chunks := chunkPlainText(text, pdfCharsPerChunk)
 	total := len(chunks)
 	if total == 0 {
 		fail("không có nội dung để dịch")
@@ -225,17 +230,22 @@ func (c *controller) translatePlainChunks(
 			defer func() { <-sem }()
 			events := make(chan gateway.StreamEvent, 64)
 			var out strings.Builder
-			var provErr error
+			errCh := make(chan error, 1)
+			// Per-chunk timeout prevents one stalled API request from hanging the whole pipeline.
+			chunkCtx, cancel := context.WithTimeout(ctx, pdfChunkTimeout)
 			go func() {
-				provErr = provider.TranslateBatchStream(ctx, text, srcLang, targetLang, string(style), events)
+				defer cancel()
+				// TranslateStream (not TranslateBatchStream) — PDF chunks are plain text,
+				// no <<<N>>> batch markers needed.
+				errCh <- provider.TranslateStream(chunkCtx, text, srcLang, targetLang, string(style), false, events)
 			}()
 			for ev := range events {
 				if ev.Type == "chunk" && ev.Content != "" {
 					out.WriteString(ev.Content)
 				}
 			}
-			if provErr != nil {
-				resCh <- result{idx: idx, err: provErr}
+			if err := <-errCh; err != nil {
+				resCh <- result{idx: idx, err: err}
 				return
 			}
 			translated := strings.TrimSpace(out.String())

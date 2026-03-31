@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"rsc.io/pdf"
@@ -38,6 +39,15 @@ func extractSourceMarkdown(path, ext string) (string, error) {
 }
 
 func extractPDFPlain(path string) (string, error) {
+	// Prefer pdftotext (poppler) — handles all font encodings including ToUnicode CMap.
+	if p := findPDFToText(); p != "" {
+		text, err := extractPDFWithPDFToText(p, path)
+		if err == nil && strings.TrimSpace(text) != "" {
+			return text, nil
+		}
+	}
+
+	// Fallback: rsc.io/pdf (basic, may fail on custom font encodings).
 	r, err := pdf.Open(path)
 	if err != nil {
 		return "", fmt.Errorf("không đọc được PDF: %w", err)
@@ -61,9 +71,19 @@ func extractPDFPlain(path string) (string, error) {
 	return strings.TrimSpace(b.String()), nil
 }
 
-// extractPDFWithClean extracts text from a PDF page by page, applies rule-based
-// cleaning, and merges cross-page paragraph fragments.
+// extractPDFWithClean extracts text from a PDF with cleaning.
+// Uses pdftotext (poppler) when available — handles all font encodings.
+// Falls back to rsc.io/pdf with rule-based cleaning + garbage detection.
 func extractPDFWithClean(path string) (string, error) {
+	// Prefer pdftotext (poppler).
+	if p := findPDFToText(); p != "" {
+		text, err := extractPDFWithPDFToText(p, path)
+		if err == nil && strings.TrimSpace(text) != "" {
+			return text, nil
+		}
+	}
+
+	// Fallback: rsc.io/pdf + rule-based cleaning.
 	r, err := pdf.Open(path)
 	if err != nil {
 		return "", fmt.Errorf("không đọc được PDF: %w", err)
@@ -73,53 +93,41 @@ func extractPDFWithClean(path string) (string, error) {
 		return "", errors.New("PDF không có trang hợp lệ")
 	}
 
-	var acc strings.Builder   // accumulated clean text
-	var fragment string       // unfinished paragraph fragment from previous page
+	var acc strings.Builder
+	var fragment string
 
 	for i := 1; i <= n; i++ {
 		p := r.Page(i)
 		if p.V.IsNull() {
 			continue
 		}
-
-		// Extract raw text from page.
 		var raw strings.Builder
 		for _, t := range p.Content().Text {
 			raw.WriteString(t.S)
 		}
 		pageText := raw.String()
 		if strings.TrimSpace(pageText) == "" {
-			continue // skip empty/image-only pages
+			continue
 		}
-
-		// Merge fragment from previous page.
 		if fragment != "" {
 			pageText = fragment + pageText
 			fragment = ""
 		}
-
-		// Rule-based clean.
 		pageText = cleanPDFPageText(pageText)
 		if strings.TrimSpace(pageText) == "" {
 			continue
 		}
-
-		// Detect if last line is an unfinished paragraph (no sentence-ending punctuation).
 		lines := strings.Split(strings.TrimRight(pageText, "\n"), "\n")
 		lastLine := strings.TrimSpace(lines[len(lines)-1])
 		if lastLine != "" && !strings.ContainsAny(lastLine, ".!?:") {
-			// Keep as fragment to merge with next page.
 			fragment = lastLine + " "
 			pageText = strings.Join(lines[:len(lines)-1], "\n")
 		}
-
 		if strings.TrimSpace(pageText) != "" {
 			acc.WriteString(pageText)
 			acc.WriteString("\n\n")
 		}
 	}
-
-	// Flush remaining fragment.
 	if fragment != "" {
 		acc.WriteString(strings.TrimSpace(fragment))
 		acc.WriteString("\n")
@@ -129,7 +137,30 @@ func extractPDFWithClean(path string) (string, error) {
 	if result == "" {
 		return "", errors.New("không trích xuất được văn bản từ PDF")
 	}
+	if isGarbageText(result) {
+		return "", errors.New("không đọc được chữ trong PDF (font encoding không tương thích). Hãy thử export lại dưới dạng DOCX rồi dịch")
+	}
 	return result, nil
+}
+
+// isGarbageText returns true when extracted text is mostly non-letter symbols —
+// a sign that the PDF uses a custom font encoding rsc.io/pdf cannot decode.
+// Uses letters-only ratio (not digits) so garbage ASCII digit-like glyphs don't
+// inflate the count.
+func isGarbageText(s string) bool {
+	total := utf8.RuneCountInString(s)
+	if total == 0 {
+		return true
+	}
+	letters := 0
+	for _, r := range s {
+		if unicode.IsLetter(r) {
+			letters++
+		}
+	}
+	// Normal prose should be at least 40% letter characters.
+	// Garbage-encoded text (custom font CMap) typically < 10%.
+	return float64(letters)/float64(total) < 0.40
 }
 
 // cleanPDFPageText applies rule-based cleaning to raw extracted PDF page text.
