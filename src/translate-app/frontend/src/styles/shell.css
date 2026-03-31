@@ -979,7 +979,12 @@
 }
 
 .file-attachment[data-invalid='true'] .file-attachment-main {
-  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  border-color: color-mix(in srgb, var(--error) 55%, transparent);
+  background: color-mix(in srgb, var(--error) 6%, var(--surface));
+}
+
+.file-attachment[data-invalid='true'] .file-attachment-sub {
+  color: var(--error);
 }
 
 .file-attachment[data-loading='true'] .file-attachment-sub {
@@ -1009,19 +1014,20 @@
     0 0 0 1px color-mix(in srgb, var(--text) 8%, transparent);
 }
 
-.file-attachment-icon {
+.file-attachment-icon-circle {
   flex-shrink: 0;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
-  padding: 4px 6px;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--text) 7%, var(--surface));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.7);
   color: var(--text-secondary);
 }
 
-[data-theme='dark'] .file-attachment-icon {
-  background: color-mix(in srgb, var(--text) 14%, transparent);
+[data-theme='dark'] .file-attachment-icon-circle {
+  background: rgba(255, 255, 255, 0.18);
 }
 
 .file-attachment-meta {
@@ -1069,10 +1075,17 @@
 }
 
 .file-attachment-error {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   margin: 6px 0 0;
   font-size: 12px;
-  color: var(--accent);
-  line-height: 1.35;
+  color: var(--error);
+  line-height: 1.4;
+}
+
+.file-attachment-error svg {
+  flex-shrink: 0;
 }
 
 .file-attachment-warning {
@@ -1084,10 +1097,17 @@
 }
 
 .file-pick-error {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   margin: 0 12px 8px;
   font-size: 12px;
-  color: var(--accent);
-  line-height: 1.35;
+  color: var(--error);
+  line-height: 1.4;
+}
+
+.file-pick-error svg {
+  flex-shrink: 0;
 }
 
 .chat-input-row .input-wrap:focus-within {

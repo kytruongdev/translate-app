@@ -90,7 +90,7 @@ func readPDFInfo(path, name string, size int64) (*bridge.FileInfo, error) {
 		avgCharsPerPage = charCount / pages
 	}
 	if avgCharsPerPage < 50 {
-		return nil, errors.New("PDF này có vẻ là bản scan, ứng dụng chưa hỗ trợ loại này")
+		return nil, errors.New("Ứng dụng chưa hỗ trợ dịch thuật từ văn bản scan")
 	}
 
 	return buildFileInfo(name, "pdf", size, pages, charCount, false), nil

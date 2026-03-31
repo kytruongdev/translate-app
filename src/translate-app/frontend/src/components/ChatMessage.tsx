@@ -43,7 +43,7 @@ import {
   IconFullscreen,
 } from '@/components/TranslationFullscreenModal'
 import { LazyChunkedMarkdown, LazyChunkedPlainText } from '@/components/LazyChunkedMarkdown'
-import { Copy, ChevronDown, FileText, ClipboardList, X } from 'lucide-react'
+import { Copy, ChevronDown, FileText, ClipboardList, X, Info } from 'lucide-react'
 
 
 /** Snippet trích từ bản dịch gốc — giống mockup (≈140 ký tự). */
@@ -632,6 +632,8 @@ function FileTranslationCard({
   const [cancelTooltipPos, setCancelTooltipPos] = useState<{ top: number; left: number } | null>(null)
   const cancelBtnRef = useRef<HTMLButtonElement | null>(null)
   const [cancelPopoverPos, setCancelPopoverPos] = useState<{ top: number; left: number; width: number; isAbove: boolean } | null>(null)
+  const [infoTooltipPos, setInfoTooltipPos] = useState<{ top: number; left: number } | null>(null)
+  const infoLabelRef = useRef<HTMLSpanElement | null>(null)
 
   useLayoutEffect(() => {
     if (!cancelPopoverOpen || !cancelBtnRef.current) {
@@ -655,6 +657,7 @@ function FileTranslationCard({
     parseFileAttachmentDisplayName(precedingUserContent ?? '') ??
     parseFileAttachmentDisplayName(m.originalContent ?? '') ??
     'document.docx'
+  const isPDF = fileName.toLowerCase().endsWith('.pdf')
 
   // Bỏ qua giá trị stale từ lần dịch trước: chỉ tin progress SAU KHI thấy null lần đầu
   const seenNullRef = useRef(!fileTranslateProgress)
@@ -742,7 +745,24 @@ function FileTranslationCard({
               ) : downloadError ? (
                 <span className="file-translation-card-error">{downloadError}</span>
               ) : m.tokens > 0 ? (
-                `${m.tokens.toLocaleString()} tokens`
+                <>
+                  {m.tokens.toLocaleString()} tokens
+                  {isPDF && (
+                    <span
+                      ref={infoLabelRef}
+                      className="pdf-info-label"
+                      onMouseEnter={() => {
+                        if (!infoLabelRef.current) return
+                        const r = infoLabelRef.current.getBoundingClientRect()
+                        setInfoTooltipPos({ top: r.top - 8, left: r.left + r.width / 2 })
+                      }}
+                      onMouseLeave={() => setInfoTooltipPos(null)}
+                    >
+                      <Info size={11} />
+                      Chỉ dịch nội dung
+                    </span>
+                  )}
+                </>
               ) : null}
             </span>
           </div>
@@ -811,6 +831,21 @@ function FileTranslationCard({
         style={{ top: cancelTooltipPos.top, left: cancelTooltipPos.left }}
       >
         Hủy phiên dịch này
+      </div>,
+      document.body,
+    )}
+    {infoTooltipPos && createPortal(
+      <div
+        className="pdf-info-tooltip-portal"
+        style={{ top: infoTooltipPos.top, left: infoTooltipPos.left }}
+      >
+        <div className="pdf-info-tooltip-header">
+          <Info size={11} />
+          Chỉ dịch nội dung
+        </div>
+        <div className="pdf-info-tooltip-body">
+          File pdf chỉ hỗ trợ dịch nội dung, các bảng biểu, hình ảnh sẽ bị lược bỏ. Xin cảm phiền vì hạn chế này.
+        </div>
       </div>,
       document.body,
     )}
