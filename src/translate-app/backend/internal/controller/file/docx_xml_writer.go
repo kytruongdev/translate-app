@@ -185,47 +185,48 @@ func xmlEscapeText(s string) string {
 	return s
 }
 
-// writePlainDocx writes plain translated text as a minimal valid DOCX file.
-// Each double-newline-separated paragraph becomes a <w:p> element.
+// writePlainDocx writes markdown-formatted translated text as a valid DOCX file.
+// Supports: ## Heading2, ### Heading3, #### Heading4, - bullet lists, normal paragraphs.
 func writePlainDocx(text, outPath string) error {
-	paragraphs := strings.Split(text, "\n\n")
+	lines := splitDocxLines(text)
+	hasBullets := false
+	for _, ln := range lines {
+		if strings.HasPrefix(ln, "- ") {
+			hasBullets = true
+			break
+		}
+	}
 
 	var body strings.Builder
-	for _, para := range paragraphs {
-		para = strings.TrimSpace(para)
-		if para == "" {
-			continue
-		}
-		// Handle single newlines within a paragraph as line breaks.
-		lines := strings.Split(para, "\n")
-		body.WriteString(`<w:p><w:r>`)
-		for i, line := range lines {
-			if i > 0 {
-				body.WriteString(`<w:br/>`)
-			}
-			body.WriteString(`<w:t xml:space="preserve">`)
-			body.WriteString(xmlEscapeText(line))
-			body.WriteString(`</w:t>`)
-		}
-		body.WriteString(`</w:r></w:p>`)
+	for _, ln := range lines {
+		body.WriteString(lineToDocxParagraph(ln))
 	}
 
 	docXML := `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
-		`<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas"` +
-		` xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
+		`<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
 		`<w:body>` + body.String() + `<w:sectPr/></w:body></w:document>`
 
-	relsXML := `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+	rootRels := `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
 		`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
 		`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>` +
 		`</Relationships>`
 
+	var numberingXML string
+	if hasBullets {
+		numberingXML = buildNumberingXML()
+	}
+
+	stylesXML := buildStylesXML()
 	contentTypes := `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
 		`<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
 		`<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
 		`<Default Extension="xml" ContentType="application/xml"/>` +
 		`<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>` +
-		`</Types>`
+		`<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>`
+	if hasBullets {
+		contentTypes += `<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>`
+	}
+	contentTypes += `</Types>`
 
 	f, err := os.Create(outPath)
 	if err != nil {
@@ -236,13 +237,24 @@ func writePlainDocx(text, outPath string) error {
 	zw := zip.NewWriter(f)
 	defer zw.Close()
 
-	entries := []struct {
-		name    string
-		content string
-	}{
+	// document.xml.rels: always points to styles, optionally to numbering.
+	docRelsEntries := `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`
+	if hasBullets {
+		docRelsEntries += `<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>`
+	}
+	docRels := `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+		`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+		docRelsEntries + `</Relationships>`
+
+	entries := []struct{ name, content string }{
 		{"[Content_Types].xml", contentTypes},
-		{"_rels/.rels", relsXML},
+		{"_rels/.rels", rootRels},
 		{"word/document.xml", docXML},
+		{"word/styles.xml", stylesXML},
+		{"word/_rels/document.xml.rels", docRels},
+	}
+	if hasBullets {
+		entries = append(entries, struct{ name, content string }{"word/numbering.xml", numberingXML})
 	}
 	for _, e := range entries {
 		w, err := zw.Create(e.name)
@@ -254,4 +266,110 @@ func writePlainDocx(text, outPath string) error {
 		}
 	}
 	return nil
+}
+
+// splitDocxLines splits text into individual lines for DOCX paragraph conversion.
+// Double newlines become paragraph breaks; single newlines are preserved as separate lines.
+func splitDocxLines(text string) []string {
+	var out []string
+	for _, para := range strings.Split(text, "\n\n") {
+		para = strings.TrimSpace(para)
+		if para == "" {
+			continue
+		}
+		for _, line := range strings.Split(para, "\n") {
+			line = strings.TrimSpace(line)
+			if line != "" {
+				out = append(out, line)
+			}
+		}
+		out = append(out, "") // blank separator between paragraphs
+	}
+	// Remove trailing blank
+	for len(out) > 0 && out[len(out)-1] == "" {
+		out = out[:len(out)-1]
+	}
+	return out
+}
+
+// lineToDocxParagraph converts one markdown line to a DOCX <w:p> element.
+func lineToDocxParagraph(line string) string {
+	if line == "" {
+		return `<w:p/>`
+	}
+	// Headings: ## / ### / ####
+	if strings.HasPrefix(line, "#### ") {
+		return wParagraphStyled("Heading4", strings.TrimPrefix(line, "#### "))
+	}
+	if strings.HasPrefix(line, "### ") {
+		return wParagraphStyled("Heading3", strings.TrimPrefix(line, "### "))
+	}
+	if strings.HasPrefix(line, "## ") {
+		return wParagraphStyled("Heading2", strings.TrimPrefix(line, "## "))
+	}
+	if strings.HasPrefix(line, "# ") {
+		return wParagraphStyled("Heading1", strings.TrimPrefix(line, "# "))
+	}
+	// Bullet list
+	if strings.HasPrefix(line, "- ") {
+		return wBulletParagraph(strings.TrimPrefix(line, "- "))
+	}
+	// Normal paragraph
+	return wParagraphNormal(line)
+}
+
+func wParagraphStyled(style, text string) string {
+	return `<w:p><w:pPr><w:pStyle w:val="` + style + `"/></w:pPr>` +
+		`<w:r><w:t xml:space="preserve">` + xmlEscapeText(text) + `</w:t></w:r></w:p>`
+}
+
+func wBulletParagraph(text string) string {
+	return `<w:p><w:pPr><w:pStyle w:val="ListParagraph"/>` +
+		`<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr>` +
+		`<w:r><w:t xml:space="preserve">` + xmlEscapeText(text) + `</w:t></w:r></w:p>`
+}
+
+func wParagraphNormal(text string) string {
+	return `<w:p><w:r><w:t xml:space="preserve">` + xmlEscapeText(text) + `</w:t></w:r></w:p>`
+}
+
+func buildStylesXML() string {
+	const ns = `xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"`
+	const calibri = `<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>`
+	style := func(id, name string, sz, lvl int) string {
+		return `<w:style w:type="paragraph" w:styleId="` + id + `">` +
+			`<w:name w:val="` + name + `"/>` +
+			`<w:pPr><w:outlineLvl w:val="` + fmt.Sprintf("%d", lvl) + `"/></w:pPr>` +
+			`<w:rPr>` + calibri + `<w:b/><w:sz w:val="` + fmt.Sprintf("%d", sz) + `"/>` +
+			`<w:szCs w:val="` + fmt.Sprintf("%d", sz) + `"/></w:rPr>` +
+			`</w:style>`
+	}
+	return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+		`<w:styles ` + ns + `>` +
+		`<w:docDefaults><w:rPrDefault><w:rPr>` + calibri +
+		`<w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr></w:rPrDefault></w:docDefaults>` +
+		`<w:style w:type="paragraph" w:default="1" w:styleId="Normal">` +
+		`<w:name w:val="Normal"/>` +
+		`<w:rPr>` + calibri + `</w:rPr></w:style>` +
+		`<w:style w:type="paragraph" w:styleId="ListParagraph">` +
+		`<w:name w:val="List Paragraph"/>` +
+		`<w:pPr><w:ind w:left="720"/></w:pPr>` +
+		`<w:rPr>` + calibri + `</w:rPr></w:style>` +
+		style("Heading1", "heading 1", 32, 0) +
+		style("Heading2", "heading 2", 28, 1) +
+		style("Heading3", "heading 3", 24, 2) +
+		style("Heading4", "heading 4", 22, 3) +
+		`</w:styles>`
+}
+
+func buildNumberingXML() string {
+	return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+		`<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
+		`<w:abstractNum w:abstractNumId="0">` +
+		`<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/>` +
+		`<w:lvlJc w:val="left"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr>` +
+		`<w:rPr><w:rFonts w:ascii="Symbol" w:hAnsi="Symbol"/></w:rPr></w:lvl>` +
+		`</w:abstractNum>` +
+		`<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>` +
+		`</w:numbering>`
 }

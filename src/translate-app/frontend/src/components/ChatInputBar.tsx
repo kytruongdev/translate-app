@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
-import { Paperclip, ChevronDown, Send } from 'lucide-react'
+import { Paperclip, ChevronDown, Send, AlertCircle } from 'lucide-react'
 import { OnFileDrop, OnFileDropOff } from '../../wailsjs/runtime/runtime'
 import { useSettingsStore } from '@/stores/settings/settingsStore'
 import { useUIStore } from '@/stores/ui/uiStore'
 import { STYLE_OPTIONS, TARGET_LANG_OPTIONS } from '@/constants/inputOptions'
 import type { TranslationStyle } from '@/types/session'
 import type { PendingFilePick } from '@/types/ipc'
+import { FileAttachment } from '@/components/FileAttachment'
 
 
 type Popover = null | 'style' | 'lang'
@@ -22,6 +23,7 @@ export function ChatInputBar({
   onAttachClick,
   onUserChoseFilePath,
   onNotifyPickError,
+  onRemovePendingFile,
 }: {
   draft: string
   setDraft: (v: string) => void
@@ -35,6 +37,7 @@ export function ChatInputBar({
   onAttachClick: () => void
   onUserChoseFilePath: (path: string) => Promise<void>
   onNotifyPickError: (message: string) => void
+  onRemovePendingFile: () => void
 }) {
   const defaultStyle = useSettingsStore((s) => s.defaultStyle)
   const saveSettings = useSettingsStore((s) => s.saveSettings)
@@ -179,13 +182,17 @@ export function ChatInputBar({
               Thả file vào đây
             </div>
           )}
-          {attachmentValidationError && (
-            <p className="file-pick-error" role="alert">
-              {attachmentValidationError}
-            </p>
+          {pendingFile && (
+            <FileAttachment
+              fileInfo={pendingFile.info}
+              loading={pendingFile.loading}
+              error={attachmentValidationError ?? filePickError}
+              onRemove={onRemovePendingFile}
+            />
           )}
           {filePickError && !pendingFile && (
             <p className="file-pick-error" role="alert">
+              <AlertCircle size={13} />
               {filePickError}
             </p>
           )}

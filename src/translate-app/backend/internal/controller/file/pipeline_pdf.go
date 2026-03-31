@@ -27,16 +27,18 @@ const (
 // 3. Translate chunks concurrently
 // 4. Write output as DOCX plain paragraphs
 func (c *controller) runPDFTranslate(ctx context.Context, p fileTranslateParams, fail func(string)) {
-	// Step 1: Extract + clean text.
-	text, err := extractPDFWithClean(p.FilePath)
+	// Step 1: Extract + clean text, then infer markdown structure.
+	raw, err := extractPDFWithClean(p.FilePath)
 	if err != nil {
 		fail(err.Error())
 		return
 	}
-	if strings.TrimSpace(text) == "" {
+	if strings.TrimSpace(raw) == "" {
 		fail("không trích xuất được văn bản từ PDF")
 		return
 	}
+	// Apply markdown heading/bullet inference so translated output has structure.
+	text := inferMarkdownFromPlain(raw)
 
 	// Prepare file storage directory.
 	dir, err := userFilesDir()
@@ -89,8 +91,8 @@ func (c *controller) runPDFTranslate(ctx context.Context, p fileTranslateParams,
 		return
 	}
 
-	// Step 3: Translate chunks concurrently.
-	translated, totalTokens, err := c.translatePlainChunks(ctx, chunks, srcLang, p.TargetLang, p.Style, p.Provider,
+	// Step 3: Translate chunks concurrently (preserveMarkdown=true keeps ## headings and - bullets).
+	translated, totalTokens, err := c.translatePlainChunks(ctx, chunks, srcLang, p.TargetLang, p.Style, p.Provider, true,
 		func(completed, total int) {
 			pct := 0
 			if total > 0 {
@@ -200,6 +202,7 @@ func (c *controller) translatePlainChunks(
 	srcLang, targetLang string,
 	style model.TranslationStyle,
 	provider gateway.AIProvider,
+	preserveMarkdown bool,
 	onProgress func(completed, total int),
 ) ([]string, int, error) {
 	total := len(chunks)
@@ -237,7 +240,7 @@ func (c *controller) translatePlainChunks(
 				defer cancel()
 				// TranslateStream (not TranslateBatchStream) — PDF chunks are plain text,
 				// no <<<N>>> batch markers needed.
-				errCh <- provider.TranslateStream(chunkCtx, text, srcLang, targetLang, string(style), false, events)
+				errCh <- provider.TranslateStream(chunkCtx, text, srcLang, targetLang, string(style), preserveMarkdown, events)
 			}()
 			for ev := range events {
 				if ev.Type == "chunk" && ev.Content != "" {

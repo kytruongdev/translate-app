@@ -403,7 +403,7 @@ export default function App() {
     if (!pendingFile) return null
     if (pendingFile.loading) return null
     if (pendingFile.info.isScanned === true) {
-      return 'PDF scan không hỗ trợ, vui lòng dùng PDF có text'
+      return 'Ứng dụng chưa hỗ trợ dịch thuật từ văn bản scan'
     }
     const raw = pendingFile.info.pageCount
     const pc = typeof raw === 'number' ? raw : raw != null ? Number(raw) : NaN
@@ -443,7 +443,7 @@ export default function App() {
       setPendingFile({ path, info, loading: false })
     } catch (err) {
       autoSendOnReadyRef.current = false
-      setPendingFile(null)
+      setPendingFile((prev) => prev ? { ...prev, loading: false } : null)
       setFilePickError(err instanceof Error ? err.message : String(err))
     }
   }, [])
@@ -904,6 +904,7 @@ export default function App() {
               onAttachClick={handleOpenFilePicker}
               onUserChoseFilePath={ingestFilePath}
               onNotifyPickError={onNotifyPickError}
+              onRemovePendingFile={() => { setPendingFile(null); setFilePickError(null) }}
             />
           </div>
         ) : (
@@ -960,6 +961,7 @@ export default function App() {
               onAttachClick={handleOpenFilePicker}
               onUserChoseFilePath={ingestFilePath}
               onNotifyPickError={onNotifyPickError}
+              onRemovePendingFile={() => { setPendingFile(null); setFilePickError(null) }}
             />
           </div>
         )}
