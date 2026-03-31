@@ -69,22 +69,19 @@ export function useBilingualHoverSync(
 
       const sentSpan = target.closest<HTMLElement>('.bl-sent')
       if (sentSpan) {
-        const p = sentSpan.closest<HTMLElement>('.message-md > p')
-        if (p) {
-          const blockResult = findBlock(p)
-          if (blockResult) {
-            const { side, idx: pIdx } = blockResult
-            const sentIdx = sentSpan.dataset.sentIdx ?? '0'
-            const key = `${side}-${pIdx}-${sentIdx}`
-            if (key === activeKey) return
-            clearAll()
-            activeKey = key
-            const otherP = (side === 'src' ? destBlocks : srcBlocks)[pIdx]
-            mark(p, PARA); mark(otherP, PARA)
-            mark(sentSpan, SENT)
-            mark(otherP?.querySelector<HTMLElement>(`.bl-sent[data-sent-idx="${sentIdx}"]`), SENT)
-            return
-          }
+        const blockResult = findBlock(sentSpan)
+        if (blockResult) {
+          const { el: block, side, idx: pIdx } = blockResult
+          const sentIdx = sentSpan.dataset.sentIdx ?? '0'
+          const key = `${side}-${pIdx}-${sentIdx}`
+          if (key === activeKey) return
+          clearAll()
+          activeKey = key
+          const otherBlock = (side === 'src' ? destBlocks : srcBlocks)[pIdx]
+          mark(block, PARA); mark(otherBlock, PARA)
+          mark(sentSpan, SENT)
+          mark(otherBlock?.querySelector<HTMLElement>(`.bl-sent[data-sent-idx="${sentIdx}"]`), SENT)
+          return
         }
       }
 
