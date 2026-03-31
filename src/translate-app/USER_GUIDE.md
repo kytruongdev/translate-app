@@ -1,57 +1,56 @@
-# Chào mừng bạn đến với G & J (GnJ) 🚀
+# Hướng dẫn sử dụng G & J (GnJ)
 
-**G & J** là người bạn đồng hành giúp bạn đọc, hiểu và dịch thuật mọi nội dung từ những đoạn chat ngắn đến những tài liệu chuyên sâu hàng trăm trang. Thay vì những bảng điều khiển phức tạp, G & J mang đến một không gian làm việc tối giản, nơi mọi thứ đều xoay quanh nội dung của bạn.
-
----
-
-## 1. Ấn tượng đầu tiên: G & J là ai?
-
-Khi mở ứng dụng, bạn sẽ thấy lời chào "Hi there / Xin chào" đầy màu sắc. Đó là phong cách của G & J: hiện đại và thân thiện.
-- **G (Bạn - Màu Hồng)**: Là người đưa ra yêu cầu và nội dung gốc.
-- **J (Trợ lý - Màu Xanh)**: Là người lắng nghe và chuyển ngữ cho bạn.
-
-Sự kết hợp giữa G và J tạo nên những phiên dịch thuật chất lượng, mang phong cách riêng của bạn.
+G & J là ứng dụng dịch thuật chuyên sâu hỗ trợ xử lý văn bản và tài liệu định dạng DOCX dựa trên công nghệ AI.
 
 ---
 
-## 2. Trải nghiệm không gian làm việc
-
-Giao diện của G & J được chia thành hai phần rõ rệt để bạn không bị phân tâm:
-
-### Sidebar (Cột bên trái) — Nơi lưu giữ "Ký ức"
-Đây không chỉ là danh sách các phiên làm việc, mà là nơi bạn quản lý toàn bộ tư liệu dịch thuật của mình:
-- **Tìm lại quá khứ**: Bạn có một từ khóa trong đầu? Hãy gõ vào ô tìm kiếm ở trên cùng. G & J sẽ quét qua toàn bộ các phiên dịch cũ và đưa bạn đến đúng đoạn văn bạn cần.
-- **Gọn gàng và ưu tiên**: Những phiên quan trọng? Hãy **Ghim (Pin)** chúng lên đầu. Những phiên đã xong? Hãy **Lưu trữ (Archive)** để Sidebar luôn sạch sẽ.
-- **Tập trung tuyệt đối**: Bạn có thể thu gọn Sidebar để dành toàn bộ màn hình cho nội dung dịch.
-
-### Stage (Vùng nội dung) — Nơi diễn ra "Phép màu"
-Đây là nơi bạn gửi văn bản hoặc kéo thả file. Bạn chỉ cần chọn **Ngôn ngữ đích** và **Phong cách dịch** phù hợp, J sẽ lo phần còn lại.
+## 1. Giới thiệu
+Ứng dụng sử dụng mô hình ngôn ngữ lớn để thực hiện việc chuyển ngữ. Trong giao diện:
+- **Icon G (Hồng)**: Đại diện cho nội dung do người dùng nhập vào.
+- **Icon J (Xanh)**: Đại diện cho nội dung phản hồi từ trợ lý AI.
 
 ---
 
-## 3. Những "điểm chạm" thông minh
+## 2. Giao diện chương trình
 
-### Khi văn bản của bạn "quá dài" (Chế độ Song ngữ)
-Nếu bạn dán một bài báo dài hoặc nội dung có nhiều đoạn văn, G & J sẽ tự động mở rộng không gian thành hai cột đối chiếu. 
-- **Không bao giờ lạc dòng (Hover Sync)**: Khi bạn rê chuột vào một đoạn văn bên bản dịch, đoạn gốc tương ứng sẽ tự động nổi bật lên. Cách này giúp bạn đối chiếu nhanh mà không cần phải dùng tay dò từng dòng.
+Giao diện được chia thành hai khu vực chính:
 
-### Khi bạn có một tệp tài liệu (DOCX)
-Đừng mất công copy-paste từng đoạn từ file Word. Hãy kéo thả cả file `.docx` vào G & J:
-- **Giữ nguyên linh hồn bản gốc**: Toàn bộ bảng biểu, hình ảnh và định dạng của file sẽ được giữ nguyên. Bản dịch sẽ trông y hệt bản gốc, chỉ khác là bằng ngôn ngữ bạn muốn.
-- **Dành cho tài liệu lớn**: Hỗ trợ tối đa lên đến 200 trang. Bạn có thể theo dõi tiến độ dịch chạy theo phần trăm (%) và đi pha một tách cà phê trong lúc chờ J hoàn thành nhiệm vụ.
+### Thanh bên (Sidebar)
+Quản lý các phiên làm việc và tùy chỉnh hệ thống:
+- **Danh sách phiên**: Các cuộc hội thoại được nhóm theo thời gian (Hôm nay, Hôm qua, Cũ hơn). Bạn có thể Ghim (Pin) các phiên quan trọng lên đầu.
+- **Tìm kiếm (Icon Kính lúp)**: Nằm ở **dưới cùng** của thanh bên. Khi nhấp vào, một bảng tìm kiếm sẽ hiện ra cho phép tìm từ khóa trong toàn bộ lịch sử dịch thuật.
+- **Cài đặt & Giao diện**: Nằm cạnh nút Tìm kiếm, cho phép chuyển đổi chế độ Sáng/Tối và cấu hình AI Provider.
 
-### Tìm kiếm không giới hạn
-Tính năng tìm kiếm của G & J rất "nhạy". Nó tìm trong cả **bản gốc** bạn đã nhập và **bản dịch** J đã trả lời. Kết quả sẽ hiện ra dưới dạng các đoạn trích dẫn, giúp bạn nhớ lại ngữ cảnh ngay lập tức.
-
-### Tùy biến phong cách dịch
-Bạn cần dịch email cho đối tác? Hãy chọn **Business**. Bạn cần dịch tin nhắn cho bạn bè? Hãy chọn **Casual**. Bạn cần dịch tài liệu nghiên cứu? Hãy chọn **Academic**. J sẽ thay đổi cách dùng từ để bản dịch nghe "đúng điệu" nhất.
+### Khung hội thoại (Main Panel)
+Nơi diễn ra quá trình tương tác:
+- **Thanh nhập liệu**: Nằm dưới cùng để nhập văn bản hoặc đính kèm tệp DOCX. Tại đây bạn có thể chọn ngôn ngữ đích và phong cách dịch.
+- **Nút tương tác ẩn**: Khi bạn di chuột (hover) vào một bóng chat hoặc thẻ dịch, các nút chức năng sẽ hiện ra cho phép **Sao chép (Copy)**, **Dịch lại (Retranslate)** hoặc **Xem toàn màn hình**.
 
 ---
 
-## 4. Một vài mẹo nhỏ
-- **Phím tắt**: Nhấn `Enter` để gửi yêu cầu, và `Shift + Enter` khi bạn muốn xuống dòng trong ô nhập liệu.
-- **Giao diện**: Nếu bạn làm việc vào ban đêm, hãy chuyển sang **Chế độ Tối (Dark mode)** để dịu mắt hơn.
-- **Xuất bản**: Sau khi dịch file xong, hãy nhấn **Export** để lấy file Word về máy và chia sẻ cho mọi người.
+## 3. Các tính năng chính
+
+### Chế độ Dịch song ngữ (Bilingual Mode)
+Tối ưu cho các văn bản dài (> 2000 ký tự) hoặc có cấu trúc:
+- **Đối chiếu trực quan (Hover Sync)**: Khi bạn di chuột vào một đoạn văn bản ở bên bản dịch, đoạn văn gốc tương ứng sẽ tự động được làm nổi bật với màu sắc đồng bộ. Điều này giúp bạn kiểm soát nội dung cực kỳ chính xác mà không bị lạc dòng.
+
+### Dịch tệp tin (DOCX Translation)
+Xử lý tệp tin Word mà vẫn giữ nguyên định dạng:
+- **Kéo thả**: Bạn có thể kéo trực tiếp file vào app để bắt đầu.
+- **Giữ nguyên linh hồn file**: Sau khi dịch, file xuất ra (Export) sẽ giữ nguyên mọi bảng biểu, hình ảnh và cấu trúc tiêu đề như file gốc.
+- **Giới hạn**: Hỗ trợ tối đa 200 trang/file.
+
+### Tìm kiếm và Truy xuất thông minh
+- **Phạm vi**: Tìm kiếm quét qua cả tiêu đề phiên, nội dung gốc và bản dịch của J.
+- **Highlight thông minh**: Khi bạn click vào một kết quả từ bảng tìm kiếm, app sẽ tự động "nhảy" đến đúng tin nhắn đó và **hiệu ứng màu sắc** sẽ highlight tin nhắn trong vài giây để bạn nhận diện ngay lập tức vị trí cần tìm.
+
+### Chỉnh sửa và Dịch lại (Retranslate)
+Nếu kết quả dịch chưa ưng ý, bạn không cần nhập lại:
+- Sử dụng nút **Retranslate** (hiện ra khi hover vào tin nhắn) để yêu cầu J dịch lại với một ngôn ngữ hoặc phong cách (Casual/Business/Academic) khác.
 
 ---
-*G & J luôn ở đây để giúp bạn kết nối với thế giới ngôn ngữ một cách tự nhiên nhất. Chúc bạn có những phiên làm việc hiệu quả!* 🌟
+
+## 4. Mẹo sử dụng nhanh
+- **Phím tắt**: `Enter` để gửi, `Shift + Enter` để xuống dòng.
+- **Thu gọn Sidebar**: Nhấn vào icon Menu ở góc trên bên trái để mở rộng tối đa không gian đọc văn bản.
+- **Highlight đồng bộ**: Trong chế độ song ngữ, hãy tận dụng việc di chuột để đối soát nhanh các thuật ngữ chuyên môn.
