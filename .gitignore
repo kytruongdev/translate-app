@@ -1,4 +1,8 @@
 .DS_Store
+.idea/
+# Chỉ dùng local — không đưa vào repo
+doc/ref/
+handoff/
 *.db
 # API keys — copy from config/keys.go.example
 src/translate-app/backend/config/keys.go

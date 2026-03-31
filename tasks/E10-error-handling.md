@@ -8,7 +8,7 @@
 
 > **Epic:** E10 | **Type:** Story | **Size:** M
 
-**Status:** `Todo`
+**Status:** `Partial` *(`translation:error` → `sendError` + `chat-error-banner` / hint start view; **chưa** ErrorBubble + partial text + nút “Thử lại”, **chưa** toast theo loại lỗi / phân loại network-key-rate-limit như spec)*
 
 **User Story:**
 > As a user, when a translation fails, I want to see a clear error message and be able to retry, so that I don't lose my input.
@@ -114,7 +114,7 @@ func (c *controller) streamTranslation(ctx context.Context, sessionID, msgID str
   - Nút × để clear, không cho gửi
 
 **File quá lớn:**
-- [ ] `pageCount > 100` → FE hiện error inline: "Tệp quá lớn (tối đa 100 trang)"
+- [ ] `pageCount > 200` → FE hiện error inline: "Tệp quá lớn (tối đa 200 trang)"
   - Không cho gửi
 
 **File format không hợp lệ (drag-drop):**

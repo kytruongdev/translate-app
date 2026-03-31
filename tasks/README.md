@@ -1,8 +1,9 @@
 # TranslateApp — Tasks & User Stories
 
 > **Phiên bản:** v1.0
-> **Cập nhật:** 2026-03-21
-> **Tham chiếu:** `doc/architecture-document.md` v1.8
+> **Cập nhật:** 2026-03-22
+> **Tham chiếu:** `doc/architecture-document.md` v1.8  
+> **Bàn giao gần nhất:** [handoff/README.md](../handoff/README.md)
 
 ---
 
@@ -20,6 +21,16 @@
 | E8 | View Controls | [E8-view-controls.md](E8-view-controls.md) | US-060 → US-061 | P2 |
 | E9 | Settings | [E9-settings.md](E9-settings.md) | US-070 → US-074 | P1 |
 | E10 | Error Handling | [E10-error-handling.md](E10-error-handling.md) | US-080 → US-082 | P1 |
+
+**E1:** `Done` (kể cả BE-005 → BE-007: Gemini / Ollama / OpenAI streaming + retry + prompt §9.1 trong `internal/gateway/`).
+
+**E3:** US-010 / US-013 `Done`; US-011 / US-012 `Partial` (IPC/đổi tên có, UX spec sidebar rename & optimistic flow chưa khớp). Chi tiết [E3-session.md](E3-session.md).
+
+**E4:** US-020 / US-021 / US-026 `Done`; US-022 / US-023 / US-024 / US-025 `Partial` (US-023: optimistic + start preview + skeleton stream; còn paste/detect, retry…). Chi tiết [E4-text-translation.md](E4-text-translation.md).
+
+**E7 US-053:** `Done` — copy bản dịch qua IPC + clipboard (khác ghi chú spec thuần FE).
+
+**E8 US-060:** `Partial` — toggle inline trên card; US-061 fullscreen vẫn `Todo`.
 
 ---
 

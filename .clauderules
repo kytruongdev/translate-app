@@ -1,5 +1,8 @@
 # Claude Rules — Translate App
 
+## Mockup (`mockup/`)
+
+- **Không** chỉnh sửa bất kỳ file nào trong **`mockup/`** — chỉ đọc tham chiếu. UI chỉnh trong **`src/translate-app/frontend/`**.
 
 ## Git Commits
 - Title format: `[claude] <commit message>`

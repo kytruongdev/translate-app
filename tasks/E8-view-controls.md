@@ -8,7 +8,7 @@
 
 > **Epic:** E8 | **Type:** Story | **Size:** S
 
-**Status:** `Todo`
+**Status:** `Done` *(`TranslationCardView`: 3 mode + `data-mode`; `TranslationFullscreenModal` có `mode` state **độc lập**, `initialMode` kế thừa khi mở — `useEffect` reset khi `open`)*
 
 **User Story:**
 > As a user, I want to toggle between bilingual, translation-only, and source-only views on a translation card, so that I can focus on the content I need.
@@ -102,7 +102,7 @@ export default function ViewToggle({ mode, onChange }: ViewToggleProps) {
 
 > **Epic:** E8 | **Type:** Story | **Size:** M
 
-**Status:** `Todo`
+**Status:** `Partial` *(`TranslationFullscreenModal.tsx`: portal, backdrop, Esc, view toggle độc lập, copy, retranslate popover; export UI gọi `ExportMessage` — **BE chưa implement**; scroll/body lock cần đối chiếu chi tiết spec)*
 
 **User Story:**
 > As a user, I want to open a translation in fullscreen, so that I can read it more comfortably with larger text.

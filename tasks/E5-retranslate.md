@@ -8,7 +8,7 @@
 
 > **Epic:** E5 | **Type:** Story | **Size:** L
 
-**Status:** `Todo`
+**Status:** `Partial` *(`CardRetranslatePopover` + `SendMessage` với `originalMessageId` + nguồn từ tin user trước; UI mockup: `reply-quote` (“↩ Bản gốc” + snippet từ bản dịch cũ), `translation-card.retranslated`, footer “Bản dịch lại”; tin user retranslate ẩn (`user-retranslate-placeholder`). **Gap:** popover chỉ đổi style (model/provider theo settings global, không dropdown riêng như spec); **BE:** `SendMessage` vẫn gọi `UpdateTargetLang` cả khi retranslate — spec yêu cầu **không** cập nhật `session.target_lang` lúc đó)*
 
 **User Story:**
 > As a user, I want to re-translate an existing message with a different style or model, and see the new translation as a separate card linked to the original, so that I can compare translations without losing the previous one.
