@@ -8,7 +8,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"translate-app/internal/gateway"
 	"translate-app/internal/model"
@@ -32,7 +31,6 @@ func (c *controller) translateDocxFile(
 ) ([]string, int, error) {
 	// Pre-allocate result aligned with df.Paragraphs.
 	results := make([]string, len(df.Paragraphs))
-	start := time.Now()
 
 	// Build a flat index so we can map batch positions back to global positions.
 	batches := chunkDocxParagraphs(df.Paragraphs, charsPerChunk)
@@ -129,7 +127,6 @@ func (c *controller) translateDocxFile(
 		totalTokens += r.tokens
 	}
 
-	fmt.Printf("[DEBUG] translateDocxFile done — batches=%d total_tokens=%d elapsed=%.2fs\n", len(batches), totalTokens, time.Since(start).Seconds())
 	return results, totalTokens, nil
 }
 
@@ -174,7 +171,6 @@ func (c *controller) streamTranslateDocxBatch(
 	if err := <-errCh; err != nil {
 		return "", 0, err
 	}
-	fmt.Printf("[DEBUG] streamTranslateDocxBatch done — tokens=%d\n", tokensUsed)
 	return full.String(), tokensUsed, nil
 }
 

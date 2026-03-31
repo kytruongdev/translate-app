@@ -155,6 +155,13 @@ func (c *controller) runDocxTranslate(ctx context.Context, p fileTranslateParams
 
 	totalBatches := len(chunkDocxParagraphs(df.Paragraphs, charsPerChunk))
 
+	// Emit initial progress so FE shows determinate ring at 0% instead of spinning indefinitely.
+	runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{
+		Chunk:   0,
+		Total:   totalBatches,
+		Percent: 0,
+	})
+
 	// Translate all paragraphs via XML pipeline.
 	// onProgress receives (completedBatches, totalBatches) — called after each batch finishes.
 	translations, totalTokens, err := c.translateDocxFile(ctx, df, docSrcHint, p.TargetLang, p.Style, p.Provider,
