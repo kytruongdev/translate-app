@@ -81,15 +81,16 @@ func readPDFInfo(path, name string, size int64) (*bridge.FileInfo, error) {
 		return nil, fmt.Errorf("tệp PDF quá dài (tối đa %d trang)", maxPDFPages)
 	}
 
-	ops := pdfTextOperatorCount(path)
-	isScanned := pages >= 1 && ops < intMax(1, pages/3)
-	if isScanned {
-		return nil, errors.New("PDF này có vẻ là bản scan, ứng dụng chưa hỗ trợ loại này")
+	// Detect scan: extract actual text and check chars per page.
+	// More reliable than byte-counting heuristic (which fails on compressed streams).
+	extracted, _ := extractPDFPlain(path)
+	charCount := utf8.RuneCountInString(extracted)
+	avgCharsPerPage := 0
+	if pages > 0 {
+		avgCharsPerPage = charCount / pages
 	}
-
-	charCount := pages * 2000
-	if ops > 0 {
-		charCount = intMax(charCount, ops*350)
+	if avgCharsPerPage < 50 {
+		return nil, errors.New("PDF này có vẻ là bản scan, ứng dụng chưa hỗ trợ loại này")
 	}
 
 	return buildFileInfo(name, "pdf", size, pages, charCount, false), nil
