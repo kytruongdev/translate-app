@@ -50,6 +50,11 @@ export function FileAttachment({
         </button>
       </div>
       {error ? <p className="file-attachment-error">{error}</p> : null}
+      {!error && !loading && isPdf && (
+        <p className="file-attachment-warning">
+          ⚠️ Bảng biểu và định dạng phức tạp có thể không chính xác sau khi dịch.
+        </p>
+      )}
     </div>
   )
 }

@@ -1075,6 +1075,14 @@
   line-height: 1.35;
 }
 
+.file-attachment-warning {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.35;
+  opacity: 0.8;
+}
+
 .file-pick-error {
   margin: 0 12px 8px;
   font-size: 12px;
