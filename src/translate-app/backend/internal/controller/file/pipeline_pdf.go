@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -90,6 +91,13 @@ func (c *controller) runPDFTranslate(ctx context.Context, p fileTranslateParams,
 		fail("không có nội dung để dịch")
 		return
 	}
+
+	// Emit initial progress so FE shows determinate ring at 0% instead of spinning indefinitely.
+	runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{
+		Chunk:   0,
+		Total:   total,
+		Percent: 0,
+	})
 
 	// Step 3: Translate chunks concurrently (preserveMarkdown=true keeps ## headings and - bullets).
 	translated, totalTokens, err := c.translatePlainChunks(ctx, chunks, srcLang, p.TargetLang, p.Style, p.Provider, true,
@@ -223,6 +231,8 @@ func (c *controller) translatePlainChunks(
 	}
 	resCh := make(chan result, total)
 
+	var completedAtomic int64
+
 	for i, chunk := range chunks {
 		select {
 		case <-ctx.Done():
@@ -252,11 +262,14 @@ func (c *controller) translatePlainChunks(
 				return
 			}
 			translated := strings.TrimSpace(out.String())
+			// Report progress immediately when this chunk completes, before the producer
+			// loop unblocks — otherwise progress only fires after all goroutines are dispatched.
+			c := int(atomic.AddInt64(&completedAtomic, 1))
+			onProgress(c, total)
 			resCh <- result{idx: idx, text: translated, tokens: estimateTokens(translated)}
 		}(i, chunk)
 	}
 
-	completed := 0
 	for range chunks {
 		r := <-resCh
 		if r.err != nil {
@@ -264,8 +277,6 @@ func (c *controller) translatePlainChunks(
 		}
 		results[r.idx] = r.text
 		totalTokens += r.tokens
-		completed++
-		onProgress(completed, total)
 	}
 
 	return results, totalTokens, nil
