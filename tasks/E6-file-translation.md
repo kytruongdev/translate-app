@@ -8,7 +8,7 @@
 
 > **Epic:** E6 | **Type:** Story | **Size:** M
 
-**Status:** `Todo`
+**Status:** `In progress` *(BE `OpenFileDialog` + `ReadFileInfo` đã có; `ChatInputBar` nối picker + kéo-thả + `ResolveFilePaths`; drag overlay E6)*
 
 **User Story:**
 > As a user, I want to attach a PDF or DOCX file via a file picker or drag-and-drop, so that I can start a file translation.
@@ -37,7 +37,7 @@
 
 > **Epic:** E6 | **Type:** Story | **Size:** S
 
-**Status:** `Todo`
+**Status:** `In progress` *(chip `FileAttachment.tsx`, validation scan + >200 trang; pipeline `TranslateFile` vẫn stub)*
 
 **User Story:**
 > As a user, after selecting a file, I want to see a preview chip with file metadata before sending, so that I can confirm it's the correct file.
@@ -86,8 +86,8 @@ async function handleFileSelect(path: string) {
     setFileError('PDF scan không hỗ trợ, vui lòng dùng PDF có text')
     return
   }
-  if (info.pageCount && info.pageCount > 100) {
-    setFileError('Tệp quá lớn (tối đa 100 trang)')
+  if (info.pageCount && info.pageCount > 200) {
+    setFileError('Tệp quá lớn (tối đa 200 trang)')
     return
   }
   setFileInfo(info)
@@ -105,7 +105,7 @@ async function handleFileSelect(path: string) {
 
 > **Epic:** E6 | **Type:** Story | **Size:** L
 
-**Status:** `Todo`
+**Status:** `In progress` *(BE: extract PDF `rsc.io/pdf` + DOCX, chunk ~2500 runes, `TranslateStream` per chunk, `file:*` + `translation:*`; FE: `FileTranslateProgress`, subscribe `file:progress` / `file:error` / `file:done`; panel `FileResult` tách trái/phải có thể bổ sung sau)*
 
 **User Story:**
 > As a user, after sending a file, I want to see the source text appear on the left and the translation fill in on the right as it progresses, so that I can follow along in real time.
@@ -276,3 +276,25 @@ useEffect(() => {
 **IPC Used:** `GetFileContent(fileId string)`, `ExportFile(fileId, format string)`
 
 **Depends on:** US-042, US-051
+
+---
+
+### US-044 — Heavy file: auto fullscreen + buffer progress + dest skeleton
+
+> **Epic:** E6 | **Type:** Story | **Size:** S
+
+**Status:** `Done` *(Mar 2026)*
+
+**User Story:**
+> As a user translating a large file, I want the app to open fullscreen when appropriate, show a thin buffering-style progress bar with percent when known, and show translated text with a skeleton for the remainder, so long jobs feel clear and responsive.
+
+**Implementation notes:**
+- **Auto fullscreen:** `App.tsx` on `file:source` — nếu `markdown.length >= HEAVY_FILE_INLINE_CHAR_THRESHOLD` (cùng ngưỡng footer “Mở rộng”), session active, có `assistantMessageId` → `uiStore.setPendingTranslationFullscreenMessageId`.
+- **Modal:** `TranslationCardView` `useEffect` mở fullscreen khi pending trùng `message.id`, rồi clear pending.
+- **Progress:** `fileTranslateProgress` từ store → `ChatMessage` → `TranslationFullscreenModal` (`fileJobActive`, `fileJobProgress`): thanh mảnh indeterminate khi chưa có `total`, fill + `%` khi có.
+- **Dest column:** text đã stream + vùng skeleton (`translation-fs-*` trong `chat-mockup.css`) khi `percent < 100`.
+- **Perf (file lớn):** `streamingTextCoalescer.ts` — gộp `translation:chunk` theo frame; từ ~8k ký tự trong phiên **file** throttle ~150ms. Thẻ song ngữ: bỏ `ResizeObserver`/đo `scrollHeight` khi `heavyInlineNoExpand && streaming`. Nguồn nặng: plain text thay `react-markdown` khi đang stream (feed + fullscreen).
+
+**FE files:** `uiStore.ts`, `App.tsx`, `ChatMessage.tsx`, `TranslationFullscreenModal.tsx`, `chat-mockup.css`, `streamingTextCoalescer.ts`
+
+**Depends on:** US-042 (streaming/progress events)

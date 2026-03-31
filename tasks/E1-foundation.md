@@ -8,7 +8,7 @@
 
 > **Epic:** E1 | **Type:** Task | **Size:** M
 
-**Status:** `Todo`
+**Status:** `Done`
 
 **Mô tả:**
 Setup toàn bộ Go backend với Wails v2, tạo đúng folder structure theo clean architecture. Đây là skeleton — chưa có logic thật.
@@ -65,7 +65,7 @@ Setup toàn bộ Go backend với Wails v2, tạo đúng folder structure theo c
 
 > **Epic:** E1 | **Type:** Task | **Size:** M
 
-**Status:** `Todo`
+**Status:** `Done`
 
 **Mô tả:**
 Setup SQLite connection (pure Go, no CGO) và migration system. DB tự tạo nếu chưa có, migration chạy khi app khởi động.
@@ -117,7 +117,7 @@ func Open() (*sql.DB, error) {
 
 > **Epic:** E1 | **Type:** Task | **Size:** M
 
-**Status:** `Todo`
+**Status:** `Done` *(generated code tại `internal/repository/sqlcgen/` — tương đương mục tiêu `sqlc/` trong task)*
 
 **Mô tả:**
 Setup sqlc để generate type-safe Go code từ SQL queries. Mỗi domain có file query riêng.
@@ -161,7 +161,7 @@ LIMIT ?;
 
 > **Epic:** E1 | **Type:** Task | **Size:** L
 
-**Status:** `Todo`
+**Status:** `Done`
 
 **Mô tả:**
 Implement toàn bộ repository layer: Registry pattern, DoInTx, và tất cả domain repositories.
@@ -205,7 +205,7 @@ func (r *repo) Insert(ctx context.Context, msg *model.Message) error {
 
 > **Epic:** E1 | **Type:** Task | **Size:** M
 
-**Status:** `Todo`
+**Status:** `Done` *(streaming `GenerateContentStream`, retry + jitter, prompt §9.1 + `preserveMarkdown`; interface thêm `preserveMarkdown bool`)*
 
 **Mô tả:**
 Implement `AIProvider` interface cho Gemini 2.0 Flash với streaming support.
@@ -263,7 +263,7 @@ func (g *GeminiProvider) TranslateStream(ctx context.Context, text, from, to, st
 
 > **Epic:** E1 | **Type:** Task | **Size:** S
 
-**Status:** `Todo`
+**Status:** `Done` *(OpenAI-compatible `localhost:11434/v1`, `ErrOllamaNotRunning` khi connection refused; retry 5xx/429, không retry refused)*
 
 **Mô tả:**
 Implement AIProvider cho Ollama dùng OpenAI-compatible API (tái dùng `go-openai` SDK).
@@ -285,7 +285,7 @@ Implement AIProvider cho Ollama dùng OpenAI-compatible API (tái dùng `go-open
 
 > **Epic:** E1 | **Type:** Task | **Size:** S
 
-**Status:** `Todo`
+**Status:** `Done` *(streaming chat completions, retry; `ForProvider` đã có từ trước — `openai` + `gpt-4o-mini` mặc định)*
 
 **Mô tả:**
 Implement AIProvider cho OpenAI GPT-4o-mini. Dùng cho Retranslate popover khi user chọn GPT-4o-mini.
@@ -310,7 +310,7 @@ Implement AIProvider cho OpenAI GPT-4o-mini. Dùng cho Retranslate popover khi u
 
 > **Epic:** E1 | **Type:** Task | **Size:** M
 
-**Status:** `Todo`
+**Status:** `Done` *(dùng `bridge.*` thay cho `handler.*` trong chữ ký để tránh import cycle)*
 
 **Mô tả:**
 Implement toàn bộ controller layer với đầy đủ interfaces và constructors. Logic thật sẽ implement ở các US tickets sau.
@@ -364,7 +364,7 @@ Implement toàn bộ controller layer với đầy đủ interfaces và construc
 
 > **Epic:** E1 | **Type:** Task | **Size:** M
 
-**Status:** `Todo`
+**Status:** `Done` *(Wails bind `handler.App` → bindings TS tại `wailsjs/go/handler/App`)*
 
 **Mô tả:**
 Implement handler layer (Wails bridge adapter) và wire toàn bộ DI trong `main.go`.
@@ -392,7 +392,7 @@ Implement handler layer (Wails bridge adapter) và wire toàn bộ DI trong `mai
 
 > **Epic:** E1 | **Type:** Task | **Size:** S
 
-**Status:** `Todo`
+**Status:** `Done`
 
 **Mô tả:**
 Setup React + Vite + TypeScript project trong `frontend/`, cài đủ dependencies.
@@ -451,7 +451,7 @@ export type SessionStatus = 'active' | 'pinned' | 'archived' | 'deleted'
 
 > **Epic:** E1 | **Type:** Task | **Size:** S
 
-**Status:** `Todo`
+**Status:** `Done`
 
 **Mô tả:**
 Tạo 4 Zustand stores với đầy đủ interface và initial state. Actions sẽ được implement ở các US tickets.
@@ -472,7 +472,7 @@ Tạo 4 Zustand stores với đầy đủ interface và initial state. Actions s
 
 > **Epic:** E1 | **Type:** Task | **Size:** S
 
-**Status:** `Todo`
+**Status:** `Done` *(import `wailsjs/go/handler/App`; thêm `CopyTranslation`)*
 
 **Mô tả:**
 Tạo `services/wailsService.ts` — typed wrapper cho tất cả `window.go.main.App.*` calls.
@@ -525,7 +525,7 @@ Tạo `services/wailsService.ts` — typed wrapper cho tất cả `window.go.mai
 
 > **Epic:** E1 | **Type:** Task | **Size:** S
 
-**Status:** `Todo`
+**Status:** `Done` *(theme qua `data-theme` + `applyTheme()` trong settings store)*
 
 **Mô tả:**
 Setup CSS Custom Properties (Material Design 3 tokens), typography, animations. Light + dark theme variables.

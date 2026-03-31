@@ -11,7 +11,7 @@
 > - ✅ **[Added]** Section 5.11 Session Title Rename UX — sidebar (Enter/Esc only) vs header (blur auto-save)
 > - ✅ **[Decision]** `DeleteSession` → **V2**, bỏ khỏi V1 IPC + dropdown menu; dropdown chỉ còn 2 actions
 > - ✅ **[Decision]** `activeProvider` V1 chỉ 2 values: `'gemini'` (Online) / `'ollama'` (Offline) — 'openai' reserved V2
-> - ✅ **[Fixed]** File page limit `{N}` → 100 trang
+> - ✅ **[Fixed]** File page limit `{N}` → 200 trang
 > - ✅ **[Fixed]** Session grouping: xác nhận labels (Hôm nay / 1 ngày trước / 2 ngày trước / Cũ hơn)
 > - ✅ **[Decision]** Không có `fileStore` Zustand — file translation state là **local useState** trong `useFileTranslation` hook
 > - ✅ **[Decision]** RetranslatePopover: **không có targetLang dropdown** — retranslate giữ nguyên ngôn ngữ đích của message gốc, chỉ đổi Style và Model
@@ -1035,7 +1035,7 @@ func New(settings *model.Settings, keys *config.APIKeys) (AIProvider, error) {
 | Method | Parameters | Return | Mô tả |
 |--------|-----------|--------|-------|
 | `GetSessions()` | — | `[]Session` | Lấy sessions với `status NOT IN ('deleted', 'archived')`, sorted: pinned trước → nhóm theo ngày (Hôm nay / 1 ngày trước / 2 ngày trước / Cũ hơn) → theo updated_at DESC |
-| `CreateSessionAndSend(req CreateSessionAndSendRequest)` | req | `string` | Tạo session mới + gửi message đầu tiên trong 1 atomic call; trả về messageId |
+| `CreateSessionAndSend(req CreateSessionAndSendRequest)` | req | `CreateSessionAndSendResult` | Tạo session mới + gửi message đầu tiên trong 1 atomic call; trả về `{ sessionId, messageId }` (`messageId` = assistant đang stream) |
 | `RenameSession(id, title string)` | id, title | `error` | Đổi tên — trigger từ sidebar inline edit HOẶC header title click |
 | `UpdateSessionStatus(id, status string)` | id, status | `error` | Pin/Unpin: status = "pinned"\|"active" |
 
@@ -1086,7 +1086,7 @@ func New(settings *model.Settings, keys *config.APIKeys) (AIProvider, error) {
 
 | Event Name | Payload | Khi nào emit |
 |-----------|---------|-------------|
-| `translation:start` | `{ messageId: string }` | AI bắt đầu generate — FE show skeleton |
+| `translation:start` | `{ messageId: string, sessionId: string }` | AI bắt đầu generate — FE show skeleton + biết session (đặc biệt sau CreateSessionAndSend) |
 | `translation:chunk` | `{ chunk: string }` | Mỗi streaming token từ AI |
 | `translation:done` | `{ message: Message }` | Translation hoàn tất |
 | `translation:error` | `{ error: string }` | Lỗi trong quá trình dịch |
@@ -1099,6 +1099,12 @@ func New(settings *model.Settings, keys *config.APIKeys) (AIProvider, error) {
 ### 7.3 Request/Response Types
 
 ```typescript
+// CreateSessionAndSendResult — sau khi commit DB (stream bất đồng bộ)
+interface CreateSessionAndSendResult {
+  sessionId: string
+  messageId: string   // assistant message id — map với translation:start
+}
+
 // CreateSessionAndSendRequest — tạo session + gửi message đầu tiên (atomic)
 interface CreateSessionAndSendRequest {
   title?: string           // FE gen từ content trước khi gọi CreateSessionAndSend:
@@ -1678,7 +1684,7 @@ API key không hợp lệ. Vui lòng liên hệ admin.
 Không có kết nối mạng. Vui lòng thử lại.
 Đã vượt quá giới hạn API. Thử lại sau {N} giây.
 File này là PDF scan, không thể trích xuất văn bản.
-Tệp quá lớn (tối đa 100 trang).
+Tệp quá lớn (tối đa 200 trang).
 Đã xảy ra lỗi. Vui lòng thử lại.
 ```
 

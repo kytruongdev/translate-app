@@ -8,7 +8,7 @@
 
 > **Epic:** E9 | **Type:** Story | **Size:** S
 
-**Status:** `Todo`
+**Status:** `Done` *(`SettingsPopover.tsx` + nút cuối sidebar, anchor `settingsAnchorRef`, Model AI + submenu theme, click ngoài / Esc — cấu trúc class `config-menu-item` theo mockup)*
 
 **User Story:**
 > As a user, I want to access settings from a button at the bottom of the sidebar, so that I can quickly configure the app without navigating away.
@@ -73,7 +73,7 @@ export default function SettingsPopover({ anchorRect, onClose }: SettingsPopover
 
 > **Epic:** E9 | **Type:** Story | **Size:** M
 
-**Status:** `Todo`
+**Status:** `Done` *(`ModelAIModal.tsx`: Gemini vs Ollama + default style, `saveSettings` kèm `activeModel` cố định theo provider; **chưa** tách OpenAI trong modal như roadmap V2)*
 
 **User Story:**
 > As a user, I want to choose between Online and Offline AI models and set a default translation style, so that the app uses my preferred settings for all translations.
@@ -260,7 +260,7 @@ async function handleThemeChange(theme: 'light' | 'dark' | 'system') {
 
 > **Epic:** E9 | **Type:** Story | **Size:** S
 
-**Status:** `Todo`
+**Status:** `Partial` *(`settingsStore.loadSettings` trong `App` mount: `GetSettings` → store + `applyTheme` + `uiStore.setActiveTargetLang`; **chưa** gate render trước paint / timeout / `Promise.allSettled` như spec)*
 
 **User Story:**
 > As a user, when I open the app, I want my previous settings to be automatically applied, so that the app remembers my preferences.
@@ -339,7 +339,7 @@ useEffect(() => {
 
 > **Epic:** E9 | **Type:** Story | **Size:** S
 
-**Status:** `Todo`
+**Status:** `Done` *(`ChatInputBar` / popover ngôn ngữ → `saveSettings({ lastTargetLang })`; BE `Settings.ToKV` / Upsert; khôi phục qua `loadSettings`)*
 
 **User Story:**
 > As a user, I want the app to remember the last target language I used, so that I don't have to re-select it every time I open the app.

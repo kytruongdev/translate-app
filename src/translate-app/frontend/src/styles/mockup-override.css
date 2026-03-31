@@ -1,0 +1,495 @@
+/* Exact mockup-oriented overrides for shell/sidebar/settings/input */
+
+.layout {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* visible: submenu theme (absolute sang phải) vượt qua mép drawer — overflow:hidden sẽ cắt mất */
+.nav-drawer {
+  width: 360px;
+  flex-shrink: 0;
+  background: var(--sidebar);
+  display: flex;
+  flex-direction: column;
+  transition: width 0.25s var(--ease);
+  overflow: visible;
+}
+
+.nav-drawer.collapsed {
+  width: 80px;
+  min-width: 80px;
+}
+
+.drawer-header {
+  display: flex;
+  padding: 10px 12px 4px;
+}
+
+.drawer-hamburger {
+  width: 44px;
+  height: 44px;
+}
+
+.nav-drawer.collapsed .drawer-header {
+  justify-content: center;
+}
+
+.btn-new-session {
+  margin: 12px 12px 14px;
+  padding: 12px 14px;
+  border-radius: var(--r-medium);
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  transition:
+    background 0.2s var(--ease),
+    box-shadow 0.2s var(--ease);
+}
+
+.btn-new-session:hover {
+  background: rgba(0, 0, 0, 0.06);
+  box-shadow: var(--shadow-elev1);
+}
+
+[data-theme='dark'] .btn-new-session:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.nav-drawer.collapsed .btn-new-session {
+  margin: 8px auto;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  justify-content: center;
+  gap: 0;
+}
+
+.nav-drawer.collapsed .btn-new-session .sidebar-label {
+  display: none;
+}
+
+.sidebar-groups {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 0 8px;
+}
+
+.sidebar-group-label {
+  padding: 14px 12px 8px 24px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.nav-drawer.collapsed .sidebar-group-label {
+  display: none;
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--r-medium);
+  cursor: pointer;
+  transition: background 0.2s var(--ease);
+  margin: 0 12px 1px;
+  border: none;
+  width: auto;
+  text-align: left;
+  background: transparent;
+  color: var(--text);
+  position: relative;
+}
+
+/* Danh sách theo ngày trong mockup HTML dùng .today-group (hover rgba + shadow), không dùng .day-group. */
+.session-item:hover {
+  background: #d3d3d3;
+  box-shadow: var(--shadow-elev1);
+}
+
+.session-item.active {
+  background: #d3d3d3;
+  box-shadow: var(--shadow-elev1);
+}
+
+[data-theme='dark'] .session-item:hover,
+[data-theme='dark'] .session-item.active {
+  background: var(--active);
+}
+
+[data-theme='dark'] .session-item.active {
+  background: color-mix(in srgb, var(--active) 90%, var(--card-bg));
+}
+
+.session-item-main {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.session-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.session-item-title {
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-item-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+/* Đổi tên inline sidebar (thay window.prompt — Wails webview thường không hiện prompt) */
+.session-item-main--rename {
+  cursor: default;
+}
+
+.session-item.is-renaming .session-item-menu {
+  opacity: 1;
+}
+
+.session-item-title-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 2px 6px;
+  margin-left: -6px;
+  border: none;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--active) 55%, transparent);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.25;
+  outline: none;
+}
+
+.session-item-title-input:focus {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.session-item-menu {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  opacity: 0;
+  transition:
+    opacity 0.2s var(--ease),
+    background 0.2s var(--ease);
+}
+
+.session-item-menu:focus,
+.session-item-menu:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.session-item:hover .session-item-menu,
+.session-item-menu.is-open {
+  opacity: 1;
+}
+
+.session-item-menu:hover,
+.session-item-menu.is-open {
+  background: rgba(0, 0, 0, 0.12);
+  color: var(--text);
+}
+
+[data-theme='dark'] .session-item-menu:hover,
+[data-theme='dark'] .session-item-menu.is-open {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.nav-drawer.collapsed .session-item {
+  padding: 10px;
+  margin: 0 0 2px;
+  justify-content: center;
+}
+
+.nav-drawer.collapsed .session-item-content,
+.nav-drawer.collapsed .session-item-menu-wrap {
+  display: none;
+}
+
+/* pinned-group + today-group: shell.css (mirror mockup HTML) */
+
+.sidebar-footer {
+  padding: 12px 12px 16px;
+  display: flex;
+  justify-content: stretch;
+  border-top: none;
+}
+
+.btn-sidebar-settings {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: var(--r-medium);
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  width: 100%;
+}
+
+.nav-drawer.collapsed .btn-sidebar-settings {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto;
+  padding: 0;
+  justify-content: center;
+  gap: 0;
+}
+
+.nav-drawer.collapsed .btn-sidebar-settings .sidebar-label {
+  display: none;
+}
+
+.settings-popover {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  z-index: 891;
+  background: var(--surface);
+  border-radius: 16px;
+  box-shadow: var(--shadow-elev2);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  overflow: visible;
+  min-width: 220px;
+  padding: 6px 0;
+}
+
+.config-menu-item {
+  font-size: 14px;
+  padding: 11px 16px;
+  gap: 12px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.config-menu-item:hover {
+  background: var(--active);
+}
+
+.config-menu-item svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.config-menu-item .label {
+  flex: 1;
+}
+
+.config-menu-item .chevron {
+  width: 14px;
+  height: 14px;
+  margin-left: auto;
+}
+
+.config-menu-item-wrap {
+  position: relative;
+  width: 100%;
+  display: block;
+}
+
+/* Cầu hover mỏng — mockup: submenu left = popover.right - 1px (sát, hơi chồng mép) */
+.config-menu-item-wrap::after {
+  content: '';
+  position: absolute;
+  left: calc(100% - 1px);
+  top: 0;
+  width: 6px;
+  height: 100%;
+  min-height: 44px;
+  z-index: 891;
+}
+
+.config-submenu {
+  display: none;
+  position: absolute;
+  left: calc(100% - 1px);
+  top: 0;
+  background: var(--surface);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.16);
+  z-index: 892;
+  border-radius: 12px;
+  padding: 6px 0;
+  min-width: 160px;
+}
+
+.config-menu-item-wrap:hover .config-submenu,
+.config-menu-item-wrap:focus-within .config-submenu {
+  display: block;
+}
+
+.config-submenu-item {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.config-submenu-item:hover {
+  background: var(--active);
+}
+
+.config-submenu-item .label {
+  flex: 1;
+}
+
+.config-submenu-item .check {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+}
+
+.config-submenu-item.active .check {
+  opacity: 1;
+}
+
+.start-view-inner {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 24px 48px;
+  text-align: center;
+  max-width: 640px;
+  margin: 0 auto;
+  width: 100%;
+  min-height: 0;
+}
+
+.start-view .chat-input-area {
+  flex-shrink: 0;
+  width: 100%;
+  position: relative;
+  z-index: 4;
+  isolation: isolate;
+}
+
+.start-subtext {
+  font-size: 15px !important;
+  color: var(--text-secondary) !important;
+  line-height: 1.45 !important;
+  margin-top: 0 !important;
+  margin-bottom: 32px !important;
+  max-width: none !important;
+}
+
+.start-suggestions-label {
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
+  color: var(--text-tertiary) !important;
+  margin-bottom: 14px !important;
+}
+
+.chat-input-area {
+  padding: 16px 24px 24px;
+  background: var(--surface);
+}
+
+.chat-input-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
+/* Khớp shell.css: nền + bo góc trên .input-wrap, textarea trong suốt */
+.chat-input-row .text-field {
+  width: 100%;
+  padding: 12px 16px 10px 16px;
+  border-radius: 0;
+  border-top-left-radius: var(--r-large);
+  border-top-right-radius: var(--r-large);
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: none;
+  min-height: 60px;
+  max-height: 320px;
+  overflow-y: auto;
+  outline: none;
+  box-shadow: none;
+}
+
+.chat-input-row .text-field:focus {
+  background: transparent;
+  box-shadow: none;
+}
+
+.chat-input-row .text-field::placeholder {
+  color: var(--text-tertiary);
+}
