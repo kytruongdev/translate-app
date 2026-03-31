@@ -184,3 +184,74 @@ func xmlEscapeText(s string) string {
 	s = strings.ReplaceAll(s, ">", "&gt;")
 	return s
 }
+
+// writePlainDocx writes plain translated text as a minimal valid DOCX file.
+// Each double-newline-separated paragraph becomes a <w:p> element.
+func writePlainDocx(text, outPath string) error {
+	paragraphs := strings.Split(text, "\n\n")
+
+	var body strings.Builder
+	for _, para := range paragraphs {
+		para = strings.TrimSpace(para)
+		if para == "" {
+			continue
+		}
+		// Handle single newlines within a paragraph as line breaks.
+		lines := strings.Split(para, "\n")
+		body.WriteString(`<w:p><w:r>`)
+		for i, line := range lines {
+			if i > 0 {
+				body.WriteString(`<w:br/>`)
+			}
+			body.WriteString(`<w:t xml:space="preserve">`)
+			body.WriteString(xmlEscapeText(line))
+			body.WriteString(`</w:t>`)
+		}
+		body.WriteString(`</w:r></w:p>`)
+	}
+
+	docXML := `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+		`<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas"` +
+		` xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
+		`<w:body>` + body.String() + `<w:sectPr/></w:body></w:document>`
+
+	relsXML := `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+		`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+		`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>` +
+		`</Relationships>`
+
+	contentTypes := `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+		`<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
+		`<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
+		`<Default Extension="xml" ContentType="application/xml"/>` +
+		`<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>` +
+		`</Types>`
+
+	f, err := os.Create(outPath)
+	if err != nil {
+		return fmt.Errorf("không tạo được file DOCX: %w", err)
+	}
+	defer f.Close()
+
+	zw := zip.NewWriter(f)
+	defer zw.Close()
+
+	entries := []struct {
+		name    string
+		content string
+	}{
+		{"[Content_Types].xml", contentTypes},
+		{"_rels/.rels", relsXML},
+		{"word/document.xml", docXML},
+	}
+	for _, e := range entries {
+		w, err := zw.Create(e.name)
+		if err != nil {
+			return fmt.Errorf("không tạo được entry %s: %w", e.name, err)
+		}
+		if _, err := io.WriteString(w, e.content); err != nil {
+			return fmt.Errorf("không ghi được entry %s: %w", e.name, err)
+		}
+	}
+	return nil
+}

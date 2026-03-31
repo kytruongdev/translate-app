@@ -90,12 +90,8 @@ export function ChatInputBar({
       const path = paths[0]
       if (!path) return
       const lower = path.toLowerCase()
-      if (lower.endsWith('.pdf')) {
-        onNotifyPickError('PDF chưa được hỗ trợ ở phiên bản này')
-        return
-      }
-      if (!lower.endsWith('.docx')) {
-        onNotifyPickError('Chỉ hỗ trợ DOCX')
+      if (!lower.endsWith('.docx') && !lower.endsWith('.pdf')) {
+        onNotifyPickError('Chỉ hỗ trợ DOCX và PDF')
         return
       }
       void onUserChoseFilePath(path)

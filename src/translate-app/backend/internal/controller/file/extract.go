@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"unicode/utf8"
 
@@ -14,6 +15,15 @@ import (
 )
 
 const maxDocxXML = 32 << 20 // 32 MiB
+
+var (
+	rePageNumber  = regexp.MustCompile(`(?m)^\s*\d{1,4}\s*$`)           // dòng chỉ có số trang
+	reShortNoise  = regexp.MustCompile(`(?m)^.{1,2}\s*$`)               // dòng < 3 ký tự
+	reHyphenBreak = regexp.MustCompile(`(\p{L})-\n(\p{L})`)             // hyphen line-break
+	reSoftHyphen  = regexp.MustCompile("\u00AD")                        // soft hyphen U+00AD
+	reMultiNL     = regexp.MustCompile(`\n{3,}`)                        // 3+ newlines
+	religature    = strings.NewReplacer("ﬁ", "fi", "ﬂ", "fl", "ﬀ", "ff", "ﬃ", "ffi", "ﬄ", "ffl")
+)
 
 // extractSourceMarkdown returns normalized plain text suitable for markdown-ish display.
 func extractSourceMarkdown(path, ext string) (string, error) {
@@ -49,6 +59,94 @@ func extractPDFPlain(path string) (string, error) {
 		b.WriteString("\n\n")
 	}
 	return strings.TrimSpace(b.String()), nil
+}
+
+// extractPDFWithClean extracts text from a PDF page by page, applies rule-based
+// cleaning, and merges cross-page paragraph fragments.
+func extractPDFWithClean(path string) (string, error) {
+	r, err := pdf.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("không đọc được PDF: %w", err)
+	}
+	n := r.NumPage()
+	if n < 1 {
+		return "", errors.New("PDF không có trang hợp lệ")
+	}
+
+	var acc strings.Builder   // accumulated clean text
+	var fragment string       // unfinished paragraph fragment from previous page
+
+	for i := 1; i <= n; i++ {
+		p := r.Page(i)
+		if p.V.IsNull() {
+			continue
+		}
+
+		// Extract raw text from page.
+		var raw strings.Builder
+		for _, t := range p.Content().Text {
+			raw.WriteString(t.S)
+		}
+		pageText := raw.String()
+		if strings.TrimSpace(pageText) == "" {
+			continue // skip empty/image-only pages
+		}
+
+		// Merge fragment from previous page.
+		if fragment != "" {
+			pageText = fragment + pageText
+			fragment = ""
+		}
+
+		// Rule-based clean.
+		pageText = cleanPDFPageText(pageText)
+		if strings.TrimSpace(pageText) == "" {
+			continue
+		}
+
+		// Detect if last line is an unfinished paragraph (no sentence-ending punctuation).
+		lines := strings.Split(strings.TrimRight(pageText, "\n"), "\n")
+		lastLine := strings.TrimSpace(lines[len(lines)-1])
+		if lastLine != "" && !strings.ContainsAny(lastLine, ".!?:") {
+			// Keep as fragment to merge with next page.
+			fragment = lastLine + " "
+			pageText = strings.Join(lines[:len(lines)-1], "\n")
+		}
+
+		if strings.TrimSpace(pageText) != "" {
+			acc.WriteString(pageText)
+			acc.WriteString("\n\n")
+		}
+	}
+
+	// Flush remaining fragment.
+	if fragment != "" {
+		acc.WriteString(strings.TrimSpace(fragment))
+		acc.WriteString("\n")
+	}
+
+	result := strings.TrimSpace(acc.String())
+	if result == "" {
+		return "", errors.New("không trích xuất được văn bản từ PDF")
+	}
+	return result, nil
+}
+
+// cleanPDFPageText applies rule-based cleaning to raw extracted PDF page text.
+func cleanPDFPageText(s string) string {
+	// Replace ligatures.
+	s = religature.Replace(s)
+	// Remove soft hyphens.
+	s = reSoftHyphen.ReplaceAllString(s, "")
+	// Fix hyphen line-break: "transla-\ntion" → "translation".
+	s = reHyphenBreak.ReplaceAllString(s, "$1$2")
+	// Remove lines that are only page numbers.
+	s = rePageNumber.ReplaceAllString(s, "")
+	// Remove lines shorter than 3 chars (noise/artifacts).
+	s = reShortNoise.ReplaceAllString(s, "")
+	// Collapse 3+ newlines to 2.
+	s = reMultiNL.ReplaceAllString(s, "\n\n")
+	return strings.TrimSpace(s)
 }
 
 func extractDocxPlain(path string) (string, error) {

@@ -420,18 +420,13 @@ export default function App() {
 
   const ingestFilePath = useCallback(async (path: string) => {
     const lower = path.toLowerCase()
-    if (lower.endsWith('.pdf')) {
-      setFilePickError('PDF chưa được hỗ trợ ở phiên bản này')
-      setPendingFile(null)
-      return
-    }
-    if (!lower.endsWith('.docx')) {
-      setFilePickError('Chỉ hỗ trợ DOCX')
+    if (!lower.endsWith('.docx') && !lower.endsWith('.pdf')) {
+      setFilePickError('Chỉ hỗ trợ DOCX và PDF')
       setPendingFile(null)
       return
     }
     const name = path.replace(/^.*[/\\]/, '') || path
-    const type: FileInfo['type'] = 'docx'
+    const type: FileInfo['type'] = lower.endsWith('.pdf') ? 'pdf' : 'docx'
     const placeholder: FileInfo = {
       name,
       type,

@@ -77,10 +77,13 @@ func (c *controller) runFileTranslate(ctx context.Context, p fileTranslateParams
 
 	ext := fileExt(p.FilePath)
 
-	if ext == ".docx" {
+	switch ext {
+	case ".docx":
 		c.runDocxTranslate(ctx, p, fail)
-	} else {
-		c.runPlainTranslate(ctx, p, ext, fail)
+	case ".pdf":
+		c.runPDFTranslate(ctx, p, fail)
+	default:
+		fail(fmt.Sprintf("định dạng tệp không được hỗ trợ: %s", ext))
 	}
 }
 
