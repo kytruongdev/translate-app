@@ -42,7 +42,7 @@ export interface FileRequest {
 
 export interface FileInfo {
   name: string
-  type: 'pdf' | 'docx'
+  type: 'pdf' | 'docx' | 'xlsx'
   fileSize: number
   pageCount?: number
   charCount: number
