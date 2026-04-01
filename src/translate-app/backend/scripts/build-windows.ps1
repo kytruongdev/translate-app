@@ -5,7 +5,7 @@
 $ErrorActionPreference = "Stop"
 
 $PANDOC_VERSION = "3.6.4"
-$XPDF_VERSION   = "4.05"
+$XPDF_VERSION   = "4.06"
 
 New-Item -ItemType Directory -Force -Path bin | Out-Null
 

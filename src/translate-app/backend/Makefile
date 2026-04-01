@@ -2,7 +2,7 @@
 
 PANDOC_VERSION  := 3.6.4
 PANDOC_ARCH     := $(shell uname -m)
-XPDF_VERSION    := 4.05
+XPDF_VERSION    := 4.06
 APP_BUNDLE      := build/bin/GnJ.app/Contents/MacOS
 WAILS           := $(HOME)/go/bin/wails
 
