@@ -1,6 +1,6 @@
 # Build script for native Windows.
 # Usage (from backend/): .\scripts\build-windows.ps1
-# Requires: Go, Wails CLI, Node.js (all in PATH)
+# Requires: Go, Wails CLI, Node.js, MinGW (TDM-GCC or MSYS2) — all in PATH
 
 $ErrorActionPreference = "Stop"
 
