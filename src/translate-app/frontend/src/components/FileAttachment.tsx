@@ -1,3 +1,4 @@
+import { FileText } from 'lucide-react'
 import type { FileInfo } from '@/types/ipc'
 import { formatFileSize } from '@/utils/formatFileSize'
 
@@ -10,11 +11,10 @@ export function FileAttachment({
   fileInfo: FileInfo
   onRemove: () => void
   error?: string | null
-  /** Đang gọi ReadFileInfo — hiện ngay tên file, tránh cảm giác “treo” sau khi chọn */
+  /** Đang gọi ReadFileInfo — hiện ngay tên file, tránh cảm giác "treo" sau khi chọn */
   loading?: boolean
 }) {
   const label = fileInfo.name.length > 48 ? `${fileInfo.name.slice(0, 45)}…` : fileInfo.name
-  const isPdf = fileInfo.type === 'pdf'
 
   return (
     <div
@@ -23,20 +23,20 @@ export function FileAttachment({
       data-loading={loading ? 'true' : 'false'}
     >
       <div className="file-attachment-main">
-        <span className="file-attachment-icon" aria-hidden>
-          {isPdf ? 'PDF' : 'DOC'}
-        </span>
+        <div className="file-attachment-icon-circle" aria-hidden>
+          <FileText size={16} strokeWidth={1.5} />
+        </div>
         <div className="file-attachment-meta">
           <span className="file-attachment-name" title={fileInfo.name}>
             {label}
           </span>
           <span className="file-attachment-sub">
-            {loading ? (
+            {error ? (
+              error
+            ) : loading ? (
               <>Đang đọc tệp…</>
             ) : (
-              <>
-                {formatFileSize(fileInfo.fileSize)}
-              </>
+              <>{formatFileSize(fileInfo.fileSize)}</>
             )}
           </span>
         </div>
@@ -49,7 +49,6 @@ export function FileAttachment({
           ×
         </button>
       </div>
-      {error ? <p className="file-attachment-error">{error}</p> : null}
     </div>
   )
 }

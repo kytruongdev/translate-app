@@ -3,7 +3,9 @@ package file
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
@@ -108,8 +110,9 @@ func (c *controller) ExportFile(ctx context.Context, fileID, _ string) (string, 
 		return "", errors.New("file đã dịch không tồn tại trên ổ đĩa")
 	}
 
+	baseName := strings.TrimSuffix(f.FileName, filepath.Ext(f.FileName))
 	ext := strings.ToLower(filepath.Ext(f.TranslatedPath))
-	defaultName := strings.TrimSuffix(f.FileName, filepath.Ext(f.FileName)) + "_translated" + ext
+	defaultName := fmt.Sprintf("%s_translated_%04d%s", baseName, rand.Intn(10000), ext)
 
 	savePath, err := runtime.SaveFileDialog(ctx, runtime.SaveDialogOptions{
 		DefaultFilename: defaultName,
