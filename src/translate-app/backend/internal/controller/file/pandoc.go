@@ -1,6 +1,7 @@
 package file
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -8,6 +9,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"time"
 )
 
 var (
@@ -116,8 +118,11 @@ func findPDFToText() string {
 
 // extractPDFWithPDFToText uses pdftotext (poppler) to extract plain text from a PDF.
 // pdftotext correctly handles ToUnicode CMap tables and complex font encodings.
+// A 120-second timeout prevents hanging on very large or malformed PDFs.
 func extractPDFWithPDFToText(pdftotextPath, pdfPath string) (string, error) {
-	out, err := exec.Command(pdftotextPath,
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, pdftotextPath,
 		"-enc", "UTF-8",
 		"-nopgbrk",
 		pdfPath,
@@ -125,6 +130,24 @@ func extractPDFWithPDFToText(pdftotextPath, pdfPath string) (string, error) {
 	).Output()
 	if err != nil {
 		return "", fmt.Errorf("pdftotext: %w", err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// extractPDFSample extracts text from the first lastPage pages only.
+// Used in ReadFileInfo for fast scan detection without reading the full document.
+func extractPDFSample(pdftotextPath, pdfPath string, lastPage int) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, pdftotextPath,
+		"-enc", "UTF-8",
+		"-nopgbrk",
+		"-l", fmt.Sprintf("%d", lastPage),
+		pdfPath,
+		"-",
+	).Output()
+	if err != nil {
+		return "", fmt.Errorf("pdftotext sample: %w", err)
 	}
 	return strings.TrimSpace(string(out)), nil
 }
