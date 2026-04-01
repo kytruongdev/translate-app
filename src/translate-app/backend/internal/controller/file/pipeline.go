@@ -164,12 +164,18 @@ func (c *controller) runDocxTranslate(ctx context.Context, p fileTranslateParams
 
 	// Translate all paragraphs via XML pipeline.
 	// onProgress receives (completedBatches, totalBatches) — called after each batch finishes.
+	// Emit progress at most every 5% to avoid React batching artifacts on the FE.
+	var lastEmittedPct int
 	translations, totalTokens, err := c.translateDocxFile(ctx, df, docSrcHint, p.TargetLang, p.Style, p.Provider,
 		func(completed, total int) {
 			pct := 0
 			if total > 0 {
 				pct = (completed * 100) / total
 			}
+			if pct-lastEmittedPct < 5 {
+				return
+			}
+			lastEmittedPct = pct
 			runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{
 				Chunk:   completed,
 				Total:   total,
