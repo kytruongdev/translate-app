@@ -9,6 +9,19 @@ import (
 const markdownPreserveRuleGPT = `IMPORTANT: Preserve ALL Markdown formatting exactly (# ## ### **bold** *italic* > - etc.)
 Only translate text content; never translate or modify Markdown syntax.`
 
+// buildCompletenessRule returns a rule that forbids summarising, abbreviating, or
+// generating placeholder text — critical for long-form PDF/document chunks where
+// GPT-4o-mini might otherwise write "[Summary continues]" or "[Figures continue]".
+func buildCompletenessRule(target string) string {
+	return "COMPLETENESS RULE (critical):\n" +
+		"Translate EVERY sentence and EVERY item completely.\n" +
+		"Do NOT summarise, skip, abbreviate, or replace any content with placeholders " +
+		`(e.g. "[continues]", "[summary]", "[omitted]", "..." or similar).` + "\n" +
+		"If the input contains mixed languages (e.g. a table with both Vietnamese and " +
+		target + " columns), translate ALL non-" + target + " text into " + target + ".\n" +
+		"Output ONLY the translated text — no commentary or meta-notes."
+}
+
 // BuildTranslationSystemPromptGPT builds the system prompt for GPT-family models
 // (gpt-4o-mini, gpt-4o, …). Omits the heavy Chinese-drift guardrails that are
 // only needed for Qwen/Ollama — keeps instructions clean and token-efficient.
@@ -35,6 +48,7 @@ func BuildTranslationSystemPromptGPT(sourceLang, targetLocale, style string, pre
 			"Output ONLY the translated text, no explanations."
 	}
 
+	base += "\n\n" + buildCompletenessRule(target)
 	if preserveMarkdown {
 		base += "\n\n" + markdownPreserveRuleGPT
 	}
@@ -73,5 +87,5 @@ func BuildDocxBatchSystemPromptGPT(from, to, style string) string {
 		"IMPORTANT: Keep every <<<N>>> marker EXACTLY as written — exactly 3 angle brackets on each side, same number N.\n" +
 		"Do NOT add extra angle brackets. Do NOT remove markers. Do NOT add any explanation or commentary."
 
-	return base + markerRule
+	return base + markerRule + "\n\n" + buildCompletenessRule(target)
 }
