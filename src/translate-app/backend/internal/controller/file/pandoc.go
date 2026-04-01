@@ -140,7 +140,13 @@ func extractPDFWithPDFToText(pdftotextPath, pdfPath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("pdftotext: %w", err)
 	}
-	return strings.TrimSpace(string(out)), nil
+	// Normalize CRLF → LF: pdftotext.exe on Windows writes to stdout in text
+	// mode (C runtime default), converting \n → \r\n. splitBlankParagraphs splits
+	// on "\n\n", which is absent in CRLF output (\r\n\r\n), causing the entire PDF
+	// to be treated as one giant chunk and GPT to hit its output token limit.
+	text := strings.ReplaceAll(string(out), "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+	return strings.TrimSpace(text), nil
 }
 
 // extractPDFSample extracts text from the first lastPage pages only.
@@ -158,7 +164,9 @@ func extractPDFSample(pdftotextPath, pdfPath string, lastPage int) (string, erro
 	if err != nil {
 		return "", fmt.Errorf("pdftotext sample: %w", err)
 	}
-	return strings.TrimSpace(string(out)), nil
+	text := strings.ReplaceAll(string(out), "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+	return strings.TrimSpace(text), nil
 }
 
 // cleanPandocOutput removes noise from pandoc GFM output that would
