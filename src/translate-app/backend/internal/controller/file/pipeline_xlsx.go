@@ -37,9 +37,10 @@ type xlsxItem struct {
 }
 
 var (
-	reXlsxSI  = regexp.MustCompile(`(?s)<si>(.*?)</si>`)
-	reXlsxT   = regexp.MustCompile(`(?s)<t(?:[^>]*)>(.*?)</t>`)
-	reXlsxRPr = regexp.MustCompile(`(?s)<rPr>(.*?)</rPr>`)
+	reXlsxSI          = regexp.MustCompile(`(?s)<si>(.*?)</si>`)
+	reXlsxT            = regexp.MustCompile(`(?s)<t(?:[^>]*)>(.*?)</t>`)
+	reXlsxRPr          = regexp.MustCompile(`(?s)<rPr>(.*?)</rPr>`)
+	reWorkbookSheetAttr = regexp.MustCompile(`(<sheet\b[^>]*?\bname=")([^"]*)(")`)
 )
 
 // parseXlsxSharedStrings reads xl/sharedStrings.xml from the xlsx ZIP.
@@ -162,9 +163,9 @@ func buildNewSharedStrings(originalXML string, entries []xlsxEntry, translations
 	return sb.String()
 }
 
-// writeXlsxTranslated creates a new xlsx (ZIP) with the sharedStrings.xml replaced.
-// All other ZIP entries are copied verbatim so formatting and structure are preserved.
-func writeXlsxTranslated(srcPath, dstPath, newSharedStrings string) error {
+// writeXlsxTranslated creates a new xlsx (ZIP) with the sharedStrings.xml (and optionally
+// workbook.xml) replaced. All other ZIP entries are copied verbatim so formatting is preserved.
+func writeXlsxTranslated(srcPath, dstPath, newSharedStrings, newWorkbook string) error {
 	zr, err := zip.OpenReader(srcPath)
 	if err != nil {
 		return err
@@ -182,9 +183,15 @@ func writeXlsxTranslated(srcPath, dstPath, newSharedStrings string) error {
 
 	for _, f := range zr.File {
 		var data []byte
-		if f.Name == "xl/sharedStrings.xml" {
+		switch f.Name {
+		case "xl/sharedStrings.xml":
 			data = []byte(newSharedStrings)
-		} else {
+		case "xl/workbook.xml":
+			if newWorkbook != "" {
+				data = []byte(newWorkbook)
+			}
+		}
+		if data == nil {
 			rc, err := f.Open()
 			if err != nil {
 				return err
@@ -218,6 +225,115 @@ func xlsxSourceMarkdown(entries []xlsxEntry, fileName string) string {
 		}
 	}
 	return strings.TrimSpace(sb.String())
+}
+
+// parseXlsxWorkbookSheetNames extracts sheet names from xl/workbook.xml.
+// Returns names, raw XML (for reconstruction), and error. Empty names/XML means no workbook found.
+func parseXlsxWorkbookSheetNames(xlsxPath string) ([]string, string, error) {
+	zr, err := zip.OpenReader(xlsxPath)
+	if err != nil {
+		return nil, "", fmt.Errorf("không mở được xlsx: %w", err)
+	}
+	defer zr.Close()
+
+	var wbFile *zip.File
+	for _, f := range zr.File {
+		if f.Name == "xl/workbook.xml" {
+			wbFile = f
+			break
+		}
+	}
+	if wbFile == nil {
+		return nil, "", nil
+	}
+
+	rc, err := wbFile.Open()
+	if err != nil {
+		return nil, "", err
+	}
+	defer rc.Close()
+
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, io.LimitReader(rc, 4<<20)); err != nil {
+		return nil, "", err
+	}
+	rawXML := buf.String()
+
+	matches := reWorkbookSheetAttr.FindAllStringSubmatch(rawXML, -1)
+	names := make([]string, 0, len(matches))
+	for _, m := range matches {
+		names = append(names, xlsxXMLUnescape(m[2]))
+	}
+	return names, rawXML, nil
+}
+
+// buildNewWorkbook reconstructs workbook.xml with translated sheet names.
+func buildNewWorkbook(originalXML string, translatedNames []string) string {
+	locs := reWorkbookSheetAttr.FindAllStringSubmatchIndex(originalXML, -1)
+	if len(locs) == 0 {
+		return originalXML
+	}
+	var sb strings.Builder
+	prev := 0
+	for i, loc := range locs {
+		if i >= len(translatedNames) {
+			break
+		}
+		// loc[4],loc[5] = group 2 = the name value between the quotes
+		sb.WriteString(originalXML[prev:loc[4]])
+		sb.WriteString(xlsxXMLEscape(translatedNames[i]))
+		prev = loc[5]
+	}
+	sb.WriteString(originalXML[prev:])
+	return sb.String()
+}
+
+// translateXlsxSheetNames translates sheet names in a single batch call.
+// Returns original names on failure (non-fatal).
+func (c *controller) translateXlsxSheetNames(
+	ctx context.Context,
+	names []string,
+	srcLang, targetLang string,
+	style model.TranslationStyle,
+	provider gateway.AIProvider,
+) []string {
+	type item struct {
+		idx  int
+		name string
+	}
+	var toTranslate []item
+	for i, n := range names {
+		if xlsxHasLetter(n) {
+			toTranslate = append(toTranslate, item{i, n})
+		}
+	}
+	if len(toTranslate) == 0 {
+		return names
+	}
+
+	var sb strings.Builder
+	sb.WriteString("Translate each sheet name below, preserving the <<<N>>> markers:\n\n")
+	for n, it := range toTranslate {
+		if n > 0 {
+			sb.WriteString("\n\n")
+		}
+		fmt.Fprintf(&sb, "<<<%d>>>\n%s", n+1, it.name)
+	}
+
+	translated, _, err := c.streamTranslateDocxBatch(ctx, provider, sb.String(), srcLang, targetLang, style)
+	if err != nil {
+		return names // non-fatal
+	}
+
+	parsed := parseBatchOutput(translated, len(toTranslate))
+	result := make([]string, len(names))
+	copy(result, names)
+	for n, it := range toTranslate {
+		if n < len(parsed) && parsed[n] != "" {
+			result[it.idx] = parsed[n]
+		}
+	}
+	return result
 }
 
 // buildXlsxItems extracts translatable entries with their original index.
@@ -341,7 +457,8 @@ func (c *controller) translateXlsxStrings(
 // runXlsxTranslate handles .xlsx files:
 // 1. Parse sharedStrings.xml — the global string pool shared by all sheets
 // 2. Translate all unique text strings concurrently (<<<N>>> batch format)
-// 3. Write a new xlsx with only sharedStrings.xml replaced — all formatting preserved
+// 3. Translate sheet names from workbook.xml
+// 4. Write a new xlsx with sharedStrings.xml and workbook.xml replaced — all formatting preserved
 func (c *controller) runXlsxTranslate(ctx context.Context, p fileTranslateParams, fail func(string)) {
 	// Step 1: Parse shared strings.
 	entries, rawSS, err := parseXlsxSharedStrings(p.FilePath)
@@ -436,10 +553,18 @@ func (c *controller) runXlsxTranslate(ctx context.Context, p fileTranslateParams
 		Percent: 100,
 	})
 
-	// Step 5: Build new sharedStrings.xml and write translated xlsx.
+	// Step 5: Translate sheet names from workbook.xml (non-fatal if fails).
+	sheetNames, rawWorkbook, _ := parseXlsxWorkbookSheetNames(p.FilePath)
+	newWorkbook := ""
+	if len(sheetNames) > 0 && rawWorkbook != "" {
+		translatedSheetNames := c.translateXlsxSheetNames(ctx, sheetNames, srcLang, p.TargetLang, p.Style, p.Provider)
+		newWorkbook = buildNewWorkbook(rawWorkbook, translatedSheetNames)
+	}
+
+	// Step 6: Build new sharedStrings.xml and write translated xlsx.
 	newSS := buildNewSharedStrings(rawSS, entries, translations)
 	translatedPath := filepath.Join(subDir, "translated.xlsx")
-	if err := writeXlsxTranslated(p.FilePath, translatedPath, newSS); err != nil {
+	if err := writeXlsxTranslated(p.FilePath, translatedPath, newSS, newWorkbook); err != nil {
 		fail(fmt.Sprintf("không tạo được file Excel đã dịch: %v", err))
 		return
 	}

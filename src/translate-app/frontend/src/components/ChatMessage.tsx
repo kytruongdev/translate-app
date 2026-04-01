@@ -670,12 +670,7 @@ function FileTranslationCard({
   const isXlsx = fileName.toLowerCase().endsWith('.xlsx')
   const fileExportFormat = isXlsx ? 'xlsx' : 'docx'
 
-  // Bỏ qua giá trị stale từ lần dịch trước: chỉ tin progress SAU KHI thấy null lần đầu
-  const seenNullRef = useRef(!fileTranslateProgress)
-  if (!fileTranslateProgress) seenNullRef.current = true
-
-  const rawPct = seenNullRef.current ? (fileTranslateProgress?.percent ?? 0) : 0
-  const total = seenNullRef.current ? (fileTranslateProgress?.total ?? 0) : 0
+  const rawPct = fileTranslateProgress?.percent ?? 0
 
   // Chỉ tăng, không giảm — tránh giật lùi giữa các batch
   const maxPctRef = useRef(0)
@@ -683,8 +678,7 @@ function FileTranslationCard({
   else if (rawPct > maxPctRef.current) maxPctRef.current = rawPct
   const pct = streaming ? maxPctRef.current : rawPct
 
-  // Chỉ spin khi chưa có % thật nào — sau đó giữ nguyên arc dù progress tạm null
-  const indeterminate = !seenNullRef.current || (maxPctRef.current === 0 && total < 1)
+  const indeterminate = !fileTranslateProgress || fileTranslateProgress.total < 1
 
   const handleDownload = async () => {
     if (!m.fileId) return
