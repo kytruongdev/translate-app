@@ -1,4 +1,4 @@
-.PHONY: dev build fetch-pandoc fetch-pdftotext-macos fetch-pdftotext-windows sqlc migrate tidy seed-sample reset-data
+.PHONY: dev build build-macos build-windows fetch-pandoc fetch-pdftotext-macos fetch-pdftotext-windows sqlc migrate tidy seed-sample reset-data
 
 PANDOC_VERSION  := 3.6.4
 PANDOC_ARCH     := $(shell uname -m)
@@ -43,19 +43,33 @@ fetch-pdftotext-windows:
 	rm /tmp/xpdf-win.zip
 	@echo "pdftotext (XPDF $(XPDF_VERSION)) ready at bin/pdftotext.exe"
 
-# Build Wails app and bundle pandoc + pdftotext inside the .app.
-build: bin/pandoc bin/pdftotext-mac
+# Build macOS .app (auto-fetches binaries if missing).
+build build-macos: bin/pandoc bin/pdftotext-mac
 	$(WAILS) build
 	cp bin/pandoc "$(APP_BUNDLE)/pandoc"
 	chmod +x "$(APP_BUNDLE)/pandoc"
 	cp bin/pdftotext-mac "$(APP_BUNDLE)/pdftotext"
 	chmod +x "$(APP_BUNDLE)/pdftotext"
 
+# Build Windows NSIS installer (cross-compile from Mac, requires mingw-w64).
+# brew install mingw-w64  ← cài một lần nếu chưa có
+build-windows: bin/pandoc.exe bin/pdftotext.exe
+	CC=x86_64-w64-mingw32-gcc $(WAILS) build --platform windows/amd64 -nsis
+
 bin/pandoc:
 	$(MAKE) fetch-pandoc
 
 bin/pdftotext-mac:
 	$(MAKE) fetch-pdftotext-macos
+
+bin/pdftotext.exe:
+	$(MAKE) fetch-pdftotext-windows
+
+bin/pandoc.exe:
+	@echo "bin/pandoc.exe not found — download the Windows pandoc binary manually:"
+	@echo "  https://github.com/jgm/pandoc/releases/download/$(PANDOC_VERSION)/pandoc-$(PANDOC_VERSION)-windows-x86_64.zip"
+	@echo "  Extract pandoc.exe → bin/pandoc.exe"
+	@exit 1
 
 sqlc:
 	sqlc generate
