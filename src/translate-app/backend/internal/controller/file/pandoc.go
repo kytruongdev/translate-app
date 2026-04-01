@@ -94,7 +94,8 @@ func pdftotextBinaryName() string {
 }
 
 // findPDFToText returns the path to the pdftotext binary.
-// Search order: bundled next to executable → bin/ relative to cwd (dev mode) → system PATH.
+// Search order: bundled next to executable → bin/ relative to cwd (dev mode) → system PATH
+// → common Homebrew paths (macOS GUI apps don't inherit shell PATH).
 // Returns "" if pdftotext is not found.
 func findPDFToText() string {
 	name := pdftotextBinaryName()
@@ -112,6 +113,14 @@ func findPDFToText() string {
 	}
 	if p, err := exec.LookPath("pdftotext"); err == nil {
 		return p
+	}
+	// macOS GUI apps launched via Wails don't inherit shell PATH, so Homebrew
+	// binaries are invisible to exec.LookPath. Check well-known prefixes explicitly.
+	for _, dir := range []string{"/opt/homebrew/bin", "/usr/local/bin"} {
+		candidate := filepath.Join(dir, name)
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
 	}
 	return ""
 }

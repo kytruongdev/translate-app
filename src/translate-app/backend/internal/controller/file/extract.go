@@ -17,6 +17,17 @@ import (
 
 const maxDocxXML = 32 << 20 // 32 MiB
 
+// safePageContent calls p.Content() and recovers from any panic that rsc.io/pdf
+// may throw for malformed or compressed-stream PDFs.
+func safePageContent(p pdf.Page) (content pdf.Content, ok bool) {
+	defer func() {
+		if recover() != nil {
+			ok = false
+		}
+	}()
+	return p.Content(), true
+}
+
 var (
 	rePageNumber  = regexp.MustCompile(`(?m)^\s*\d{1,4}\s*$`)           // dòng chỉ có số trang
 	reShortNoise  = regexp.MustCompile(`(?m)^.{1,2}\s*$`)               // dòng < 3 ký tự
@@ -62,7 +73,10 @@ func extractPDFPlain(path string) (string, error) {
 		if p.V.IsNull() {
 			continue
 		}
-		content := p.Content()
+		content, ok := safePageContent(p)
+		if !ok {
+			continue
+		}
 		for _, t := range content.Text {
 			b.WriteString(t.S)
 		}
@@ -101,8 +115,12 @@ func extractPDFWithClean(path string) (string, error) {
 		if p.V.IsNull() {
 			continue
 		}
+		content, ok := safePageContent(p)
+		if !ok {
+			continue
+		}
 		var raw strings.Builder
-		for _, t := range p.Content().Text {
+		for _, t := range content.Text {
 			raw.WriteString(t.S)
 		}
 		pageText := raw.String()
