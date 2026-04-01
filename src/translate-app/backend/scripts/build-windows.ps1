@@ -18,7 +18,7 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 if (-not (Test-Path (Join-Path $BIN "pandoc.exe"))) {
     Write-Host "Downloading pandoc $PANDOC_VERSION..."
     $url = "https://github.com/jgm/pandoc/releases/download/$PANDOC_VERSION/pandoc-$PANDOC_VERSION-windows-x86_64.zip"
-    $tmp = "$env:TEMP\pandoc-win.zip"
+    $tmp = "$env:TEMP\pandoc-win-$([System.IO.Path]::GetRandomFileName()).zip"
     Invoke-WebRequest -Uri $url -OutFile $tmp
     $zip   = [System.IO.Compression.ZipFile]::OpenRead($tmp)
     $entry = $zip.Entries | Where-Object { $_.Name -eq "pandoc.exe" } | Select-Object -First 1
@@ -32,7 +32,7 @@ if (-not (Test-Path (Join-Path $BIN "pandoc.exe"))) {
 if (-not (Test-Path (Join-Path $BIN "pdftotext.exe"))) {
     Write-Host "Downloading pdftotext (XPDF $XPDF_VERSION)..."
     $url = "https://dl.xpdfreader.com/xpdf-tools-win-$XPDF_VERSION.zip"
-    $tmp = "$env:TEMP\xpdf-win.zip"
+    $tmp = "$env:TEMP\xpdf-win-$([System.IO.Path]::GetRandomFileName()).zip"
     Invoke-WebRequest -Uri $url -OutFile $tmp
     $zip   = [System.IO.Compression.ZipFile]::OpenRead($tmp)
     $entry = $zip.Entries | Where-Object { $_.FullName -like "*/bin64/pdftotext.exe" } | Select-Object -First 1
