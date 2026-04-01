@@ -337,10 +337,17 @@ function TranslationCardView({
   const panelDestHead = `Bản dịch · ${langShortLabel(m.targetLang || 'en-US')}`
   const footerOutside = formatMessageFooterTime(m.updatedAt)
 
-  const handleExport = async (format: 'pdf' | 'docx') => {
+  const exportFileType: 'pdf' | 'docx' | 'xlsx' = bilingualFileTitle?.toLowerCase().endsWith('.xlsx')
+    ? 'xlsx'
+    : bilingualFileTitle?.toLowerCase().endsWith('.pdf')
+    ? 'pdf'
+    : 'docx'
+  const exportFormat = exportFileType === 'xlsx' ? 'xlsx' : 'docx'
+
+  const handleExport = async () => {
     if (!m.fileId) return
     try {
-      await WailsService.exportFile(m.fileId, format)
+      await WailsService.exportFile(m.fileId, exportFormat)
     } catch (e) {
       window.alert(e instanceof Error ? e.message : String(e))
     }
@@ -566,7 +573,8 @@ function TranslationCardView({
         open={exportOpen}
         anchorRef={exportRef}
         onClose={() => setExportOpen(false)}
-        onExport={(f) => void handleExport(f)}
+        fileType={exportFileType}
+        onExport={() => void handleExport()}
       />
       <CardRetranslatePopover
         open={retranslateOpen}
@@ -589,7 +597,8 @@ function TranslationCardView({
         footer={footerOutside}
         initialStyle={m.style || defaultStyle}
         modelLabel={modelLabel}
-        onExport={(f) => void handleExport(f)}
+        fileType={exportFileType}
+        onExport={() => void handleExport()}
         onRetranslateConfirm={(style) => void runRetranslate(style)}
         retranslateDisabled={!canRetranslate}
         fileJobActive={fileJobActive}
@@ -658,6 +667,8 @@ function FileTranslationCard({
     parseFileAttachmentDisplayName(m.originalContent ?? '') ??
     'document.docx'
   const isPDF = fileName.toLowerCase().endsWith('.pdf')
+  const isXlsx = fileName.toLowerCase().endsWith('.xlsx')
+  const fileExportFormat = isXlsx ? 'xlsx' : 'docx'
 
   // Bỏ qua giá trị stale từ lần dịch trước: chỉ tin progress SAU KHI thấy null lần đầu
   const seenNullRef = useRef(!fileTranslateProgress)
@@ -680,7 +691,7 @@ function FileTranslationCard({
     setDownloading(true)
     setDownloadError(null)
     try {
-      await WailsService.exportFile(m.fileId, 'docx')
+      await WailsService.exportFile(m.fileId, fileExportFormat)
     } catch (e) {
       setDownloadError(e instanceof Error ? e.message : String(e))
     } finally {

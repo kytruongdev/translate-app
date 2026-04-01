@@ -24,14 +24,16 @@ export function CardExportPopover({
   anchorRef,
   onClose,
   onExport,
+  fileType,
 }: {
   open: boolean
   anchorRef: React.RefObject<HTMLButtonElement | null>
   onClose: () => void
-  onExport: (format: 'pdf' | 'docx') => void
+  onExport: () => void
+  fileType: 'pdf' | 'docx' | 'xlsx'
 }) {
-  const [fmt, setFmt] = useState<'pdf' | 'docx'>('pdf')
   const [pos, setPos] = useState<PopoverPos | null>(null)
+  const exportLabel = fileType === 'xlsx' ? 'Excel (.xlsx)' : 'Word (.docx)'
 
   useLayoutEffect(() => {
     if (!open || !anchorRef.current) {
@@ -79,19 +81,10 @@ export function CardExportPopover({
         </div>
       </div>
       <div className="popover-body">
-        <label className="settings-row compact" htmlFor="export-format-select">
+        <div className="settings-row compact">
           <span className="settings-row-label">Định dạng</span>
-          <select
-            id="export-format-select"
-            className="retranslate-select"
-            value={fmt}
-            onChange={(e) => setFmt(e.target.value as 'pdf' | 'docx')}
-            aria-label="Định dạng export"
-          >
-            <option value="pdf">PDF (.pdf)</option>
-            <option value="docx">Word (.docx)</option>
-          </select>
-        </label>
+          <span className="settings-row-value">{exportLabel}</span>
+        </div>
       </div>
       <div className="dialog-actions">
         <button type="button" className="popover-btn cancel" onClick={onClose}>
@@ -101,7 +94,7 @@ export function CardExportPopover({
           type="button"
           className="popover-btn confirm"
           onClick={() => {
-            onExport(fmt)
+            onExport()
             onClose()
           }}
         >
