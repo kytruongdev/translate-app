@@ -19,7 +19,7 @@ import (
 
 const (
 	pdfCharsPerChunk    = 5000            // larger than DOCX (2500) — reduces API call count
-	pdfChunkTimeout     = 120 * time.Second // per-chunk timeout: prevents one stalled request hanging forever
+	pdfChunkTimeout     = 5 * time.Minute // per-chunk timeout: prevents one stalled request hanging forever
 )
 
 // runPDFTranslate handles PDF files:
