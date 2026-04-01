@@ -81,31 +81,33 @@ func readPDFInfo(path, name string, size int64) (*bridge.FileInfo, error) {
 		return nil, fmt.Errorf("tệp PDF quá dài (tối đa %d trang)", maxPDFPages)
 	}
 
-	// Detect scan: sample first 10 pages only — fast enough for the ReadFileInfo preview.
-	// Full text extraction happens later during the actual translation pipeline.
+	// Scan detection + char count estimation.
+	// Prefer pdftotext (accurate). Fall back to raw Tj/TJ operator count — pure Go,
+	// no external binary, never panics. Never use rsc.io/pdf here (panics on some PDFs).
 	const samplePages = 10
 	sampleCount := min(pages, samplePages)
-	var sampleText string
+	var charCount int
 	if p := findPDFToText(); p != "" {
-		sampleText, _ = extractPDFSample(p, path, sampleCount)
-	}
-	if sampleText == "" {
-		// Fallback: read all pages via rsc.io/pdf (fast for small files, acceptable for large).
-		sampleText, _ = extractPDFPlain(path)
-	}
-	sampleChars := utf8.RuneCountInString(sampleText)
-	avgCharsPerPage := 0
-	if sampleCount > 0 {
-		avgCharsPerPage = sampleChars / sampleCount
-	}
-	if avgCharsPerPage < 50 {
-		return nil, errors.New("Ứng dụng chưa hỗ trợ dịch thuật từ văn bản scan")
-	}
-
-	// Extrapolate total char count from the sample for the preview estimate.
-	charCount := sampleChars
-	if pages > sampleCount {
-		charCount = (sampleChars / sampleCount) * pages
+		sampleText, _ := extractPDFSample(p, path, sampleCount)
+		sampleChars := utf8.RuneCountInString(sampleText)
+		avgCharsPerPage := 0
+		if sampleCount > 0 {
+			avgCharsPerPage = sampleChars / sampleCount
+		}
+		if avgCharsPerPage < 50 {
+			return nil, errors.New("Ứng dụng chưa hỗ trợ dịch thuật từ văn bản scan")
+		}
+		charCount = sampleChars
+		if pages > sampleCount {
+			charCount = avgCharsPerPage * pages
+		}
+	} else {
+		// pdftotext unavailable: count Tj/TJ operators in raw bytes — fast, no deps.
+		// Scanned PDFs have 0 operators; text PDFs typically have hundreds per page.
+		if pdfTextOperatorCount(path) < 10 {
+			return nil, errors.New("Ứng dụng chưa hỗ trợ dịch thuật từ văn bản scan")
+		}
+		charCount = pages * 2000 // rough estimate for UI preview
 	}
 
 	return buildFileInfo(name, "pdf", size, pages, charCount, false), nil
