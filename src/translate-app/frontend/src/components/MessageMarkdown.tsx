@@ -58,9 +58,18 @@ const SentenceSplitP = memo(function SentenceSplitP({ children }: { children: Re
   )
 })
 
+const wrapHeading = (Tag: 'h1' | 'h2' | 'h3' | 'h4') =>
+  function HeadingWithSent({ children }: { children?: ReactNode }) {
+    return <Tag><span className="bl-sent" data-sent-idx="0">{children}</span></Tag>
+  }
+
 const sentenceComponents: Components = {
   ...markdownComponents,
   p: ({ children }) => <SentenceSplitP>{children as ReactNode}</SentenceSplitP>,
+  h1: ({ children }) => wrapHeading('h1')({ children: children as ReactNode }),
+  h2: ({ children }) => wrapHeading('h2')({ children: children as ReactNode }),
+  h3: ({ children }) => wrapHeading('h3')({ children: children as ReactNode }),
+  h4: ({ children }) => wrapHeading('h4')({ children: children as ReactNode }),
 }
 
 /** Markdown + GFM (bảng, strikethrough, …) cho nội dung assistant / thẻ song ngữ. */

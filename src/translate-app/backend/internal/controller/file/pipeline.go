@@ -77,10 +77,13 @@ func (c *controller) runFileTranslate(ctx context.Context, p fileTranslateParams
 
 	ext := fileExt(p.FilePath)
 
-	if ext == ".docx" {
+	switch ext {
+	case ".docx":
 		c.runDocxTranslate(ctx, p, fail)
-	} else {
-		c.runPlainTranslate(ctx, p, ext, fail)
+	case ".pdf":
+		c.runPDFTranslate(ctx, p, fail)
+	default:
+		fail(fmt.Sprintf("định dạng tệp không được hỗ trợ: %s", ext))
 	}
 }
 
@@ -151,6 +154,13 @@ func (c *controller) runDocxTranslate(ctx context.Context, p fileTranslateParams
 	}
 
 	totalBatches := len(chunkDocxParagraphs(df.Paragraphs, charsPerChunk))
+
+	// Emit initial progress so FE shows determinate ring at 0% instead of spinning indefinitely.
+	runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{
+		Chunk:   0,
+		Total:   totalBatches,
+		Percent: 0,
+	})
 
 	// Translate all paragraphs via XML pipeline.
 	// onProgress receives (completedBatches, totalBatches) — called after each batch finishes.

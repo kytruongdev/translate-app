@@ -81,6 +81,54 @@ func extractDocxPlainText(pandocPath, docxPath string) (string, error) {
 	return strings.TrimSpace(text), nil
 }
 
+// --- pdftotext (poppler) ---
+
+// pdftotextBinaryName returns "pdftotext.exe" on Windows, "pdftotext" elsewhere.
+func pdftotextBinaryName() string {
+	if runtime.GOOS == "windows" {
+		return "pdftotext.exe"
+	}
+	return "pdftotext"
+}
+
+// findPDFToText returns the path to the pdftotext binary.
+// Search order: bundled next to executable → bin/ relative to cwd (dev mode) → system PATH.
+// Returns "" if pdftotext is not found.
+func findPDFToText() string {
+	name := pdftotextBinaryName()
+	if exe, err := os.Executable(); err == nil {
+		candidate := filepath.Join(filepath.Dir(exe), name)
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		candidate := filepath.Join(cwd, "bin", name)
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+	if p, err := exec.LookPath("pdftotext"); err == nil {
+		return p
+	}
+	return ""
+}
+
+// extractPDFWithPDFToText uses pdftotext (poppler) to extract plain text from a PDF.
+// pdftotext correctly handles ToUnicode CMap tables and complex font encodings.
+func extractPDFWithPDFToText(pdftotextPath, pdfPath string) (string, error) {
+	out, err := exec.Command(pdftotextPath,
+		"-enc", "UTF-8",
+		"-nopgbrk",
+		pdfPath,
+		"-",
+	).Output()
+	if err != nil {
+		return "", fmt.Errorf("pdftotext: %w", err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 // cleanPandocOutput removes noise from pandoc GFM output that would
 // confuse the AI translation prompt.
 func cleanPandocOutput(md string) string {

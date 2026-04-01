@@ -19,7 +19,9 @@ import (
 )
 
 const (
-	maxPDFPeek       = 4 << 20 // 4 MiB for text-operator heuristic
+	maxPDFPeek       = 4 << 20  // 4 MiB for text-operator heuristic
+	maxPDFSize       = 50 << 20 // 50 MiB file size limit
+	maxPDFPages      = 200
 	charsPerChunk    = 2500
 	docxCharsPerPage = 2800
 )
@@ -51,18 +53,22 @@ func (c *controller) ReadFileInfo(ctx context.Context, path string) (*bridge.Fil
 
 	switch ext {
 	case ".pdf":
-		return nil, errors.New("PDF chưa được hỗ trợ ở phiên bản này")
+		return readPDFInfo(clean, name, size)
 	case ".docx":
 		return readDocxInfo(clean, name, size)
 	default:
-		return nil, errors.New("chỉ hỗ trợ DOCX")
+		return nil, errors.New("chỉ hỗ trợ DOCX và PDF")
 	}
 }
 
 func readPDFInfo(path, name string, size int64) (*bridge.FileInfo, error) {
+	if size > maxPDFSize {
+		return nil, errors.New("tệp PDF quá lớn (tối đa 50MB)")
+	}
+
 	ctxPDF, err := api.ReadContextFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("không đọc được PDF: %w", err)
+		return nil, fmt.Errorf("không mở được PDF (có thể được bảo vệ bằng mật khẩu): %w", err)
 	}
 	if err := ctxPDF.EnsurePageCount(); err != nil {
 		return nil, fmt.Errorf("không xác định được số trang: %w", err)
@@ -71,16 +77,23 @@ func readPDFInfo(path, name string, size int64) (*bridge.FileInfo, error) {
 	if pages < 1 {
 		return nil, errors.New("PDF không có trang hợp lệ")
 	}
-
-	ops := pdfTextOperatorCount(path)
-	isScanned := pages >= 1 && ops < intMax(1, pages/3)
-
-	charCount := pages * 2000
-	if !isScanned && ops > 0 {
-		charCount = intMax(charCount, ops*350)
+	if pages > maxPDFPages {
+		return nil, fmt.Errorf("tệp PDF quá dài (tối đa %d trang)", maxPDFPages)
 	}
 
-	return buildFileInfo(name, "pdf", size, pages, charCount, isScanned), nil
+	// Detect scan: extract actual text and check chars per page.
+	// More reliable than byte-counting heuristic (which fails on compressed streams).
+	extracted, _ := extractPDFPlain(path)
+	charCount := utf8.RuneCountInString(extracted)
+	avgCharsPerPage := 0
+	if pages > 0 {
+		avgCharsPerPage = charCount / pages
+	}
+	if avgCharsPerPage < 50 {
+		return nil, errors.New("Ứng dụng chưa hỗ trợ dịch thuật từ văn bản scan")
+	}
+
+	return buildFileInfo(name, "pdf", size, pages, charCount, false), nil
 }
 
 func readDocxInfo(path, name string, size int64) (*bridge.FileInfo, error) {
