@@ -19,7 +19,7 @@ import (
 
 const (
 	pdfCharsPerChunk    = 5000            // larger than DOCX (2500) — reduces API call count
-	pdfChunkTimeout     = 120 * time.Second // per-chunk timeout: prevents one stalled request hanging forever
+	pdfChunkTimeout     = 5 * time.Minute // per-chunk timeout: prevents one stalled request hanging forever
 )
 
 // runPDFTranslate handles PDF files:
@@ -100,12 +100,18 @@ func (c *controller) runPDFTranslate(ctx context.Context, p fileTranslateParams,
 	})
 
 	// Step 3: Translate chunks concurrently (preserveMarkdown=true keeps ## headings and - bullets).
+	// Emit progress at most every 5% to avoid React batching artifacts on the FE.
+	var lastEmittedPct int
 	translated, totalTokens, err := c.translatePlainChunks(ctx, chunks, srcLang, p.TargetLang, p.Style, p.Provider, true,
 		func(completed, total int) {
 			pct := 0
 			if total > 0 {
 				pct = (completed * 100) / total
 			}
+			if pct-lastEmittedPct < 5 {
+				return
+			}
+			lastEmittedPct = pct
 			runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{
 				Chunk:   completed,
 				Total:   total,
