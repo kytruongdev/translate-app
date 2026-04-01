@@ -23,7 +23,7 @@ function normalizeFileInfo(r: {
   estimatedChunks: number
   estimatedMinutes: number
 }): FileInfo {
-  const t = r.type === 'docx' ? 'docx' : 'pdf'
+  const t = r.type === 'docx' ? 'docx' : r.type === 'xlsx' ? 'xlsx' : 'pdf'
   const rawPc = r.pageCount
   let pageCount: number | undefined
   if (typeof rawPc === 'number' && Number.isFinite(rawPc)) {
