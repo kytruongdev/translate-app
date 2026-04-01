@@ -56,8 +56,10 @@ func (c *controller) ReadFileInfo(ctx context.Context, path string) (*bridge.Fil
 		return readPDFInfo(clean, name, size)
 	case ".docx":
 		return readDocxInfo(clean, name, size)
+	case ".xlsx":
+		return readXlsxInfo(clean, name, size)
 	default:
-		return nil, errors.New("chỉ hỗ trợ DOCX và PDF")
+		return nil, errors.New("chỉ hỗ trợ DOCX, PDF và Excel (xlsx)")
 	}
 }
 
@@ -221,4 +223,24 @@ func intMax(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func readXlsxInfo(path, name string, size int64) (*bridge.FileInfo, error) {
+	entries, _, err := parseXlsxSharedStrings(path)
+	if err != nil {
+		return nil, fmt.Errorf("không đọc được Excel: %w", err)
+	}
+
+	charCount := 0
+	for _, e := range entries {
+		if e.translatable {
+			charCount += utf8.RuneCountInString(e.text)
+		}
+	}
+	if charCount < 1 {
+		return nil, errors.New("tệp Excel không có nội dung văn bản cần dịch")
+	}
+
+	pages := max(1, (charCount+docxCharsPerPage-1)/docxCharsPerPage)
+	return buildFileInfo(name, "xlsx", size, pages, charCount, false), nil
 }

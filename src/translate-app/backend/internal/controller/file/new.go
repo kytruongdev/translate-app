@@ -114,11 +114,17 @@ func (c *controller) ExportFile(ctx context.Context, fileID, _ string) (string, 
 	ext := strings.ToLower(filepath.Ext(f.TranslatedPath))
 	defaultName := fmt.Sprintf("%s_translated_%04d%s", baseName, rand.Intn(10000), ext)
 
+	var saveFilters []runtime.FileFilter
+	switch ext {
+	case ".xlsx":
+		saveFilters = []runtime.FileFilter{{DisplayName: "Excel Document (*.xlsx)", Pattern: "*.xlsx"}}
+	default:
+		saveFilters = []runtime.FileFilter{{DisplayName: "DOCX Document (*.docx)", Pattern: "*.docx"}}
+	}
+
 	savePath, err := runtime.SaveFileDialog(ctx, runtime.SaveDialogOptions{
 		DefaultFilename: defaultName,
-		Filters: []runtime.FileFilter{
-			{DisplayName: "DOCX Document (*.docx)", Pattern: "*.docx"},
-		},
+		Filters:         saveFilters,
 	})
 	if err != nil {
 		return "", err
