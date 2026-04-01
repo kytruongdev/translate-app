@@ -25,11 +25,12 @@ fetch-pandoc:
 # Run once before building macOS: make fetch-pdftotext-macos
 fetch-pdftotext-macos:
 	mkdir -p bin
-	curl -sL "https://dl.xpdfreader.com/xpdf-tools-mac-$(XPDF_VERSION).zip" \
-		-o /tmp/xpdf-mac.zip
-	unzip -p /tmp/xpdf-mac.zip "xpdf-tools-mac-$(XPDF_VERSION)/bin64/pdftotext" > bin/pdftotext-mac
+	curl -sL "https://dl.xpdfreader.com/xpdf-tools-mac-$(XPDF_VERSION).tar.gz" \
+		-o /tmp/xpdf-mac.tar.gz
+	tar -xzf /tmp/xpdf-mac.tar.gz -C /tmp "xpdf-tools-mac-$(XPDF_VERSION)/bin64/pdftotext"
+	mv "/tmp/xpdf-tools-mac-$(XPDF_VERSION)/bin64/pdftotext" bin/pdftotext-mac
 	chmod +x bin/pdftotext-mac
-	rm /tmp/xpdf-mac.zip
+	rm -rf /tmp/xpdf-mac.tar.gz "/tmp/xpdf-tools-mac-$(XPDF_VERSION)"
 	@echo "pdftotext (XPDF $(XPDF_VERSION)) ready at bin/pdftotext-mac"
 
 # Download pdftotext.exe (XPDF, Windows 64-bit) into bin/pdftotext.exe.
