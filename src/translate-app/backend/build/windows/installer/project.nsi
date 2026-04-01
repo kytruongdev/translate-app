@@ -91,6 +91,9 @@ Section
     # Bundle pandoc binary (required for DOCX translation)
     File "..\..\..\bin\pandoc.exe"
 
+    # Bundle pdftotext binary (XPDF, required for PDF text extraction)
+    File "..\..\..\bin\pdftotext.exe"
+
     CreateShortcut "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
     CreateShortCut "$DESKTOP\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
 
