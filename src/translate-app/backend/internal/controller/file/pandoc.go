@@ -1,6 +1,7 @@
 package file
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -8,6 +9,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"time"
 )
 
 var (
@@ -92,7 +94,8 @@ func pdftotextBinaryName() string {
 }
 
 // findPDFToText returns the path to the pdftotext binary.
-// Search order: bundled next to executable → bin/ relative to cwd (dev mode) → system PATH.
+// Search order: bundled next to executable → bin/ relative to cwd (dev mode) → system PATH
+// → common Homebrew paths (macOS GUI apps don't inherit shell PATH).
 // Returns "" if pdftotext is not found.
 func findPDFToText() string {
 	name := pdftotextBinaryName()
@@ -111,13 +114,24 @@ func findPDFToText() string {
 	if p, err := exec.LookPath("pdftotext"); err == nil {
 		return p
 	}
+	// macOS GUI apps launched via Wails don't inherit shell PATH, so Homebrew
+	// binaries are invisible to exec.LookPath. Check well-known prefixes explicitly.
+	for _, dir := range []string{"/opt/homebrew/bin", "/usr/local/bin"} {
+		candidate := filepath.Join(dir, name)
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
 	return ""
 }
 
 // extractPDFWithPDFToText uses pdftotext (poppler) to extract plain text from a PDF.
 // pdftotext correctly handles ToUnicode CMap tables and complex font encodings.
+// A 120-second timeout prevents hanging on very large or malformed PDFs.
 func extractPDFWithPDFToText(pdftotextPath, pdfPath string) (string, error) {
-	out, err := exec.Command(pdftotextPath,
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, pdftotextPath,
 		"-enc", "UTF-8",
 		"-nopgbrk",
 		pdfPath,
@@ -126,7 +140,33 @@ func extractPDFWithPDFToText(pdftotextPath, pdfPath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("pdftotext: %w", err)
 	}
-	return strings.TrimSpace(string(out)), nil
+	// Normalize CRLF → LF: pdftotext.exe on Windows writes to stdout in text
+	// mode (C runtime default), converting \n → \r\n. splitBlankParagraphs splits
+	// on "\n\n", which is absent in CRLF output (\r\n\r\n), causing the entire PDF
+	// to be treated as one giant chunk and GPT to hit its output token limit.
+	text := strings.ReplaceAll(string(out), "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+	return strings.TrimSpace(text), nil
+}
+
+// extractPDFSample extracts text from the first lastPage pages only.
+// Used in ReadFileInfo for fast scan detection without reading the full document.
+func extractPDFSample(pdftotextPath, pdfPath string, lastPage int) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, pdftotextPath,
+		"-enc", "UTF-8",
+		"-nopgbrk",
+		"-l", fmt.Sprintf("%d", lastPage),
+		pdfPath,
+		"-",
+	).Output()
+	if err != nil {
+		return "", fmt.Errorf("pdftotext sample: %w", err)
+	}
+	text := strings.ReplaceAll(string(out), "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+	return strings.TrimSpace(text), nil
 }
 
 // cleanPandocOutput removes noise from pandoc GFM output that would
