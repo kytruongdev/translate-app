@@ -35,13 +35,16 @@ func (c *controller) runPDFTranslate(ctx context.Context, p fileTranslateParams,
 		return
 	}
 
-	// OCR fallback: if pdftotext yields sparse text (< 50 chars/page), run Tesseract.
+	// OCR fallback / hybrid extraction:
+	//   • Fully scanned (avg < 50 chars/page): OCR every page via ocrPDFText.
+	//   • Mixed (avg ≥ 50 but some pages sparse): per-page hybrid via extractPDFHybrid —
+	//     pdftotext for digital pages, Tesseract only for sparse (scanned) pages.
+	//   • Fully digital: no OCR, use pdftotext result as-is.
 	ocrRan := false
-	if ocrAvailable() && utf8.RuneCountInString(strings.TrimSpace(raw))/max(p.PageCount, 1) < 50 {
-		ocrTotal := max(p.PageCount, 1)
-		runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{Chunk: 0, Total: ocrTotal, Percent: 0})
+	if ocrAvailable() {
+		avgCharsPerPage := utf8.RuneCountInString(strings.TrimSpace(raw)) / max(p.PageCount, 1)
 		var lastOCRPct int
-		ocrRaw, ocrErr := ocrPDFText(ctx, p.FilePath, func(done, total int) {
+		ocrProgressFn := func(done, total int) {
 			if total < 1 {
 				return
 			}
@@ -55,13 +58,32 @@ func (c *controller) runPDFTranslate(ctx context.Context, p fileTranslateParams,
 				Total:   total,
 				Percent: pct,
 			})
-		})
-		if ocrErr != nil {
-			fail(ocrErr.Error())
-			return
 		}
-		raw = ocrRaw
-		ocrRan = true
+
+		if avgCharsPerPage < sparsePageThreshold {
+			// Fully scanned: OCR all pages.
+			runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{Chunk: 0, Total: max(p.PageCount, 1), Percent: 0})
+			ocrRaw, ocrErr := ocrPDFText(ctx, p.FilePath, ocrProgressFn)
+			if ocrErr != nil {
+				fail(ocrErr.Error())
+				return
+			}
+			raw = ocrRaw
+			ocrRan = true
+		} else {
+			// Possibly mixed: extractPDFHybrid detects sparse pages and OCRs only those.
+			// If no sparse pages are found it returns immediately (fast path, no OCR).
+			hybridRaw, didOCR, hybridErr := extractPDFHybrid(ctx, p.FilePath, ocrProgressFn)
+			if hybridErr == nil && strings.TrimSpace(hybridRaw) != "" {
+				raw = hybridRaw
+				ocrRan = didOCR
+				if didOCR {
+					// Emit starting-OCR event so FE shows the progress ring.
+					runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{Chunk: 0, Total: max(p.PageCount, 1), Percent: 0})
+				}
+			}
+			// If hybrid extraction fails or returns empty, continue with original pdftotext result.
+		}
 	}
 
 	if strings.TrimSpace(raw) == "" {
