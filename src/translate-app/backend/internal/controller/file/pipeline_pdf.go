@@ -34,6 +34,36 @@ func (c *controller) runPDFTranslate(ctx context.Context, p fileTranslateParams,
 		fail(err.Error())
 		return
 	}
+
+	// OCR fallback: if pdftotext yields sparse text (< 50 chars/page), run Tesseract.
+	ocrRan := false
+	if ocrAvailable() && utf8.RuneCountInString(strings.TrimSpace(raw))/max(p.PageCount, 1) < 50 {
+		ocrTotal := max(p.PageCount, 1)
+		runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{Chunk: 0, Total: ocrTotal, Percent: 0})
+		var lastOCRPct int
+		ocrRaw, ocrErr := ocrPDFText(ctx, p.FilePath, func(done, total int) {
+			if total < 1 {
+				return
+			}
+			pct := (done * 50) / total // OCR occupies 0–50%; translation gets 50–100%
+			if pct-lastOCRPct < 5 {
+				return
+			}
+			lastOCRPct = pct
+			runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{
+				Chunk:   done,
+				Total:   total,
+				Percent: pct,
+			})
+		})
+		if ocrErr != nil {
+			fail(ocrErr.Error())
+			return
+		}
+		raw = ocrRaw
+		ocrRan = true
+	}
+
 	if strings.TrimSpace(raw) == "" {
 		fail("không trích xuất được văn bản từ PDF")
 		return
@@ -92,11 +122,17 @@ func (c *controller) runPDFTranslate(ctx context.Context, p fileTranslateParams,
 		return
 	}
 
-	// Emit initial progress so FE shows determinate ring at 0% instead of spinning indefinitely.
+	// Progress base: if OCR ran, it occupied 0–50%; translation gets 50–100%.
+	progressBase := 0
+	if ocrRan {
+		progressBase = 50
+	}
+
+	// Emit initial progress so FE shows determinate ring instead of spinning indefinitely.
 	runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{
 		Chunk:   0,
 		Total:   total,
-		Percent: 0,
+		Percent: progressBase,
 	})
 
 	// Step 3: Translate chunks concurrently (preserveMarkdown=true keeps ## headings and - bullets).
@@ -104,9 +140,9 @@ func (c *controller) runPDFTranslate(ctx context.Context, p fileTranslateParams,
 	var lastEmittedPct int
 	translated, totalTokens, err := c.translatePlainChunks(ctx, chunks, srcLang, p.TargetLang, p.Style, p.Provider, true,
 		func(completed, total int) {
-			pct := 0
+			pct := progressBase
 			if total > 0 {
-				pct = (completed * 100) / total
+				pct = progressBase + (completed*(100-progressBase))/total
 			}
 			if pct-lastEmittedPct < 5 {
 				return

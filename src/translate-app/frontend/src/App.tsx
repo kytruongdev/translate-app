@@ -402,9 +402,7 @@ export default function App() {
   const attachmentValidationError = useMemo(() => {
     if (!pendingFile) return null
     if (pendingFile.loading) return null
-    if (pendingFile.info.isScanned === true) {
-      return 'Ứng dụng chưa hỗ trợ dịch thuật từ văn bản scan'
-    }
+
     const raw = pendingFile.info.pageCount
     const pc = typeof raw === 'number' ? raw : raw != null ? Number(raw) : NaN
     if (Number.isFinite(pc) && pc > MAX_FILE_PAGE_COUNT) {
