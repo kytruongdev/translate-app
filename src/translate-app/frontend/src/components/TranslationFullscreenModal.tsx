@@ -37,6 +37,7 @@ export function TranslationFullscreenModal({
   initialStyle,
   modelLabel,
   onExport,
+  fileType,
   onRetranslateConfirm,
   retranslateDisabled,
   fileJobActive,
@@ -56,7 +57,8 @@ export function TranslationFullscreenModal({
   footer: string
   initialStyle: TranslationStyle
   modelLabel: string
-  onExport: (format: 'pdf' | 'docx') => void
+  onExport: () => void
+  fileType: 'pdf' | 'docx' | 'xlsx'
   onRetranslateConfirm: (style: TranslationStyle) => void
   retranslateDisabled?: boolean
   /** Dịch file đang chạy — thanh buffer + skeleton phần chưa xong */
@@ -290,6 +292,7 @@ export function TranslationFullscreenModal({
         open={exportOpen}
         anchorRef={exportBtnRef}
         onClose={() => setExportOpen(false)}
+        fileType={fileType}
         onExport={onExport}
       />
       <CardRetranslatePopover

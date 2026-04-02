@@ -5,7 +5,7 @@ export interface FileAttachment {
   id: string
   sessionId: string
   fileName: string
-  fileType: 'pdf' | 'docx'
+  fileType: 'pdf' | 'docx' | 'xlsx'
   fileSize: number
   originalPath: string
   sourcePath: string
@@ -23,7 +23,7 @@ export interface FileAttachment {
 export interface FileResult {
   fileId: string
   fileName: string
-  fileType: 'pdf' | 'docx'
+  fileType: 'pdf' | 'docx' | 'xlsx'
   charCount: number
   pageCount: number
   tokensUsed: number
