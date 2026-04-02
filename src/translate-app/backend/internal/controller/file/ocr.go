@@ -8,9 +8,13 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
+
+const sparsePageThreshold = 50 // chars per page below which OCR is attempted
 
 const ocrPageTimeout = 2 * time.Minute // per-page OCR timeout
 
@@ -200,7 +204,9 @@ func ocrPDFText(ctx context.Context, pdfPath string, onProgress func(done, total
 		}
 
 		pageCtx, pageCancel := context.WithTimeout(ctx, ocrPageTimeout)
-		args := []string{pagePath, "stdout"}
+		// Use basename + cmd.Dir to work around a Leptonica bug on macOS where
+		// absolute paths are ignored and only the CWD is searched.
+		args := []string{filepath.Base(pagePath), "stdout"}
 		if td != "" {
 			args = append(args, "--tessdata-dir", td)
 		}
@@ -209,7 +215,9 @@ func ocrPDFText(ctx context.Context, pdfPath string, onProgress func(done, total
 			"--oem", "1", // LSTM engine only — best quality
 			"--psm", "1", // Automatic page segmentation with OSD
 		)
-		out, ocrErr := exec.CommandContext(pageCtx, tesseractPath, args...).Output()
+		cmd := exec.CommandContext(pageCtx, tesseractPath, args...)
+		cmd.Dir = filepath.Dir(pagePath)
+		out, ocrErr := cmd.Output()
 		pageCancel()
 
 		if ocrErr == nil {
@@ -232,4 +240,115 @@ func ocrPDFText(ctx context.Context, pdfPath string, onProgress func(done, total
 		return "", fmt.Errorf("OCR không trích xuất được văn bản từ PDF")
 	}
 	return result, nil
+}
+
+// ocrSinglePage renders one PDF page to a temporary PNG and runs Tesseract on it.
+// Returns the extracted text, or an error if rendering or OCR fails.
+func ocrSinglePage(ctx context.Context, tesseractPath string, renderer pdfRendererInfo, tessdataDir, pdfPath string, pageNum int) (string, error) {
+	tmpDir, err := os.MkdirTemp("", "gnj-ocr-p-*")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(tmpDir)
+
+	pagePrefix := filepath.Join(tmpDir, "page")
+	pageStr := strconv.Itoa(pageNum)
+	var renderArgs []string
+	if renderer.isPdftopng {
+		renderArgs = []string{"-r", "200", "-f", pageStr, "-l", pageStr, pdfPath, pagePrefix}
+	} else {
+		renderArgs = []string{"-r", "200", "-png", "-f", pageStr, "-l", pageStr, pdfPath, pagePrefix}
+	}
+	renderCtx, renderCancel := context.WithTimeout(ctx, 30*time.Second)
+	_, renderErr := exec.CommandContext(renderCtx, renderer.path, renderArgs...).Output()
+	renderCancel()
+	if renderErr != nil {
+		return "", fmt.Errorf("render page %d: %w", pageNum, renderErr)
+	}
+
+	pngFiles, _ := filepath.Glob(filepath.Join(tmpDir, "page-*.png"))
+	if len(pngFiles) == 0 {
+		return "", fmt.Errorf("page %d: PNG không được tạo", pageNum)
+	}
+	sort.Strings(pngFiles)
+	pngPath := pngFiles[0]
+
+	pageCtx, pageCancel := context.WithTimeout(ctx, ocrPageTimeout)
+	defer pageCancel()
+	args := []string{filepath.Base(pngPath), "stdout"}
+	if tessdataDir != "" {
+		args = append(args, "--tessdata-dir", tessdataDir)
+	}
+	args = append(args, "-l", "vie+eng", "--oem", "1", "--psm", "1")
+	cmd := exec.CommandContext(pageCtx, tesseractPath, args...)
+	cmd.Dir = filepath.Dir(pngPath)
+	out, ocrErr := cmd.Output()
+	if ocrErr != nil {
+		return "", ocrErr
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// extractPDFHybrid extracts text from a potentially mixed PDF (some pages digital,
+// some scanned). It runs pdftotext with page-break separators to get per-page text,
+// then OCRs only the pages that are sparse (< sparsePageThreshold chars).
+//
+// Returns the combined text, whether any OCR was performed, and any fatal error.
+// onProgress is called as (sparsePagesDone, totalSparsePages) while OCR runs;
+// it is never called if no sparse pages are found (fast path).
+func extractPDFHybrid(ctx context.Context, pdfPath string, onProgress func(done, total int)) (string, bool, error) {
+	pdftotextPath := findPDFToText()
+	if pdftotextPath == "" {
+		return "", false, fmt.Errorf("pdftotext không khả dụng")
+	}
+
+	pageTexts, err := extractPDFPageTexts(pdftotextPath, pdfPath)
+	if err != nil || len(pageTexts) == 0 {
+		return "", false, err
+	}
+
+	// Identify pages with too little text (likely scanned).
+	var sparseIdxs []int
+	for i, pt := range pageTexts {
+		if utf8.RuneCountInString(pt) < sparsePageThreshold {
+			sparseIdxs = append(sparseIdxs, i)
+		}
+	}
+
+	if len(sparseIdxs) == 0 {
+		// Fully digital: return joined text directly (no OCR needed).
+		return strings.TrimSpace(strings.Join(pageTexts, "\n\n")), false, nil
+	}
+
+	// Has sparse pages: OCR them.
+	tesseractPath := findTesseract()
+	renderer, ok := findPDFRenderer()
+	if !ok || tesseractPath == "" {
+		// OCR unavailable: return what pdftotext gave us.
+		return strings.TrimSpace(strings.Join(pageTexts, "\n\n")), false, nil
+	}
+
+	td := bundledTessdataDir(tesseractPath)
+	totalSparse := len(sparseIdxs)
+	if onProgress != nil {
+		onProgress(0, totalSparse)
+	}
+	didOCR := false
+	for done, i := range sparseIdxs {
+		select {
+		case <-ctx.Done():
+			return "", didOCR, ctx.Err()
+		default:
+		}
+		text, ocrErr := ocrSinglePage(ctx, tesseractPath, renderer, td, pdfPath, i+1)
+		if ocrErr == nil && strings.TrimSpace(text) != "" {
+			pageTexts[i] = text
+			didOCR = true
+		}
+		if onProgress != nil {
+			onProgress(done+1, totalSparse)
+		}
+	}
+
+	return strings.TrimSpace(strings.Join(pageTexts, "\n\n")), didOCR, nil
 }
