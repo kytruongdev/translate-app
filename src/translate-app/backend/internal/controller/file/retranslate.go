@@ -57,6 +57,10 @@ func (c *controller) retranslateDocx(ctx context.Context, p RetranslateContentPa
 		fail("không tìm thấy thông tin tệp để dịch lại")
 		return
 	}
+	if fileRec.FileType == "xlsx" {
+		fail("Chưa hỗ trợ dịch lại file Excel, vui lòng dịch mới")
+		return
+	}
 	c.log.Info("FileRetranslateStarted",
 		"sessionId", p.SessionID, "fileId", p.FileID, "fileName", filepath.Base(fileRec.OriginalPath),
 		"model", fileRec.ModelUsed, "style", p.Style, "targetLang", p.TargetLang)

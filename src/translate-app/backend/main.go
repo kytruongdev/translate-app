@@ -47,7 +47,8 @@ func main() {
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
 		DragAndDrop: &options.DragAndDrop{
-			EnableFileDrop: true,
+			EnableFileDrop:     true,
+			DisableWebViewDrop: true, // Windows: prevent WebView2 from consuming drag events before Wails
 		},
 		OnStartup: onStartup,
 		Bind: []interface{}{

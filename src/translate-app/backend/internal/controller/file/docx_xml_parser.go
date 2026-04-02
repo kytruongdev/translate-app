@@ -158,6 +158,21 @@ func extractParagraphs(sourceName, raw string) ([]DocxParagraph, error) {
 			}
 
 			switch local {
+			case "txbxContent": // <w:txbxContent> — treat as independent paragraph scope
+				// Text boxes embed <w:p> elements inside an outer <w:p> (drawing wrapper).
+				// Finalize the outer paragraph (usually empty) and reset so each inner
+				// <w:p> is treated as its own independent translation unit.
+				if inPara {
+					para := buildParagraph(sourceName, paraIndex, rawBytes, nodes)
+					if para.Text != "" {
+						paras = append(paras, para)
+						paraIndex++
+					}
+					inPara = false
+					inRun = false
+					inT = false
+					nodes = nil
+				}
 			case "p": // <w:p>
 				if !inPara {
 					inPara = true
@@ -215,6 +230,21 @@ func extractParagraphs(sourceName, raw string) ([]DocxParagraph, error) {
 					}
 					nodes = nil
 				}
+			case "txbxContent": // </w:txbxContent> — exit text box scope
+				// Finalize any trailing paragraph inside the text box.
+				if inPara {
+					para := buildParagraph(sourceName, paraIndex, rawBytes, nodes)
+					if para.Text != "" {
+						paras = append(paras, para)
+						paraIndex++
+					}
+				}
+				// Reset state: outer <w:p> (drawing wrapper) resumes, but its
+				// </w:p> is a no-op since inPara=false.
+				inPara = false
+				inRun = false
+				inT = false
+				nodes = nil
 			}
 			depth--
 
@@ -297,19 +327,21 @@ func findTagStart(raw []byte, hint int) int {
 func isSkippableElement(local, _ string) bool {
 	switch local {
 	case
-		"footnoteReference",  // <w:footnoteReference>
-		"footnoteRef",        // <w:footnoteRef>
-		"endnoteReference",   // <w:endnoteReference>
-		"endnoteRef",         // <w:endnoteRef>
-		"instrText",          // field instructions (HYPERLINK, INCLUDEPICTURE…)
-		"del",                // tracked deletions
-		"rPrChange",          // revision markup
-		"pPrChange",          // revision markup
-		"bookmarkStart",      // bookmarks (no text)
+		"footnoteReference", // <w:footnoteReference>
+		"footnoteRef",       // <w:footnoteRef>
+		"endnoteReference",  // <w:endnoteReference>
+		"endnoteRef",        // <w:endnoteRef>
+		"instrText",         // field instructions (HYPERLINK, INCLUDEPICTURE…)
+		"del",               // tracked deletions
+		"rPrChange",         // revision markup
+		"pPrChange",         // revision markup
+		"bookmarkStart",     // bookmarks (no text)
 		"bookmarkEnd",
-		"commentReference",   // comment anchors
-		"drawing",            // inline images — preserve in XML, skip text
-		"pict":               // VML images
+		"commentReference", // comment anchors
+		// NOTE: <w:drawing> and <w:pict> are intentionally NOT skipped — they may
+		// contain <w:txbxContent> (text boxes) with translatable text.
+		// Image-only drawings have no <w:t> children so no harm is done.
+		"Fallback": // <mc:Fallback> — skip VML duplicate of modern text boxes
 		return true
 	}
 	return false
