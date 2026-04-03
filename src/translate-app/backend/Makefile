@@ -1,4 +1,4 @@
-.PHONY: dev build build-macos build-windows fetch-pandoc fetch-pdftotext-macos fetch-pdftotext-windows fetch-pdftopng-macos fetch-pdftopng-windows fetch-tessdata sqlc migrate tidy seed-sample reset-data
+.PHONY: dev build build-macos build-windows fetch-pandoc fetch-pdftotext-macos fetch-pdftotext-windows fetch-pdftopng-macos fetch-pdftopng-windows fetch-tessdata bundle-tesseract-macos sqlc migrate tidy seed-sample reset-data
 
 PANDOC_VERSION  := 3.6.4
 PANDOC_ARCH     := $(shell uname -m)
@@ -77,9 +77,30 @@ fetch-tessdata:
 		-o bin/tessdata/eng.traineddata
 	@echo "tessdata ready at bin/tessdata/ (vie + eng)"
 
+# Copy Tesseract binary from Homebrew into bin/tesseract so it gets bundled in the .app.
+# Requires: brew install tesseract  (on the build machine)
+# After this, run: make build  — dylibbundler will fix up dylib paths automatically.
+# Requires dylibbundler: brew install dylibbundler
+bundle-tesseract-macos:
+	@if ! command -v dylibbundler >/dev/null 2>&1; then \
+		echo "ERROR: dylibbundler not found. Install with: brew install dylibbundler"; \
+		exit 1; \
+	fi
+	@TESS=$$(command -v tesseract 2>/dev/null || echo ""); \
+	if [ -z "$$TESS" ]; then \
+		echo "ERROR: tesseract not found in PATH. Install with: brew install tesseract"; \
+		exit 1; \
+	fi; \
+	mkdir -p bin; \
+	cp "$$TESS" bin/tesseract; \
+	chmod +x bin/tesseract; \
+	echo "tesseract copied from $$TESS to bin/tesseract"
+
 # Build macOS .app (auto-fetches binaries if missing).
-# Tesseract must be bundled manually — see README for instructions:
-#   brew install tesseract  (dev), or copy a static build to bin/tesseract + fetch-tessdata.
+# For a fully self-contained build with OCR (no dependencies on target machine):
+#   1. brew install dylibbundler tesseract
+#   2. make bundle-tesseract-macos fetch-tessdata
+#   3. make build
 build build-macos: bin/pandoc bin/pdftotext-mac bin/pdftopng-mac
 	$(WAILS) build
 	cp bin/pandoc "$(APP_BUNDLE)/pandoc"
@@ -92,8 +113,21 @@ build build-macos: bin/pandoc bin/pdftotext-mac bin/pdftopng-mac
 		cp bin/tesseract "$(APP_BUNDLE)/tesseract"; \
 		chmod +x "$(APP_BUNDLE)/tesseract"; \
 		echo "tesseract bundled"; \
+		if command -v dylibbundler >/dev/null 2>&1; then \
+			echo "fixing tesseract dylib paths..."; \
+			dylibbundler -od -b \
+				-x "$(APP_BUNDLE)/tesseract" \
+				-d "$(APP_BUNDLE)/../Frameworks/" \
+				-p "@executable_path/../Frameworks/" \
+				>/dev/null 2>&1; \
+			echo "tesseract dylibs bundled into Contents/Frameworks/"; \
+		else \
+			echo "WARN: dylibbundler not found — tesseract will only work on this machine"; \
+			echo "  Fix: brew install dylibbundler then rebuild"; \
+		fi; \
 	else \
 		echo "WARN: bin/tesseract not found — OCR relies on system Homebrew install"; \
+		echo "  For self-contained build: make bundle-tesseract-macos fetch-tessdata then rebuild"; \
 	fi
 	@if [ -d bin/tessdata ]; then \
 		cp -r bin/tessdata "$(APP_BUNDLE)/tessdata"; \
