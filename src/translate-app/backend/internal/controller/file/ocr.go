@@ -11,10 +11,74 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 )
 
 const sparsePageThreshold = 50 // chars per page below which OCR is attempted
+
+// isOCRGarbage returns true when OCR output looks like noise rather than real text.
+//
+// Faded or overexposed scans produce scattered punctuation and single characters
+// that Tesseract "reads" at very low accuracy. Two signals are combined:
+//
+//  1. Alpha ratio: letters+digits / all non-space chars.
+//     Real text ≥ 0.70; severely noisy pages can be < 0.45.
+//
+//  2. Average meaningful-token length: strip leading/trailing punctuation from
+//     each whitespace-split token, measure average rune length of what remains.
+//     Real words average ≥ 3 runes; garbage tokens ("ee", "i", "L", "F") average < 2.5.
+//
+// A page is garbage when its alpha ratio is below 0.45 OR when it is below 0.75
+// AND its average token length is below 2.5. This catches faded scans while
+// keeping tables (low alpha ratio but long cell values) and OCR with punctuation.
+func isOCRGarbage(text string) bool {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return true
+	}
+
+	// Alpha ratio.
+	var alpha, total int
+	for _, r := range text {
+		if unicode.IsSpace(r) {
+			continue
+		}
+		total++
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			alpha++
+		}
+	}
+	if total == 0 {
+		return true
+	}
+	alphaRatio := float64(alpha) / float64(total)
+	if alphaRatio < 0.45 {
+		return true
+	}
+	if alphaRatio >= 0.75 {
+		return false // clearly good text
+	}
+
+	// Borderline alpha ratio (0.45–0.75): also check average token length.
+	tokens := strings.Fields(text)
+	var tokenCount, tokenLenSum int
+	for _, tok := range tokens {
+		// Strip leading/trailing non-alphanumeric runes (punctuation, symbols).
+		clean := strings.TrimFunc(tok, func(r rune) bool {
+			return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+		})
+		if n := utf8.RuneCountInString(clean); n > 0 {
+			tokenCount++
+			tokenLenSum += n
+		}
+	}
+	if tokenCount == 0 {
+		return true
+	}
+	avgTokenLen := float64(tokenLenSum) / float64(tokenCount)
+	return avgTokenLen < 2.5
+}
 
 const ocrPageTimeout = 2 * time.Minute // per-page OCR timeout
 
@@ -221,14 +285,14 @@ func ocrPDFText(ctx context.Context, pdfPath string, onProgress func(done, total
 		pageCancel()
 
 		if ocrErr == nil {
-			if text := strings.TrimSpace(string(out)); text != "" {
+			if text := strings.TrimSpace(string(out)); !isOCRGarbage(text) {
 				if sb.Len() > 0 {
 					sb.WriteString("\n\n")
 				}
 				sb.WriteString(text)
 			}
 		}
-		// Page failure is non-fatal: skip and continue.
+		// Page failure or garbage result is non-fatal: skip and continue.
 
 		if onProgress != nil {
 			onProgress(i+1, total)
@@ -286,7 +350,11 @@ func ocrSinglePage(ctx context.Context, tesseractPath string, renderer pdfRender
 	if ocrErr != nil {
 		return "", ocrErr
 	}
-	return strings.TrimSpace(string(out)), nil
+	text := strings.TrimSpace(string(out))
+	if isOCRGarbage(text) {
+		return "", nil // caller treats empty string as "nothing usable on this page"
+	}
+	return text, nil
 }
 
 // extractPDFHybrid extracts text from a potentially mixed PDF (some pages digital,
