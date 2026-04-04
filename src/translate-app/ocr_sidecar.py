@@ -9,6 +9,9 @@ Prints a single JSON object to stdout:
 
 Exits with code 1 and writes {"error": "..."} to stderr on fatal error.
 Individual page/region failures are non-fatal — logged to stderr, processing continues.
+
+OCR engine: Tesseract (vie+eng) via pytesseract.
+Layout/table structure: rapid_layout + rapid_table.
 """
 
 import sys
@@ -22,6 +25,137 @@ import multiprocessing
 # Required for PyInstaller multiprocessing support on macOS/Windows.
 if __name__ == "__main__":
     multiprocessing.freeze_support()
+
+
+# ---------------------------------------------------------------------------
+# Tesseract discovery
+# ---------------------------------------------------------------------------
+
+def find_tesseract_cmd():
+    """
+    Locate the tesseract binary. Search order:
+      1. Same directory as this script/frozen executable  (production app bundle)
+      2. bin/ sibling of this script's parent dir         (dev: backend/bin/tesseract)
+      3. Common Homebrew paths                            (dev Mac)
+      4. System PATH
+    """
+    import shutil
+
+    if getattr(sys, 'frozen', False):
+        script_dir = os.path.dirname(sys.executable)
+    else:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+
+    candidates = [
+        os.path.join(script_dir, 'tesseract'),
+        os.path.normpath(os.path.join(script_dir, '..', 'bin', 'tesseract')),
+        os.path.join(script_dir, 'bin', 'tesseract'),
+        '/opt/homebrew/bin/tesseract',
+        '/usr/local/bin/tesseract',
+        '/usr/bin/tesseract',
+    ]
+    for c in candidates:
+        if os.path.isfile(c) and os.access(c, os.X_OK):
+            return c
+    return shutil.which('tesseract') or 'tesseract'
+
+
+def find_tessdata_dir():
+    """
+    Locate the tessdata directory containing vie.traineddata.
+    Returns the directory path, or None if not found (tesseract will use
+    its built-in TESSDATA_PREFIX env var or system default).
+    """
+    if getattr(sys, 'frozen', False):
+        script_dir = os.path.dirname(sys.executable)
+    else:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+
+    candidates = [
+        os.path.join(script_dir, 'tessdata'),
+        os.path.normpath(os.path.join(script_dir, '..', 'bin', 'tessdata')),
+        os.path.join(script_dir, 'bin', 'tessdata'),
+    ]
+    for c in candidates:
+        if os.path.isdir(c) and os.path.isfile(os.path.join(c, 'vie.traineddata')):
+            return c
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Tesseract OCR wrapper
+# ---------------------------------------------------------------------------
+
+def ocr_with_tesseract(img, tesseract_cmd, tessdata_dir, psm=3):
+    """
+    Run Tesseract OCR on a numpy BGR image.
+
+    Returns (results, elapse) where:
+      results = [(polygon, text, confidence), ...]
+      polygon  = [[x,y],[x,y],[x,y],[x,y]]  (top-left → clockwise)
+      text     = full text of the line
+      confidence = float 0–1
+
+    psm meanings (most useful):
+      3  = Fully automatic page segmentation  (full pages)
+      6  = Assume a single uniform block of text (cropped regions)
+      11 = Sparse text — find as much text as possible (figure crops)
+    """
+    import time
+    import pytesseract
+    from PIL import Image
+
+    pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
+
+    t0 = time.perf_counter()
+
+    # Convert numpy BGR → PIL RGB
+    import cv2
+    rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    pil_img = Image.fromarray(rgb)
+
+    config = f'--oem 1 --psm {psm} -l vie+eng'
+    if tessdata_dir:
+        config += f' --tessdata-dir "{tessdata_dir}"'
+
+    data = pytesseract.image_to_data(pil_img, config=config,
+                                     output_type=pytesseract.Output.DICT)
+
+    # Group words into lines: same (block_num, par_num, line_num) = same line.
+    lines = {}
+    for i in range(len(data['text'])):
+        conf = int(data['conf'][i])
+        if conf <= 0:
+            continue
+        text = data['text'][i].strip()
+        if not text:
+            continue
+        key = (data['block_num'][i], data['par_num'][i], data['line_num'][i])
+        lines.setdefault(key, []).append({
+            'text':  text,
+            'conf':  conf,
+            'left':  data['left'][i],
+            'top':   data['top'][i],
+            'w':     data['width'][i],
+            'h':     data['height'][i],
+        })
+
+    results = []
+    for key in sorted(lines.keys()):
+        words = lines[key]
+        left   = min(w['left']        for w in words)
+        top    = min(w['top']         for w in words)
+        right  = max(w['left']+w['w'] for w in words)
+        bottom = max(w['top']+w['h']  for w in words)
+        text   = ' '.join(w['text']   for w in words)
+        conf   = sum(w['conf']        for w in words) / len(words) / 100.0
+        poly   = [[left, top], [right, top], [right, bottom], [left, bottom]]
+        results.append((poly, text, conf))
+
+    # Sort top-to-bottom by the top-left y coordinate.
+    results.sort(key=lambda r: r[0][0][1])
+
+    return results, time.perf_counter() - t0
 
 
 # ---------------------------------------------------------------------------
@@ -96,7 +230,6 @@ def _is_seal_shape(img_bgr, bbox):
         if region is None or region.size == 0:
             return False
         rh, rw = region.shape[:2]
-        # Aspect ratio gate: width and height within 30% of each other
         if rw == 0 or rh == 0:
             return False
         if min(rw, rh) / max(rw, rh) < 0.70:
@@ -130,7 +263,7 @@ def _has_red_purple_dominant(img_bgr, bbox):
         hsv = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
         h_ch, s_ch, v_ch = hsv[:, :, 0], hsv[:, :, 1], hsv[:, :, 2]
         saturated = (s_ch > 80) & (v_ch > 60)
-        red_mask   = saturated & ((h_ch <= 10) | (h_ch >= 160))
+        red_mask    = saturated & ((h_ch <= 10) | (h_ch >= 160))
         purple_mask = saturated & (h_ch >= 130) & (h_ch <= 160)
         total = region.shape[0] * region.shape[1]
         if total == 0:
@@ -141,7 +274,7 @@ def _has_red_purple_dominant(img_bgr, bbox):
         return False
 
 
-def classify_figure(img_bgr, bbox, page_h, page_w, ocr_engine):
+def classify_figure(img_bgr, bbox, page_h, page_w, tesseract_cmd, tessdata_dir):
     """
     Classify a figure region as 'decorative' or 'informational'.
 
@@ -166,24 +299,22 @@ def classify_figure(img_bgr, bbox, page_h, page_w, ocr_engine):
         return "decorative", []
 
     # --- Whitelist check 2: Signature ---
-    # Typically in the bottom 35% of the page, horizontally wide
     if y1 > page_h * 0.65 and rh > 0 and (rw / rh) > 2.5:
         return "decorative", []
 
     # --- Whitelist check 3: Logo ---
-    # Top 22% of page, small area (< 8% of page)
     if y2 < page_h * 0.22 and region_area < page_area * 0.08:
         return "decorative", []
 
-    # --- Non-whitelist: check for text via OCR ---
+    # --- Non-whitelist: check for text via Tesseract (psm=11: sparse text) ---
     cropped = crop_region(img_bgr, bbox)
     if cropped is None or cropped.size == 0:
         return "decorative", []
 
     try:
-        results, _ = ocr_engine(cropped)
+        results, _ = ocr_with_tesseract(cropped, tesseract_cmd, tessdata_dir, psm=11)
         if results:
-            text_lines = [res[1].strip() for res in results if res[1].strip()]
+            text_lines = [r[1].strip() for r in results if r[1].strip()]
             if text_lines:
                 return "informational", text_lines
     except Exception:
@@ -229,24 +360,20 @@ def _classify_paragraph(text, page_w, x1, x2):
     words = s.split()
     word_count = len(words)
 
-    # Too long to be a heading
     if word_count > 30:
         return "text"
 
-    # Vietnamese legal section markers
     if _SECTION_RE.match(s):
         return "title"
 
-    # ALL-CAPS heuristic
     letters = [c for c in s if c.isalpha()]
     if len(letters) >= 4:
         upper_ratio = sum(1 for c in letters if c.isupper()) / len(letters)
         if upper_ratio >= 0.75 and word_count <= 20:
             return "title"
 
-    # Centred-text heuristic: both margins >15% of page width
     if page_w > 0 and word_count <= 15:
-        left_margin = x1 / page_w
+        left_margin  = x1 / page_w
         right_margin = (page_w - x2) / page_w
         if left_margin > 0.15 and right_margin > 0.15:
             return "title"
@@ -260,38 +387,34 @@ def _classify_paragraph(text, page_w, x1, x2):
 
 def _detect_table_regions(image_path, layout_engine):
     """
-    Run layout detection and return only confident TABLE bounding boxes.
-    Returns list of [x1, y1, x2, y2] for regions classified as 'table'.
-    Non-fatal: returns [] on any error.
+    Run layout detection and return confident TABLE bounding boxes.
+    Returns list of [x1, y1, x2, y2]. Non-fatal: returns [] on any error.
     """
     try:
         layout_out = layout_engine(image_path)
         if hasattr(layout_out, "boxes"):
-            boxes = layout_out.boxes or []
-            names = layout_out.class_names or []
+            boxes  = layout_out.boxes  or []
+            names  = layout_out.class_names or []
             scores = layout_out.scores or []
         elif isinstance(layout_out, (list, tuple)) and len(layout_out) == 2:
             raw = layout_out[0] or []
             boxes, names, scores = [], [], []
             for r in raw:
                 if isinstance(r, dict):
-                    bbox = normalize_bbox(r.get("bbox") or r.get("box"))
+                    bbox  = normalize_bbox(r.get("bbox") or r.get("box"))
                     label = str(r.get("label") or r.get("type") or "").lower()
                     if bbox and label == "table":
                         boxes.append(bbox)
                         names.append(label)
                         scores.append(1.0)
-            return boxes  # already filtered
+            return boxes
         else:
             return []
 
         table_bboxes = []
         for b, n, s in zip(boxes, names, scores):
-            # Threshold 0.50 (down from 0.70): the layout model was trained on
-            # Chinese academic papers (pp_layout_cdla) and has lower confidence
-            # on Vietnamese legal/business documents, so a strict threshold
-            # misses real tables. Worst case: non-table region → rapid_table
-            # returns no HTML → we fall back to plain OCR text.
+            # Threshold 0.50: pp_layout_cdla was trained on Chinese academic papers
+            # and scores lower on Vietnamese legal docs.
             if str(n).lower() == "table" and float(s) >= 0.50:
                 bbox = normalize_bbox(b)
                 if bbox:
@@ -308,16 +431,15 @@ def _point_in_bbox(y, x, bbox):
     return x1 <= x <= x2 and y1 <= y <= y2
 
 
-def _extract_table_html(img, bbox, table_engine, ocr_engine):
+def _extract_table_html(img, bbox, table_engine, tesseract_cmd, tessdata_dir):
     """
     Crop the table region and extract HTML via rapid_table.
 
-    We pre-run our rapidocr_onnxruntime engine on the cropped region and pass
-    the results to RapidTable via the `ocr_results` parameter. This avoids
-    the dependency on the separate `rapidocr` base package that rapid_table
-    tries to import internally (and which may not be installed).
+    We pre-run Tesseract (psm=6: uniform text block) on the cropped table region
+    and pass the results to RapidTable via the `ocr_results` parameter, bypassing
+    rapid_table's internal OCR engine dependency entirely.
 
-    Returns HTML string if successful and contains a <table> tag, else ''.
+    Returns HTML string containing a <table> element, else ''.
     """
     import numpy as np
 
@@ -325,24 +447,21 @@ def _extract_table_html(img, bbox, table_engine, ocr_engine):
     if cropped is None or cropped.size == 0:
         return ""
     try:
-        # Run OCR on the cropped table region with our onnxruntime engine.
-        raw_ocr, _ = ocr_engine(cropped)
+        # psm=6: treat the crop as a uniform block of text (better for table cells)
+        raw_lines, _ = ocr_with_tesseract(cropped, tesseract_cmd, tessdata_dir, psm=6)
 
-        # Convert rapidocr_onnxruntime output → rapid_table ocr_results format:
-        #   rapid_table expects a list[tuple(boxes_array, txts_tuple, scores_tuple)]
-        #   where boxes_array has shape [N, 4, 2] (polygon points per detection).
-        if raw_ocr:
-            boxes  = np.array([r[0] for r in raw_ocr], dtype=np.float32)  # [N, 4, 2]
-            txts   = tuple(r[1] for r in raw_ocr)
-            scores = tuple(float(r[2]) for r in raw_ocr)
+        # Convert to rapid_table ocr_results format:
+        #   list[tuple(boxes_array[N,4,2], txts_tuple, scores_tuple)]
+        if raw_lines:
+            boxes  = np.array([r[0] for r in raw_lines], dtype=np.float32)  # [N,4,2]
+            txts   = tuple(r[1] for r in raw_lines)
+            scores = tuple(float(r[2]) for r in raw_lines)
         else:
             boxes  = np.zeros((0, 4, 2), dtype=np.float32)
             txts   = ()
             scores = ()
 
-        # ocr_results is a list with one entry per image in the batch (batch=1 here).
         ocr_results = [[boxes, txts, scores]]
-
         result = table_engine(cropped, ocr_results=ocr_results)
 
         html = ""
@@ -360,23 +479,18 @@ def _extract_table_html(img, bbox, table_engine, ocr_engine):
     return ""
 
 
-def process_page(img, image_path, page_no, ocr_engine, layout_engine, table_engine):
+def process_page(img, image_path, page_no, tesseract_cmd, tessdata_dir,
+                 layout_engine, table_engine):
     """
-    Process one page using full-page OCR as primary content source.
+    Process one page image.
 
     Strategy:
-    1. Run RapidOCR on the full page image to get all text lines with bboxes.
-    2. Run layout detection to identify TABLE regions only (layout model is
-       unreliable for text/figure classification but reasonably accurate for tables).
-    3. For each TABLE region, try rapid_table to get structured HTML.
-       Fall back to OCR text if rapid_table fails or returns no valid HTML.
-    4. Cluster the remaining OCR lines (not inside table regions) into paragraphs
-       by vertical spacing.
-    5. Interleave text paragraphs and table HTML in top-to-bottom page order.
-
-    This approach handles diverse Vietnamese document types (legal contracts,
-    hospital procedures, tax forms, etc.) far better than layout-only detection
-    with the pp_layout_cdla model, which was designed for Chinese academic papers.
+    1. Full-page Tesseract OCR (vie+eng, psm=3) → text lines with bboxes.
+    2. rapid_layout → detect TABLE regions.
+    3. For each TABLE: rapid_table (with Tesseract OCR results) → HTML.
+       Fallback to plain OCR text if rapid_table fails.
+    4. Cluster non-table OCR lines into paragraphs by vertical spacing.
+    5. Interleave paragraphs + tables in top-to-bottom order.
     """
     page_h, page_w = img.shape[:2]
     page_out = {"page_no": page_no, "width": page_w, "height": page_h, "regions": []}
@@ -384,46 +498,39 @@ def process_page(img, image_path, page_no, ocr_engine, layout_engine, table_engi
     # ── 1. Full-page OCR ──────────────────────────────────────────────────────
     all_lines = []  # [(y_center, y1, y2, x1, x2, text)]
     try:
-        results, _ = ocr_engine(img)
-        if results:
-            for r in results:
-                bbox_poly = r[0]   # 4-corner polygon [[x,y], ...]
-                text = r[1].strip() if r[1] else ""
-                if not text:
-                    continue
-                ys = [p[1] for p in bbox_poly]
-                xs = [p[0] for p in bbox_poly]
-                y1, y2 = min(ys), max(ys)
-                x1, x2 = min(xs), max(xs)
-                all_lines.append(((y1 + y2) / 2, y1, y2, x1, x2, text))
+        results, _ = ocr_with_tesseract(img, tesseract_cmd, tessdata_dir, psm=3)
+        for poly, text, conf in results:
+            if not text.strip():
+                continue
+            ys = [p[1] for p in poly]
+            xs = [p[0] for p in poly]
+            y1, y2 = min(ys), max(ys)
+            x1, x2 = min(xs), max(xs)
+            all_lines.append(((y1 + y2) / 2, y1, y2, x1, x2, text))
     except Exception as e:
-        print(f"[WARN] page {page_no}: full-page OCR failed: {e}", file=sys.stderr)
+        print(f"[WARN] page {page_no}: OCR failed: {e}", file=sys.stderr)
 
-    # Sort all lines top-to-bottom
     all_lines.sort(key=lambda l: l[0])
 
     # ── 2. Detect table regions ───────────────────────────────────────────────
     table_bboxes = _detect_table_regions(image_path, layout_engine)
 
     # ── 3. Extract table HTML ─────────────────────────────────────────────────
-    # table_entries: [(y1_of_table, html_or_text, is_html)]
-    table_entries = []
+    table_entries = []  # [(y1, content, is_html)]
     for tb in table_bboxes:
         tx1, ty1, tx2, ty2 = tb
-        # Collect OCR lines inside this table bbox for fallback
         inner_lines = [l for l in all_lines if _point_in_bbox(l[0], (l[3]+l[4])/2, tb)]
         inner_lines.sort(key=lambda l: l[0])
 
-        html = _extract_table_html(img, tb, table_engine, ocr_engine)
+        html = _extract_table_html(img, tb, table_engine, tesseract_cmd, tessdata_dir)
         if html:
             table_entries.append((ty1, html, True))
         elif inner_lines:
-            # Fallback: use OCR text from table area as plain text
             fallback_text = " ".join(l[5] for l in inner_lines)
             if fallback_text.strip():
                 table_entries.append((ty1, fallback_text, False))
 
-    # ── 4. Cluster non-table OCR lines into paragraphs ───────────────────────
+    # ── 4. Cluster non-table lines into paragraphs ───────────────────────────
     text_lines = [l for l in all_lines
                   if not any(_point_in_bbox(l[0], (l[3]+l[4])/2, tb) for tb in table_bboxes)]
 
@@ -432,35 +539,32 @@ def process_page(img, image_path, page_no, ocr_engine, layout_engine, table_engi
         line_heights = [l[2] - l[1] for l in text_lines]
         avg_h = sum(line_heights) / len(line_heights) if line_heights else 20
 
-        # Adaptive gap threshold: use the 25th-percentile inter-line gap as the
-        # "normal" line spacing baseline, then require a gap 1.8× larger to
-        # split into a new paragraph.  This handles dense legal documents where
-        # paragraph breaks may only be ~15-20 px while avg char height is ~30 px
-        # (the old avg_h*0.8 threshold was too large and merged everything).
+        # Adaptive gap threshold: 25th-percentile inter-line gap × 1.8
+        # This splits paragraphs without being thrown off by dense legal text.
         raw_gaps = sorted(
-            max(0, text_lines[i][1] - text_lines[i - 1][2])
+            max(0, text_lines[i][1] - text_lines[i-1][2])
             for i in range(1, len(text_lines))
         )
         if len(raw_gaps) >= 4:
-            p25 = raw_gaps[len(raw_gaps) // 4]  # 25th-pctile = normal spacing
+            p25 = raw_gaps[len(raw_gaps) // 4]
             gap_threshold = max(p25 * 1.8, avg_h * 0.15, 2)
         else:
             gap_threshold = max(avg_h * 0.3, 3)
 
-        current = []
-        para_y1 = text_lines[0][1]
-        para_x1 = text_lines[0][3]
-        para_x2 = text_lines[0][4]
-        prev_y2 = text_lines[0][2]
+        current   = []
+        para_y1   = text_lines[0][1]
+        para_x1   = text_lines[0][3]
+        para_x2   = text_lines[0][4]
+        prev_y2   = text_lines[0][2]
 
         for y_ctr, y1, y2, x1, x2, text in text_lines:
             gap = y1 - prev_y2
             if current and gap > gap_threshold:
                 paragraphs.append((para_y1, para_x1, para_x2, " ".join(current)))
-                current = []
-                para_y1 = y1
-                para_x1 = x1
-                para_x2 = x2
+                current  = []
+                para_y1  = y1
+                para_x1  = x1
+                para_x2  = x2
             else:
                 para_x1 = min(para_x1, x1)
                 para_x2 = max(para_x2, x2)
@@ -470,15 +574,14 @@ def process_page(img, image_path, page_no, ocr_engine, layout_engine, table_engi
         if current:
             paragraphs.append((para_y1, para_x1, para_x2, " ".join(current)))
 
-    # ── 5. Merge text paragraphs + tables in page order ──────────────────────
+    # ── 5. Merge + sort by page order ────────────────────────────────────────
     merged = []
     for y1, px1, px2, text in paragraphs:
         if text.strip():
             rtype = _classify_paragraph(text, page_w, px1, px2)
             merged.append((y1, rtype, text))
     for y1, content, is_html in table_entries:
-        rtype = "table" if is_html else "text"
-        merged.append((y1, rtype, content))
+        merged.append((y1, "table" if is_html else "text", content))
 
     merged.sort(key=lambda r: r[0])
 
@@ -488,7 +591,6 @@ def process_page(img, image_path, page_no, ocr_engine, layout_engine, table_engi
                 "type": "table", "bbox": [0, int(y1), page_w, page_h], "html": content,
             })
         else:
-            # rtype is "title" or "text"
             page_out["regions"].append({
                 "type": rtype, "bbox": [0, int(y1), page_w, page_h], "content": content,
             })
@@ -496,15 +598,13 @@ def process_page(img, image_path, page_no, ocr_engine, layout_engine, table_engi
     return page_out
 
 
-def process_all_pages(image_paths, ocr_engine, layout_engine, table_engine):
+def process_all_pages(image_paths, tesseract_cmd, tessdata_dir, layout_engine, table_engine):
     """
-    Process all pages and return the full result dict.
-    Each page failure is non-fatal: appends an empty-regions page to output.
+    Process all pages. Each page failure is non-fatal.
     """
     import cv2
 
     pages = []
-
     for idx, image_path in enumerate(image_paths):
         page_no = idx + 1
         img = cv2.imread(image_path)
@@ -514,7 +614,9 @@ def process_all_pages(image_paths, ocr_engine, layout_engine, table_engine):
             continue
 
         try:
-            page_out = process_page(img, image_path, page_no, ocr_engine, layout_engine, table_engine)
+            page_out = process_page(img, image_path, page_no,
+                                    tesseract_cmd, tessdata_dir,
+                                    layout_engine, table_engine)
         except Exception as e:
             print(f"[WARN] page {page_no}: processing failed: {e}", file=sys.stderr)
             page_h, page_w = img.shape[:2]
@@ -541,22 +643,25 @@ if __name__ == "__main__":
         print(json.dumps({"error": f"Image files not found: {missing}"}), file=sys.stderr)
         sys.exit(1)
 
-    # Import heavy dependencies here so multiprocessing.freeze_support() runs first
-    from rapidocr_onnxruntime import RapidOCR
-    from rapid_layout import RapidLayout
-    from rapid_table import RapidTable
+    # Locate Tesseract before importing heavy deps
+    tesseract_cmd = find_tesseract_cmd()
+    tessdata_dir  = find_tessdata_dir()
+    print(f"[INFO] tesseract: {tesseract_cmd}", file=sys.stderr)
+    print(f"[INFO] tessdata:  {tessdata_dir}", file=sys.stderr)
 
-    ocr_engine    = RapidOCR()
+    # Import heavy dependencies here (after freeze_support)
+    import pytesseract as _pt
+    _pt.pytesseract.tesseract_cmd = tesseract_cmd
+
+    from rapid_layout import RapidLayout
+    from rapid_table  import RapidTable
+
     layout_engine = RapidLayout()
-    # Initialize RapidTable without arguments. We do NOT pass ocr_engine here
-    # because rapid_table internally imports the 'rapidocr' base package (not
-    # rapidocr_onnxruntime) for its OCR step; that package may not be installed.
-    # Instead, we pre-run our rapidocr_onnxruntime engine and pass the results
-    # via the `ocr_results` parameter in each _extract_table_html call.
-    table_engine = RapidTable()
+    table_engine  = RapidTable()
 
     try:
-        result = process_all_pages(args.images, ocr_engine, layout_engine, table_engine)
+        result = process_all_pages(args.images, tesseract_cmd, tessdata_dir,
+                                   layout_engine, table_engine)
         print(json.dumps(result, ensure_ascii=False))
     except Exception as e:
         print(json.dumps({"error": str(e)}), file=sys.stderr)

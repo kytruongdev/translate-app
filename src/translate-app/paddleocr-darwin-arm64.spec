@@ -3,9 +3,9 @@ from PyInstaller.utils.hooks import collect_all
 
 datas = []
 binaries = []
-hiddenimports = ['tqdm', '_md5', '_sha1', '_sha256', 'numpy']
+hiddenimports = ['tqdm', '_md5', '_sha1', '_sha256', 'numpy', 'pytesseract', 'PIL']
 
-for pkg in ('cv2', 'rapid_layout', 'rapid_table', 'rapidocr_onnxruntime'):
+for pkg in ('cv2', 'rapid_layout', 'rapid_table', 'pytesseract', 'PIL'):
     tmp = collect_all(pkg)
     datas    += tmp[0]
     binaries += tmp[1]
@@ -36,7 +36,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=True,
