@@ -1,4 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
+# Build on Windows AMD64 (or Windows ARM64 VM with AMD64 MSYS2):
+#   pyinstaller --clean paddleocr-windows-amd64.spec
 from PyInstaller.utils.hooks import collect_all
 
 datas = []
@@ -32,7 +34,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='paddleocr-darwin-arm64',
+    name='paddleocr-windows-amd64',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

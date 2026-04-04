@@ -1,4 +1,4 @@
-.PHONY: dev build build-macos build-windows fetch-pandoc fetch-pdftotext-macos fetch-pdftotext-windows fetch-pdftopng-macos fetch-pdftopng-windows fetch-tessdata bundle-tesseract-macos sqlc migrate tidy seed-sample reset-data
+.PHONY: dev build build-macos build-windows sidecar-mac sidecar-win fetch-pandoc fetch-pdftotext-macos fetch-pdftotext-windows fetch-pdftopng-macos fetch-pdftopng-windows fetch-tessdata bundle-tesseract-macos sqlc migrate tidy seed-sample reset-data
 
 PANDOC_VERSION  := 3.6.4
 PANDOC_ARCH     := $(shell uname -m)
@@ -97,9 +97,9 @@ bundle-tesseract-macos:
 	echo "tesseract copied from $$TESS to bin/tesseract"
 
 # Build macOS .app (auto-fetches binaries if missing).
-# For a fully self-contained build with OCR (no dependencies on target machine):
-#   1. brew install dylibbundler tesseract
-#   2. make bundle-tesseract-macos fetch-tessdata
+# For a fully self-contained build with PDF OCR:
+#   1. pip install -r ../requirements.txt pyinstaller
+#   2. make sidecar-mac
 #   3. make build
 build build-macos: bin/pandoc bin/pdftotext-mac bin/pdftopng-mac
 	$(WAILS) build
@@ -109,29 +109,13 @@ build build-macos: bin/pandoc bin/pdftotext-mac bin/pdftopng-mac
 	chmod +x "$(APP_BUNDLE)/pdftotext"
 	cp bin/pdftopng-mac "$(APP_BUNDLE)/pdftopng"
 	chmod +x "$(APP_BUNDLE)/pdftopng"
-	@if [ -f bin/tesseract ]; then \
-		cp bin/tesseract "$(APP_BUNDLE)/tesseract"; \
-		chmod +x "$(APP_BUNDLE)/tesseract"; \
-		echo "tesseract bundled"; \
-		if command -v dylibbundler >/dev/null 2>&1; then \
-			echo "fixing tesseract dylib paths..."; \
-			dylibbundler -od -b \
-				-x "$(APP_BUNDLE)/tesseract" \
-				-d "$(APP_BUNDLE)/../Frameworks/" \
-				-p "@executable_path/../Frameworks/" \
-				>/dev/null 2>&1; \
-			echo "tesseract dylibs bundled into Contents/Frameworks/"; \
-		else \
-			echo "WARN: dylibbundler not found — tesseract will only work on this machine"; \
-			echo "  Fix: brew install dylibbundler then rebuild"; \
-		fi; \
+	@if [ -f bin/paddleocr-darwin-arm64 ]; then \
+		cp bin/paddleocr-darwin-arm64 "$(APP_BUNDLE)/paddleocr-darwin-arm64"; \
+		chmod +x "$(APP_BUNDLE)/paddleocr-darwin-arm64"; \
+		echo "OCR sidecar (paddleocr-darwin-arm64) bundled"; \
 	else \
-		echo "WARN: bin/tesseract not found — OCR relies on system Homebrew install"; \
-		echo "  For self-contained build: make bundle-tesseract-macos fetch-tessdata then rebuild"; \
-	fi
-	@if [ -d bin/tessdata ]; then \
-		cp -r bin/tessdata "$(APP_BUNDLE)/tessdata"; \
-		echo "tessdata bundled"; \
+		echo "WARN: bin/paddleocr-darwin-arm64 not found — PDF OCR disabled"; \
+		echo "  Fix: make sidecar-mac then rebuild"; \
 	fi
 
 # Build Windows NSIS installer (cross-compile from Mac, requires mingw-w64).
@@ -159,6 +143,24 @@ bin/pandoc.exe:
 	@echo "  https://github.com/jgm/pandoc/releases/download/$(PANDOC_VERSION)/pandoc-$(PANDOC_VERSION)-windows-x86_64.zip"
 	@echo "  Extract pandoc.exe → bin/pandoc.exe"
 	@exit 1
+
+# Build OCR sidecar binary for macOS arm64.
+# Run from the backend/ directory. Requires: pip install -r ../requirements.txt pyinstaller
+sidecar-mac:
+	cd .. && pyinstaller --clean paddleocr-darwin-arm64.spec
+	mkdir -p bin
+	cp ../dist/paddleocr-darwin-arm64 bin/paddleocr-darwin-arm64
+	chmod +x bin/paddleocr-darwin-arm64
+	@echo "Sidecar ready at bin/paddleocr-darwin-arm64"
+
+# Build OCR sidecar binary for Windows AMD64.
+# Must be run on Windows (AMD64 native, or ARM64 VM with AMD64 MSYS2 toolchain).
+# Requires: pip install -r ..\requirements.txt pyinstaller
+sidecar-win:
+	cd .. && pyinstaller --clean paddleocr-windows-amd64.spec
+	mkdir -p bin
+	cp ../dist/paddleocr-windows-amd64.exe bin/paddleocr-windows-amd64.exe
+	@echo "Sidecar ready at bin/paddleocr-windows-amd64.exe"
 
 sqlc:
 	sqlc generate

@@ -578,7 +578,7 @@ func (c *controller) runXlsxTranslate(ctx context.Context, p fileTranslateParams
 		fail(err.Error())
 		return
 	}
-	if err := c.reg.File().UpdateTranslated(ctx, p.FileID, sourcePath, translatedPath, charCount, pageCount, p.ModelUsed); err != nil {
+	if err := c.reg.File().UpdateTranslated(ctx, p.FileID, sourcePath, translatedPath, charCount, pageCount, p.ModelUsed, "xlsx"); err != nil {
 		fail(err.Error())
 		return
 	}
@@ -596,10 +596,11 @@ func (c *controller) runXlsxTranslate(ctx context.Context, p fileTranslateParams
 
 	runtime.EventsEmit(ctx, "translation:done", *msg)
 	runtime.EventsEmit(ctx, "file:done", bridge.FileResult{
-		FileID:    p.FileID,
-		FileName:  filepath.Base(p.FilePath),
-		FileType:  "xlsx",
-		CharCount: charCount,
-		PageCount: pageCount,
+		FileID:       p.FileID,
+		FileName:     filepath.Base(p.FilePath),
+		FileType:     "xlsx",
+		OutputFormat: "xlsx",
+		CharCount:    charCount,
+		PageCount:    pageCount,
 	})
 }

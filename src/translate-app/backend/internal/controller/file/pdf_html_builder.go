@@ -29,12 +29,13 @@ const pdfHTMLTemplate = `<!DOCTYPE html>
             position: relative;
             min-height: 1100px;
         }
+        h2 { font-size: 1.2em; margin-bottom: 10px; }
         p {
             margin-bottom: 12px;
             text-align: justify;
         }
         table {
-            width: 100%;
+            width: 100%%;
             border-collapse: collapse;
             margin: 20px 0;
         }
@@ -45,21 +46,30 @@ const pdfHTMLTemplate = `<!DOCTYPE html>
             padding: 8px;
             vertical-align: top;
         }
-        .region-seal, .region-signature {
-            display: block;
+        figure {
             margin: 15px 0;
+            display: inline-block;
         }
-        .region-seal img, .region-signature img {
-            max-width: 200px;
+        figure img {
+            max-width: 100%%;
             height: auto;
             border: 1px solid #eee;
+            display: block;
+        }
+        figcaption {
+            font-size: 0.9em;
+            color: #555;
+            margin-top: 6px;
+            padding: 6px 8px;
+            background: #f9f9f9;
+            border-left: 3px solid #aaa;
         }
         .label-meta {
-            font-size: 0.8em;
-            color: #888;
+            font-size: 0.75em;
+            color: #aaa;
             font-style: italic;
-            margin-bottom: 4px;
             display: block;
+            margin-bottom: 4px;
         }
         @media print {
             body { background: white; margin: 0; padding: 0; }
@@ -72,50 +82,70 @@ const pdfHTMLTemplate = `<!DOCTYPE html>
 </body>
 </html>`
 
-// assembleStructuredHTML converts OCR results into a complete HTML string.
-// If images is not nil, it embeds seal/signature regions as base64 images.
-func assembleStructuredHTML(result *StructuredOCRResult, imagePaths []string) (string, error) {
+// assembleStructuredHTML builds the final translated HTML from the OCR result.
+//
+// translated maps regionKey(pageNo, regionIdx) → translated content:
+//   - text/title regions  → translated paragraph text
+//   - table regions       → translated table HTML (cells replaced)
+//   - informational figure → translated annotation text
+//
+// figureCrops maps regionKey(pageNo, regionIdx) → base64-encoded PNG for figure regions.
+func assembleStructuredHTML(result *StructuredOCRResult, translated map[string]string, figureCrops map[string]string) (string, error) {
 	var body strings.Builder
 
-	for i, page := range result.Pages {
+	for _, page := range result.Pages {
 		body.WriteString(fmt.Sprintf("<div class=\"page\" id=\"page-%d\">\n", page.PageNo))
-		
-		// Use corresponding image path for cropping seals/signatures
-		var pageImagePath string
-		if i < len(imagePaths) {
-			pageImagePath = imagePaths[i]
-		}
 
-		for _, region := range page.Regions {
+		for ri, region := range page.Regions {
+			key := regionKey(page.PageNo, ri)
+
 			switch region.Type {
 			case "text":
-				if strings.TrimSpace(region.Content) != "" {
-					body.WriteString(fmt.Sprintf("<p>%s</p>\n", escapeHTML(region.Content)))
+				content := translated[key]
+				if strings.TrimSpace(content) != "" {
+					body.WriteString(fmt.Sprintf("<p>%s</p>\n", escapeHTML(content)))
 				}
+
+			case "title":
+				content := translated[key]
+				if strings.TrimSpace(content) != "" {
+					body.WriteString(fmt.Sprintf("<h2>%s</h2>\n", escapeHTML(content)))
+				}
+
 			case "table":
-				// PaddleOCR already provides raw HTML for tables
-				body.WriteString(region.HTML)
-				body.WriteString("\n")
-			case "seal", "signature":
-				label := "Con dấu"
-				if region.Type == "signature" {
-					label = "Chữ ký"
+				html := translated[key]
+				if strings.TrimSpace(html) != "" {
+					body.WriteString(html)
+					body.WriteString("\n")
 				}
-				body.WriteString(fmt.Sprintf("<div class=\"region-%s\">\n", region.Type))
-				body.WriteString(fmt.Sprintf("<span class=\"label-meta\">[%s gốc]</span>\n", label))
-				
-				// Crop and embed image if available
-				if pageImagePath != "" && len(region.BBox) == 4 {
-					b64, err := cropImageToBase64(pageImagePath, region.BBox)
-					if err == nil {
-						body.WriteString(fmt.Sprintf("<img src=\"data:image/png;base64,%s\" alt=\"%s\">\n", b64, label))
-					} else {
-						body.WriteString(fmt.Sprintf("<div class=\"placeholder\">[%s hiện diện ở đây]</div>\n", label))
+
+			case "figure":
+				b64 := figureCrops[key]
+				if region.FigureType == "decorative" {
+					// Embed image as-is — no translation
+					if b64 != "" {
+						body.WriteString("<figure>\n")
+						body.WriteString(fmt.Sprintf("<img src=\"data:image/png;base64,%s\" alt=\"Hình ảnh\">\n", b64))
+						body.WriteString("</figure>\n")
 					}
+				} else {
+					// Informational: embed image + translated annotation below
+					annotation := translated[key]
+					body.WriteString("<figure>\n")
+					if b64 != "" {
+						body.WriteString(fmt.Sprintf("<img src=\"data:image/png;base64,%s\" alt=\"Hình ảnh có văn bản\">\n", b64))
+					}
+					if strings.TrimSpace(annotation) != "" {
+						body.WriteString("<figcaption>\n")
+						body.WriteString(fmt.Sprintf("<span class=\"label-meta\">[Nội dung hình ảnh - đã dịch]</span>\n"))
+						body.WriteString(escapeHTML(annotation))
+						body.WriteString("\n</figcaption>\n")
+					}
+					body.WriteString("</figure>\n")
 				}
-				body.WriteString("</div>\n")
 			}
 		}
+
 		body.WriteString("</div>\n")
 	}
 

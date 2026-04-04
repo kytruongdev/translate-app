@@ -37,7 +37,7 @@ func (q *Queries) GetCancelledFileIdsBySession(ctx context.Context, sessionID st
 }
 
 const getFileById = `-- name: GetFileById :one
-SELECT id, session_id, file_name, file_type, file_size, original_path, source_path, translated_path, char_count, page_count, style, model_used, status, error_msg, created_at, updated_at FROM files WHERE id = ? LIMIT 1
+SELECT id, session_id, file_name, file_type, file_size, original_path, source_path, translated_path, char_count, page_count, style, model_used, status, error_msg, output_format, created_at, updated_at FROM files WHERE id = ? LIMIT 1
 `
 
 func (q *Queries) GetFileById(ctx context.Context, id string) (File, error) {
@@ -58,6 +58,7 @@ func (q *Queries) GetFileById(ctx context.Context, id string) (File, error) {
 		&i.ModelUsed,
 		&i.Status,
 		&i.ErrorMsg,
+		&i.OutputFormat,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -67,8 +68,8 @@ func (q *Queries) GetFileById(ctx context.Context, id string) (File, error) {
 const insertFile = `-- name: InsertFile :exec
 INSERT INTO files (
   id, session_id, file_name, file_type, file_size, original_path, source_path, translated_path,
-  char_count, page_count, style, model_used, status, error_msg, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  char_count, page_count, style, model_used, status, error_msg, output_format, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertFileParams struct {
@@ -86,6 +87,7 @@ type InsertFileParams struct {
 	ModelUsed      sql.NullString `json:"model_used"`
 	Status         string         `json:"status"`
 	ErrorMsg       sql.NullString `json:"error_msg"`
+	OutputFormat   string         `json:"output_format"`
 	CreatedAt      string         `json:"created_at"`
 	UpdatedAt      string         `json:"updated_at"`
 }
@@ -106,6 +108,7 @@ func (q *Queries) InsertFile(ctx context.Context, arg InsertFileParams) error {
 		arg.ModelUsed,
 		arg.Status,
 		arg.ErrorMsg,
+		arg.OutputFormat,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -160,7 +163,7 @@ func (q *Queries) UpdateFileStatus(ctx context.Context, arg UpdateFileStatusPara
 
 const updateFileTranslated = `-- name: UpdateFileTranslated :exec
 UPDATE files
-SET source_path = ?, translated_path = ?, status = ?, char_count = ?, page_count = ?, model_used = ?, updated_at = ?
+SET source_path = ?, translated_path = ?, status = ?, char_count = ?, page_count = ?, model_used = ?, output_format = ?, updated_at = ?
 WHERE id = ?
 `
 
@@ -171,6 +174,7 @@ type UpdateFileTranslatedParams struct {
 	CharCount      sql.NullInt64  `json:"char_count"`
 	PageCount      sql.NullInt64  `json:"page_count"`
 	ModelUsed      sql.NullString `json:"model_used"`
+	OutputFormat   string         `json:"output_format"`
 	UpdatedAt      string         `json:"updated_at"`
 	ID             string         `json:"id"`
 }
@@ -183,6 +187,7 @@ func (q *Queries) UpdateFileTranslated(ctx context.Context, arg UpdateFileTransl
 		arg.CharCount,
 		arg.PageCount,
 		arg.ModelUsed,
+		arg.OutputFormat,
 		arg.UpdatedAt,
 		arg.ID,
 	)

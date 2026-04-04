@@ -1,8 +1,10 @@
 rapidocr_onnxruntime
+rapid_layout
 rapid_table
 tqdm
 onnxruntime
 opencv-python
+numpy
 PyYAML
 Pillow
 pyinstaller

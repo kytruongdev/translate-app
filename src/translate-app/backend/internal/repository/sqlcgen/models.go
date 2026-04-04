@@ -23,6 +23,7 @@ type File struct {
 	ModelUsed      sql.NullString `json:"model_used"`
 	Status         string         `json:"status"`
 	ErrorMsg       sql.NullString `json:"error_msg"`
+	OutputFormat   string         `json:"output_format"`
 	CreatedAt      string         `json:"created_at"`
 	UpdatedAt      string         `json:"updated_at"`
 }

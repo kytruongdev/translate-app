@@ -65,12 +65,13 @@ type FileContent struct {
 
 // FileResult — file:done event payload.
 type FileResult struct {
-	FileID     string `json:"fileId"`
-	FileName   string `json:"fileName"`
-	FileType   string `json:"fileType"`
-	CharCount  int    `json:"charCount"`
-	PageCount  int    `json:"pageCount"`
-	TokensUsed int    `json:"tokensUsed"`
+	FileID       string `json:"fileId"`
+	FileName     string `json:"fileName"`
+	FileType     string `json:"fileType"`
+	OutputFormat string `json:"outputFormat"` // "docx" | "html"
+	CharCount    int    `json:"charCount"`
+	PageCount    int    `json:"pageCount"`
+	TokensUsed   int    `json:"tokensUsed"`
 }
 
 // MessagesPage — paginated messages.

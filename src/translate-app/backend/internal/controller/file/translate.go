@@ -61,6 +61,10 @@ func (c *controller) TranslateFile(ctx context.Context, req bridge.FileRequest) 
 	assistantID := uuid.New().String()
 
 	clean := filepath.Clean(path)
+	outputFormat := info.Type // "docx" | "xlsx" | "pdf"→"html"
+	if info.Type == "pdf" {
+		outputFormat = "html"
+	}
 	fileRow := &model.File{
 		ID:           fileID,
 		SessionID:    req.SessionID,
@@ -73,6 +77,7 @@ func (c *controller) TranslateFile(ctx context.Context, req bridge.FileRequest) 
 		Style:        style,
 		ModelUsed:    modelUsed,
 		Status:       "processing",
+		OutputFormat: outputFormat,
 	}
 
 	fid := fileID

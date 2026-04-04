@@ -205,7 +205,7 @@ func (c *controller) runPDFTranslate(ctx context.Context, p fileTranslateParams,
 		fail(err.Error())
 		return
 	}
-	if err := c.reg.File().UpdateTranslated(ctx, p.FileID, sourcePath, translatedPath, charCount, pageCount, p.ModelUsed); err != nil {
+	if err := c.reg.File().UpdateTranslated(ctx, p.FileID, sourcePath, translatedPath, charCount, pageCount, p.ModelUsed, "docx"); err != nil {
 		fail(err.Error())
 		return
 	}
@@ -223,11 +223,12 @@ func (c *controller) runPDFTranslate(ctx context.Context, p fileTranslateParams,
 
 	runtime.EventsEmit(ctx, "translation:done", *msg)
 	runtime.EventsEmit(ctx, "file:done", bridge.FileResult{
-		FileID:    p.FileID,
-		FileName:  filepath.Base(p.FilePath),
-		FileType:  "pdf",
-		CharCount: charCount,
-		PageCount: pageCount,
+		FileID:       p.FileID,
+		FileName:     filepath.Base(p.FilePath),
+		FileType:     "pdf",
+		OutputFormat: "docx",
+		CharCount:    charCount,
+		PageCount:    pageCount,
 	})
 }
 

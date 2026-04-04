@@ -81,7 +81,7 @@ func (c *controller) runFileTranslate(ctx context.Context, p fileTranslateParams
 	case ".docx":
 		c.runDocxTranslate(ctx, p, fail)
 	case ".pdf":
-		c.runPDFTranslate(ctx, p, fail)
+		c.runStructuredPDFTranslate(ctx, p, fail)
 	case ".xlsx":
 		c.runXlsxTranslate(ctx, p, fail)
 	default:
@@ -212,7 +212,7 @@ func (c *controller) runDocxTranslate(ctx context.Context, p fileTranslateParams
 		return
 	}
 
-	if err := c.reg.File().UpdateTranslated(ctx, p.FileID, sourcePath, translatedPath, charCount, pageCount, p.ModelUsed); err != nil {
+	if err := c.reg.File().UpdateTranslated(ctx, p.FileID, sourcePath, translatedPath, charCount, pageCount, p.ModelUsed, "docx"); err != nil {
 		fail(err.Error())
 		return
 	}
@@ -231,11 +231,12 @@ func (c *controller) runDocxTranslate(ctx context.Context, p fileTranslateParams
 	runtime.EventsEmit(ctx, "translation:done", *msg)
 
 	runtime.EventsEmit(ctx, "file:done", bridge.FileResult{
-		FileID:    p.FileID,
-		FileName:  filepath.Base(p.FilePath),
-		FileType:  "docx",
-		CharCount: charCount,
-		PageCount: pageCount,
+		FileID:       p.FileID,
+		FileName:     filepath.Base(p.FilePath),
+		FileType:     "docx",
+		OutputFormat: "docx",
+		CharCount:    charCount,
+		PageCount:    pageCount,
 	})
 }
 
@@ -354,7 +355,7 @@ func (c *controller) runPlainTranslate(ctx context.Context, p fileTranslateParam
 		return
 	}
 
-	if err := c.reg.File().UpdateTranslated(ctx, p.FileID, sourcePath, translatedPath, charCount, pageCount, p.ModelUsed); err != nil {
+	if err := c.reg.File().UpdateTranslated(ctx, p.FileID, sourcePath, translatedPath, charCount, pageCount, p.ModelUsed, "docx"); err != nil {
 		fail(err.Error())
 		return
 	}
@@ -377,12 +378,13 @@ func (c *controller) runPlainTranslate(ctx context.Context, p fileTranslateParam
 		"model", p.ModelUsed, "style", p.Style)
 
 	runtime.EventsEmit(ctx, "file:done", bridge.FileResult{
-		FileID:     p.FileID,
-		FileName:   filepath.Base(p.FilePath),
-		FileType:   strings.TrimPrefix(ext, "."),
-		CharCount:  charCount,
-		PageCount:  pageCount,
-		TokensUsed: finalTokens,
+		FileID:       p.FileID,
+		FileName:     filepath.Base(p.FilePath),
+		FileType:     strings.TrimPrefix(ext, "."),
+		OutputFormat: "docx",
+		CharCount:    charCount,
+		PageCount:    pageCount,
+		TokensUsed:   finalTokens,
 	})
 }
 

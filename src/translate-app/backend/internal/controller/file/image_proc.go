@@ -10,6 +10,38 @@ import (
 	"os"
 )
 
+// extractFigureCrops iterates over all figure regions in result and crops each one
+// from the corresponding page PNG image.
+//
+// Returns a map keyed by regionKey(pageNo, regionIdx) → base64 PNG.
+// Individual crop failures are silently skipped (the figure will be absent in the HTML).
+// After all crops are extracted the caller should delete the image temp directory.
+func extractFigureCrops(result *StructuredOCRResult, imagePaths []string) map[string]string {
+	crops := make(map[string]string)
+	for _, page := range result.Pages {
+		pageIdx := page.PageNo - 1
+		if pageIdx < 0 || pageIdx >= len(imagePaths) {
+			continue
+		}
+		imgPath := imagePaths[pageIdx]
+		for ri, region := range page.Regions {
+			if region.Type != "figure" {
+				continue
+			}
+			if len(region.BBox) < 4 {
+				continue
+			}
+			b64, err := cropImageToBase64(imgPath, region.BBox)
+			if err != nil {
+				continue
+			}
+			crops[regionKey(page.PageNo, ri)] = b64
+		}
+	}
+	return crops
+}
+
+
 // cropImageToBase64 reads an image from path, crops it to the given bounding box [x1, y1, x2, y2],
 // and returns the cropped area as a base64 encoded PNG string.
 func cropImageToBase64(imagePath string, bbox []int) (string, error) {

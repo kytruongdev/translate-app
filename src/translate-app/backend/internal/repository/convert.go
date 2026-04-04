@@ -123,6 +123,7 @@ func fileFromRow(r sqlcgen.File) (model.File, error) {
 		ModelUsed:      nullStr(r.ModelUsed),
 		Status:         r.Status,
 		ErrorMsg:       nullStr(r.ErrorMsg),
+		OutputFormat:   r.OutputFormat,
 		CreatedAt:      r.CreatedAt,
 		UpdatedAt:      r.UpdatedAt,
 	}, nil
