@@ -15,6 +15,7 @@ import sys
 import json
 import os
 import math
+import re
 import argparse
 import multiprocessing
 
@@ -192,8 +193,308 @@ def classify_figure(img_bgr, bbox, page_h, page_w, ocr_engine):
 
 
 # ---------------------------------------------------------------------------
+# Paragraph type classifier (title vs text)
+# ---------------------------------------------------------------------------
+
+# Vietnamese legal/document section markers that indicate headings.
+_SECTION_RE = re.compile(
+    r'^(?:'
+    r'CHƯƠNG\s+\S+'           # CHƯƠNG I, CHƯƠNG 1
+    r'|Chương\s+\S+'
+    r'|PHẦN\s+\S+'
+    r'|Phần\s+\S+'
+    r'|MỤC\s+\S+'
+    r'|Mục\s+\S+'
+    r'|ĐIỀU\s+\d+'
+    r'|Điều\s+\d+'
+    r'|[IVX]+\.\s'            # Roman numeral: "I. ", "II. "
+    r')',
+    re.UNICODE,
+)
+
+
+def _classify_paragraph(text, page_w, x1, x2):
+    """
+    Return 'title' or 'text' for a paragraph, using content and position heuristics.
+
+    Title signals (Vietnamese documents):
+      1. Matches Vietnamese/legal section patterns (Điều, Chương, etc.)
+      2. High uppercase ratio (≥75%) with ≤20 words  →  ALL-CAPS heading
+      3. Visually centred: both left+right margins >15% of page width, ≤15 words
+    """
+    s = text.strip()
+    if not s:
+        return "text"
+
+    words = s.split()
+    word_count = len(words)
+
+    # Too long to be a heading
+    if word_count > 30:
+        return "text"
+
+    # Vietnamese legal section markers
+    if _SECTION_RE.match(s):
+        return "title"
+
+    # ALL-CAPS heuristic
+    letters = [c for c in s if c.isalpha()]
+    if len(letters) >= 4:
+        upper_ratio = sum(1 for c in letters if c.isupper()) / len(letters)
+        if upper_ratio >= 0.75 and word_count <= 20:
+            return "title"
+
+    # Centred-text heuristic: both margins >15% of page width
+    if page_w > 0 and word_count <= 15:
+        left_margin = x1 / page_w
+        right_margin = (page_w - x2) / page_w
+        if left_margin > 0.15 and right_margin > 0.15:
+            return "title"
+
+    return "text"
+
+
+# ---------------------------------------------------------------------------
 # Per-page processing
 # ---------------------------------------------------------------------------
+
+def _detect_table_regions(image_path, layout_engine):
+    """
+    Run layout detection and return only confident TABLE bounding boxes.
+    Returns list of [x1, y1, x2, y2] for regions classified as 'table'.
+    Non-fatal: returns [] on any error.
+    """
+    try:
+        layout_out = layout_engine(image_path)
+        if hasattr(layout_out, "boxes"):
+            boxes = layout_out.boxes or []
+            names = layout_out.class_names or []
+            scores = layout_out.scores or []
+        elif isinstance(layout_out, (list, tuple)) and len(layout_out) == 2:
+            raw = layout_out[0] or []
+            boxes, names, scores = [], [], []
+            for r in raw:
+                if isinstance(r, dict):
+                    bbox = normalize_bbox(r.get("bbox") or r.get("box"))
+                    label = str(r.get("label") or r.get("type") or "").lower()
+                    if bbox and label == "table":
+                        boxes.append(bbox)
+                        names.append(label)
+                        scores.append(1.0)
+            return boxes  # already filtered
+        else:
+            return []
+
+        table_bboxes = []
+        for b, n, s in zip(boxes, names, scores):
+            # Threshold 0.50 (down from 0.70): the layout model was trained on
+            # Chinese academic papers (pp_layout_cdla) and has lower confidence
+            # on Vietnamese legal/business documents, so a strict threshold
+            # misses real tables. Worst case: non-table region → rapid_table
+            # returns no HTML → we fall back to plain OCR text.
+            if str(n).lower() == "table" and float(s) >= 0.50:
+                bbox = normalize_bbox(b)
+                if bbox:
+                    table_bboxes.append(bbox)
+        return table_bboxes
+    except Exception as e:
+        print(f"[WARN] layout table detection failed: {e}", file=sys.stderr)
+        return []
+
+
+def _point_in_bbox(y, x, bbox):
+    """Return True if (y, x) center point is inside bbox [x1, y1, x2, y2]."""
+    x1, y1, x2, y2 = bbox
+    return x1 <= x <= x2 and y1 <= y <= y2
+
+
+def _extract_table_html(img, bbox, table_engine, ocr_engine):
+    """
+    Crop the table region and extract HTML via rapid_table.
+
+    We pre-run our rapidocr_onnxruntime engine on the cropped region and pass
+    the results to RapidTable via the `ocr_results` parameter. This avoids
+    the dependency on the separate `rapidocr` base package that rapid_table
+    tries to import internally (and which may not be installed).
+
+    Returns HTML string if successful and contains a <table> tag, else ''.
+    """
+    import numpy as np
+
+    cropped = crop_region(img, bbox)
+    if cropped is None or cropped.size == 0:
+        return ""
+    try:
+        # Run OCR on the cropped table region with our onnxruntime engine.
+        raw_ocr, _ = ocr_engine(cropped)
+
+        # Convert rapidocr_onnxruntime output → rapid_table ocr_results format:
+        #   rapid_table expects a list[tuple(boxes_array, txts_tuple, scores_tuple)]
+        #   where boxes_array has shape [N, 4, 2] (polygon points per detection).
+        if raw_ocr:
+            boxes  = np.array([r[0] for r in raw_ocr], dtype=np.float32)  # [N, 4, 2]
+            txts   = tuple(r[1] for r in raw_ocr)
+            scores = tuple(float(r[2]) for r in raw_ocr)
+        else:
+            boxes  = np.zeros((0, 4, 2), dtype=np.float32)
+            txts   = ()
+            scores = ()
+
+        # ocr_results is a list with one entry per image in the batch (batch=1 here).
+        ocr_results = [[boxes, txts, scores]]
+
+        result = table_engine(cropped, ocr_results=ocr_results)
+
+        html = ""
+        if hasattr(result, "pred_htmls") and result.pred_htmls:
+            html = result.pred_htmls[0] or ""
+        elif isinstance(result, (list, tuple)):
+            html = str(result[0]) if result else ""
+        elif isinstance(result, str):
+            html = result
+
+        if "<table" in html.lower():
+            return html
+    except Exception as e:
+        print(f"[WARN] table extraction failed: {e}", file=sys.stderr)
+    return ""
+
+
+def process_page(img, image_path, page_no, ocr_engine, layout_engine, table_engine):
+    """
+    Process one page using full-page OCR as primary content source.
+
+    Strategy:
+    1. Run RapidOCR on the full page image to get all text lines with bboxes.
+    2. Run layout detection to identify TABLE regions only (layout model is
+       unreliable for text/figure classification but reasonably accurate for tables).
+    3. For each TABLE region, try rapid_table to get structured HTML.
+       Fall back to OCR text if rapid_table fails or returns no valid HTML.
+    4. Cluster the remaining OCR lines (not inside table regions) into paragraphs
+       by vertical spacing.
+    5. Interleave text paragraphs and table HTML in top-to-bottom page order.
+
+    This approach handles diverse Vietnamese document types (legal contracts,
+    hospital procedures, tax forms, etc.) far better than layout-only detection
+    with the pp_layout_cdla model, which was designed for Chinese academic papers.
+    """
+    page_h, page_w = img.shape[:2]
+    page_out = {"page_no": page_no, "width": page_w, "height": page_h, "regions": []}
+
+    # ── 1. Full-page OCR ──────────────────────────────────────────────────────
+    all_lines = []  # [(y_center, y1, y2, x1, x2, text)]
+    try:
+        results, _ = ocr_engine(img)
+        if results:
+            for r in results:
+                bbox_poly = r[0]   # 4-corner polygon [[x,y], ...]
+                text = r[1].strip() if r[1] else ""
+                if not text:
+                    continue
+                ys = [p[1] for p in bbox_poly]
+                xs = [p[0] for p in bbox_poly]
+                y1, y2 = min(ys), max(ys)
+                x1, x2 = min(xs), max(xs)
+                all_lines.append(((y1 + y2) / 2, y1, y2, x1, x2, text))
+    except Exception as e:
+        print(f"[WARN] page {page_no}: full-page OCR failed: {e}", file=sys.stderr)
+
+    # Sort all lines top-to-bottom
+    all_lines.sort(key=lambda l: l[0])
+
+    # ── 2. Detect table regions ───────────────────────────────────────────────
+    table_bboxes = _detect_table_regions(image_path, layout_engine)
+
+    # ── 3. Extract table HTML ─────────────────────────────────────────────────
+    # table_entries: [(y1_of_table, html_or_text, is_html)]
+    table_entries = []
+    for tb in table_bboxes:
+        tx1, ty1, tx2, ty2 = tb
+        # Collect OCR lines inside this table bbox for fallback
+        inner_lines = [l for l in all_lines if _point_in_bbox(l[0], (l[3]+l[4])/2, tb)]
+        inner_lines.sort(key=lambda l: l[0])
+
+        html = _extract_table_html(img, tb, table_engine, ocr_engine)
+        if html:
+            table_entries.append((ty1, html, True))
+        elif inner_lines:
+            # Fallback: use OCR text from table area as plain text
+            fallback_text = " ".join(l[5] for l in inner_lines)
+            if fallback_text.strip():
+                table_entries.append((ty1, fallback_text, False))
+
+    # ── 4. Cluster non-table OCR lines into paragraphs ───────────────────────
+    text_lines = [l for l in all_lines
+                  if not any(_point_in_bbox(l[0], (l[3]+l[4])/2, tb) for tb in table_bboxes)]
+
+    paragraphs = []  # [(y1, x1, x2, text)]
+    if text_lines:
+        line_heights = [l[2] - l[1] for l in text_lines]
+        avg_h = sum(line_heights) / len(line_heights) if line_heights else 20
+
+        # Adaptive gap threshold: use the 25th-percentile inter-line gap as the
+        # "normal" line spacing baseline, then require a gap 1.8× larger to
+        # split into a new paragraph.  This handles dense legal documents where
+        # paragraph breaks may only be ~15-20 px while avg char height is ~30 px
+        # (the old avg_h*0.8 threshold was too large and merged everything).
+        raw_gaps = sorted(
+            max(0, text_lines[i][1] - text_lines[i - 1][2])
+            for i in range(1, len(text_lines))
+        )
+        if len(raw_gaps) >= 4:
+            p25 = raw_gaps[len(raw_gaps) // 4]  # 25th-pctile = normal spacing
+            gap_threshold = max(p25 * 1.8, avg_h * 0.15, 2)
+        else:
+            gap_threshold = max(avg_h * 0.3, 3)
+
+        current = []
+        para_y1 = text_lines[0][1]
+        para_x1 = text_lines[0][3]
+        para_x2 = text_lines[0][4]
+        prev_y2 = text_lines[0][2]
+
+        for y_ctr, y1, y2, x1, x2, text in text_lines:
+            gap = y1 - prev_y2
+            if current and gap > gap_threshold:
+                paragraphs.append((para_y1, para_x1, para_x2, " ".join(current)))
+                current = []
+                para_y1 = y1
+                para_x1 = x1
+                para_x2 = x2
+            else:
+                para_x1 = min(para_x1, x1)
+                para_x2 = max(para_x2, x2)
+            current.append(text)
+            prev_y2 = y2
+
+        if current:
+            paragraphs.append((para_y1, para_x1, para_x2, " ".join(current)))
+
+    # ── 5. Merge text paragraphs + tables in page order ──────────────────────
+    merged = []
+    for y1, px1, px2, text in paragraphs:
+        if text.strip():
+            rtype = _classify_paragraph(text, page_w, px1, px2)
+            merged.append((y1, rtype, text))
+    for y1, content, is_html in table_entries:
+        rtype = "table" if is_html else "text"
+        merged.append((y1, rtype, content))
+
+    merged.sort(key=lambda r: r[0])
+
+    for y1, rtype, content in merged:
+        if rtype == "table":
+            page_out["regions"].append({
+                "type": "table", "bbox": [0, int(y1), page_w, page_h], "html": content,
+            })
+        else:
+            # rtype is "title" or "text"
+            page_out["regions"].append({
+                "type": rtype, "bbox": [0, int(y1), page_w, page_h], "content": content,
+            })
+
+    return page_out
+
 
 def process_all_pages(image_paths, ocr_engine, layout_engine, table_engine):
     """
@@ -212,101 +513,16 @@ def process_all_pages(image_paths, ocr_engine, layout_engine, table_engine):
             pages.append({"page_no": page_no, "width": 0, "height": 0, "regions": []})
             continue
 
-        page_h, page_w = img.shape[:2]
-        page_out = {"page_no": page_no, "width": page_w, "height": page_h, "regions": []}
-
         try:
-            layout_res, _ = layout_engine(image_path)
+            page_out = process_page(img, image_path, page_no, ocr_engine, layout_engine, table_engine)
         except Exception as e:
-            print(f"[WARN] page {page_no}: layout detection failed: {e}", file=sys.stderr)
-            pages.append(page_out)
-            continue
-
-        if not layout_res:
-            pages.append(page_out)
-            continue
-
-        for region in layout_res:
-            try:
-                _process_region(region, img, page_h, page_w, page_out, ocr_engine, table_engine)
-            except Exception as e:
-                print(f"[WARN] page {page_no}: region processing failed: {e}", file=sys.stderr)
-                continue
+            print(f"[WARN] page {page_no}: processing failed: {e}", file=sys.stderr)
+            page_h, page_w = img.shape[:2]
+            page_out = {"page_no": page_no, "width": page_w, "height": page_h, "regions": []}
 
         pages.append(page_out)
 
     return {"pages": pages}
-
-
-def _process_region(region, img, page_h, page_w, page_out, ocr_engine, table_engine):
-    """Process one layout region and append to page_out["regions"] if valid."""
-    # Parse bbox and label from various rapid_layout output formats
-    if isinstance(region, dict):
-        raw_bbox = region.get("bbox") or region.get("box")
-        label = str(region.get("label") or region.get("type") or "text").lower()
-    elif isinstance(region, (list, tuple)) and len(region) >= 2:
-        raw_bbox = region[0]
-        label = str(region[1]).lower() if not isinstance(region[1], (list, tuple)) else "text"
-    else:
-        return
-
-    bbox = normalize_bbox(raw_bbox)
-    if bbox is None:
-        return
-
-    x1, y1, x2, y2 = bbox
-
-    if label in ("text", "title"):
-        cropped = crop_region(img, bbox)
-        content = ""
-        if cropped is not None and cropped.size > 0:
-            try:
-                results, _ = ocr_engine(cropped)
-                if results:
-                    content = " ".join(r[1].strip() for r in results if r[1].strip())
-            except Exception:
-                pass
-        if content:
-            page_out["regions"].append({"type": label, "bbox": bbox, "content": content})
-
-    elif label == "table":
-        cropped = crop_region(img, bbox)
-        html = ""
-        if cropped is not None and cropped.size > 0:
-            try:
-                table_result = table_engine(cropped)
-                # rapid_table may return (html, cell_bboxes, elapse) or just html
-                if isinstance(table_result, (list, tuple)):
-                    html = str(table_result[0]) if table_result else ""
-                elif isinstance(table_result, str):
-                    html = table_result
-            except Exception:
-                pass
-        if html:
-            page_out["regions"].append({"type": "table", "bbox": bbox, "html": html})
-
-    elif label == "figure":
-        fig_type, text_lines = classify_figure(img, bbox, page_h, page_w, ocr_engine)
-        entry = {"type": "figure", "figure_type": fig_type, "bbox": bbox}
-        if fig_type == "informational" and text_lines:
-            entry["text_lines"] = text_lines
-        page_out["regions"].append(entry)
-
-    elif label == "figure_caption":
-        # Treat caption as a translatable text region
-        cropped = crop_region(img, bbox)
-        content = ""
-        if cropped is not None and cropped.size > 0:
-            try:
-                results, _ = ocr_engine(cropped)
-                if results:
-                    content = " ".join(r[1].strip() for r in results if r[1].strip())
-            except Exception:
-                pass
-        if content:
-            page_out["regions"].append({"type": "text", "bbox": bbox, "content": content})
-
-    # header, footer, reference, equation — skip for now (not relevant to target documents)
 
 
 # ---------------------------------------------------------------------------
@@ -332,7 +548,12 @@ if __name__ == "__main__":
 
     ocr_engine    = RapidOCR()
     layout_engine = RapidLayout()
-    table_engine  = RapidTable()
+    # Initialize RapidTable without arguments. We do NOT pass ocr_engine here
+    # because rapid_table internally imports the 'rapidocr' base package (not
+    # rapidocr_onnxruntime) for its OCR step; that package may not be installed.
+    # Instead, we pre-run our rapidocr_onnxruntime engine and pass the results
+    # via the `ocr_results` parameter in each _extract_table_html call.
+    table_engine = RapidTable()
 
     try:
         result = process_all_pages(args.images, ocr_engine, layout_engine, table_engine)
