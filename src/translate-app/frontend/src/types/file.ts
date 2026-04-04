@@ -24,6 +24,7 @@ export interface FileResult {
   fileId: string
   fileName: string
   fileType: 'pdf' | 'docx' | 'xlsx'
+  outputFormat?: 'docx' | 'html' | 'xlsx'
   charCount: number
   pageCount: number
   tokensUsed: number
