@@ -349,7 +349,9 @@ def _classify_paragraph(text, page_w, x1, x2):
         return "text"
     # Contact-info / form-field lines are always body text, never section headers.
     if s.startswith(('Điện thoại', 'Điện thoai', 'Email ', 'Lưu:', 'Luu:', 'Họ và tên',
-                     'Số thuế', 'Thông báo l', 'Nơi nhận', 'Noi nhận')) or '@' in s:
+                     'Số thuế', 'Thông báo l', 'Nơi nhận', 'Noi nhận',
+                     'Các bộ phận', 'Phần dành cho', 'Cô', 'Công chức',
+                     'Tên người nộp', 'Mã số thuế')) or '@' in s:
         return "text"
     # Numbered list items (1. / 3) / 4.2.5.) are always body text.
     # Multi-level numbering (3.1, 4.2.5) positionally resembles a centered title
@@ -369,7 +371,10 @@ def _classify_paragraph(text, page_w, x1, x2):
         upper_ratio = sum(1 for c in letters if c.isupper()) / len(letters)
         if upper_ratio >= 0.75 and word_count <= 20:
             return "title"
-    if page_w > 0 and word_count <= 15:
+    # Positional check: narrow + centered → likely a heading.
+    # Limit to ≤ 8 words to avoid false positives on form labels and
+    # signature-area items that are physically indented but are body text.
+    if page_w > 0 and word_count <= 8:
         if x1 / page_w > 0.15 and (page_w - x2) / page_w > 0.15:
             return "title"
     return "text"
@@ -416,12 +421,15 @@ def _extract_table_html(img, bbox, table_engine, reader):
 
     Returns the HTML string on success, '' otherwise.
 
-    Validation: a real data table must have at least MIN_TABLE_CELLS <td> elements.
-    Regions with fewer cells are likely form sections or bordered text blocks
-    that rapid_layout mistook for tables — we reject those so the full-page OCR
-    text regions can cover that area instead.
+    Validation:
+      1. A real table must have ≥ MIN_TABLE_CELLS <td> elements.
+      2. A real table must have ≥ MIN_MULTICOL_RATIO rows with 2+ non-empty cells.
+         Tables that fail this are form sections / bordered text blocks that
+         rapid_layout mistook for tables — reject them so full-page OCR covers
+         the area instead.
     """
     MIN_TABLE_CELLS = 8
+    MIN_MULTICOL_RATIO = 0.25  # at least 25 % of rows must have 2+ non-empty cells
 
     cropped = crop_region(img, bbox)
     if cropped is None or cropped.size == 0:
@@ -436,8 +444,21 @@ def _extract_table_html(img, bbox, table_engine, reader):
             html = str(result[0]) if result else ""
         elif isinstance(result, str):
             html = result
-        if "<table" in html.lower() and html.lower().count("<td") >= MIN_TABLE_CELLS:
-            return html
+        if "<table" not in html.lower():
+            return ""
+        if html.lower().count("<td") < MIN_TABLE_CELLS:
+            return ""
+        # Reject form-disguised-as-table: count rows with 2+ non-empty cells.
+        rows = re.findall(r'<tr[^>]*>(.*?)</tr>', html, re.IGNORECASE | re.DOTALL)
+        if rows:
+            multi_col = sum(
+                1 for row in rows
+                if sum(1 for c in re.findall(r'<td[^>]*>(.*?)</td>', row, re.IGNORECASE | re.DOTALL)
+                       if re.sub(r'<[^>]+>', '', c).strip()) >= 2
+            )
+            if multi_col / len(rows) < MIN_MULTICOL_RATIO:
+                return ""  # mostly single-cell → form/list, not a data table
+        return html
     except Exception as e:
         print(f"[WARN] table extraction failed: {e}", file=sys.stderr)
     return ""
@@ -1017,9 +1038,11 @@ def process_page(img, image_path, page_no, reader, layout_engine, table_engine):
             for ci, chunk in enumerate(chunks):
                 rtype = _classify_paragraph(chunk, page_w, x1, x2)
                 alignment = _detect_alignment(x1, x2, page_w)
-                # Long body text is almost never center-aligned in Vietnamese docs.
-                # Tesseract bboxes for dense form content are unreliable for alignment.
-                if alignment == 'center' and rtype == 'text' and len(chunk.split()) > 12:
+                # Body text is never center-aligned in Vietnamese legal docs.
+                # Center-aligned positional detection has too many false positives
+                # on form layouts (indented labels, narrow numbered items, etc.).
+                # Only title regions may carry center/right alignment.
+                if rtype == 'text' and alignment == 'center':
                     alignment = 'left'
                 # Small y1 offset per chunk to preserve intra-para ordering
                 merged.append((y1 + ci * 0.5, rtype, chunk, alignment))
