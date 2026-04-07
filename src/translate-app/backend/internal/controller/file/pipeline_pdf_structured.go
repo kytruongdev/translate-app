@@ -34,19 +34,41 @@ const pdfStructuredChunkSize = 2500 // max runes per translation batch
 //  8. Write source.md + translated.html to disk, update DB, emit events
 func (c *controller) runStructuredPDFTranslate(ctx context.Context, p fileTranslateParams, fail func(string)) {
 	// ── 1. Render PDF pages to PNGs ──────────────────────────────────────────
+	c.log.Info("PDFRenderStart", "fileId", p.FileID, "fileName", filepath.Base(p.FilePath))
 	imagePaths, tempDir, err := renderPDFToImages(ctx, p.FilePath)
 	if err != nil {
 		fail(fmt.Sprintf("không render được PDF: %v", err))
 		return
 	}
+	c.log.Info("PDFRenderDone", "fileId", p.FileID, "pages", len(imagePaths))
 
 	// ── 2. Run OCR sidecar ───────────────────────────────────────────────────
-	ocrResult, err := runStructuredOCR(ctx, imagePaths)
+	c.log.Info("OCRStart", "fileId", p.FileID, "pages", len(imagePaths))
+
+	// Emit initial OCR progress so the FE shows activity instead of a frozen ring.
+	runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{
+		Chunk: 0, Total: len(imagePaths), Percent: 0,
+	})
+
+	ocrResult, err := runStructuredOCR(ctx, imagePaths, func(done, total int) {
+		pct := 0
+		if total > 0 {
+			pct = (done * 50) / total // OCR phase = 0–50 %
+		}
+		runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{
+			Chunk: done, Total: total, Percent: pct,
+		})
+	})
 	if err != nil {
 		_ = os.RemoveAll(tempDir)
 		fail(fmt.Sprintf("OCR sidecar thất bại: %v", err))
 		return
 	}
+	totalRegions := 0
+	for _, pg := range ocrResult.Pages {
+		totalRegions += len(pg.Regions)
+	}
+	c.log.Info("OCRDone", "fileId", p.FileID, "pages", len(ocrResult.Pages), "totalRegions", totalRegions)
 
 	// ── 3. Crop figures to Base64 ────────────────────────────────────────────
 	figureCrops := extractFigureCrops(ocrResult, imagePaths)
@@ -106,19 +128,22 @@ func (c *controller) runStructuredPDFTranslate(ctx context.Context, p fileTransl
 	// ── 8. Collect translatable segments ────────────────────────────────────
 	segments := collectSegments(ocrResult)
 	total := len(segments)
+	c.log.Info("SegmentsCollected", "fileId", p.FileID, "segments", total)
 
+	// Emit 50 % to indicate OCR is done and translation is starting.
 	runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{
 		Chunk:   0,
 		Total:   total,
-		Percent: 0,
+		Percent: 50,
 	})
 
 	// ── 9. Translate segments concurrently ───────────────────────────────────
+	c.log.Info("TranslationStart", "fileId", p.FileID, "segments", total, "targetLang", p.TargetLang)
 	translated, totalTokens, err := c.translatePDFSegments(ctx, segments, srcLang, p.TargetLang, p.Style, p.Provider,
 		func(completed int) {
-			pct := 0
+			pct := 50 // translation phase = 50–100 %
 			if total > 0 {
-				pct = (completed * 100) / total
+				pct = 50 + (completed*50)/total
 			}
 			runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{
 				Chunk:   completed,
@@ -139,11 +164,13 @@ func (c *controller) runStructuredPDFTranslate(ctx context.Context, p fileTransl
 	})
 
 	// ── 10. Assemble HTML ────────────────────────────────────────────────────
+	c.log.Info("AssembleHTMLStart", "fileId", p.FileID, "translatedKeys", len(translated))
 	htmlContent, err := assembleStructuredHTML(ocrResult, translated, figureCrops)
 	if err != nil {
 		fail(fmt.Sprintf("lỗi tạo HTML: %v", err))
 		return
 	}
+	c.log.Info("AssembleHTMLDone", "fileId", p.FileID, "htmlBytes", len(htmlContent))
 
 	translatedPath := filepath.Join(subDir, "translated.html")
 	if err := os.WriteFile(translatedPath, []byte(htmlContent), 0o644); err != nil {
@@ -313,6 +340,12 @@ func (c *controller) translatePDFSegments(
 					mu.Unlock()
 					return
 				}
+				// If the AI refused to translate (e.g. privacy/PII refusal),
+				// fall back to the original source text so we don't embed
+				// refusal strings in the output HTML.
+				if isAIRefusal(translatedText) {
+					translatedText = seg.text
+				}
 				atomic.AddInt32(&totalTokens, int32(tokens))
 
 				mu.Lock()
@@ -370,4 +403,29 @@ func batchPDFSegments(segments []pdfSegment) [][]pdfSegment {
 		batches = append(batches, current)
 	}
 	return batches
+}
+
+// isAIRefusal detects when the AI returned a refusal instead of a translation
+// (e.g. safety filters triggered on PII-heavy legal documents).
+// When detected, the caller should fall back to the original source text.
+var aiRefusalPrefixes = []string{
+	"i'm sorry, but i cannot",
+	"i'm sorry, i cannot",
+	"i'm unable to",
+	"i cannot assist",
+	"i can't help with that",
+	"sorry, but i cannot",
+	"i cannot provide",
+	"i'm not able to",
+	"as an ai",
+}
+
+func isAIRefusal(text string) bool {
+	lower := strings.ToLower(strings.TrimSpace(text))
+	for _, prefix := range aiRefusalPrefixes {
+		if strings.HasPrefix(lower, prefix) {
+			return true
+		}
+	}
+	return false
 }

@@ -1,10 +1,14 @@
-.PHONY: dev build build-macos build-windows sidecar-mac sidecar-win fetch-pandoc fetch-pdftotext-macos fetch-pdftotext-windows fetch-pdftopng-macos fetch-pdftopng-windows fetch-tessdata bundle-tesseract-macos sqlc migrate tidy seed-sample reset-data
+.PHONY: dev build build-macos build-windows sidecar-mac sidecar-win fetch-pandoc fetch-pdftotext-macos fetch-pdftotext-windows fetch-pdftopng-macos fetch-pdftopng-windows fetch-easyocr-models sqlc migrate tidy seed-sample reset-data
 
 PANDOC_VERSION  := 3.6.4
 PANDOC_ARCH     := $(shell uname -m)
 XPDF_VERSION    := 4.06
 APP_BUNDLE      := build/bin/GnJ.app/Contents/MacOS
 WAILS           := $(HOME)/go/bin/wails
+
+# Use .venv/bin/pyinstaller if the venv exists, otherwise fall back to system pyinstaller.
+# Uses absolute path so cd .. in sidecar targets doesn't break the relative path.
+PYINSTALLER     := $(or $(wildcard $(CURDIR)/../.venv/bin/pyinstaller),pyinstaller)
 
 # Run from this directory (backend = Wails module root).
 dev:
@@ -66,35 +70,39 @@ fetch-pdftopng-windows:
 	rm /tmp/xpdf-win.zip
 	@echo "pdftopng (XPDF $(XPDF_VERSION)) ready at bin/pdftopng.exe"
 
-# Download Tesseract tessdata (fast models) for Vietnamese + English.
-# tessdata_fast models are ~4MB each — good quality/speed balance.
-# For system Homebrew install, use: brew install tesseract-lang (installs all languages).
-fetch-tessdata:
-	mkdir -p bin/tessdata
-	curl -sL "https://github.com/tesseract-ocr/tessdata_fast/raw/main/vie.traineddata" \
-		-o bin/tessdata/vie.traineddata
-	curl -sL "https://github.com/tesseract-ocr/tessdata_fast/raw/main/eng.traineddata" \
-		-o bin/tessdata/eng.traineddata
-	@echo "tessdata ready at bin/tessdata/ (vie + eng)"
+# Copy EasyOCR model files from the build machine's cache into bin/easyocr_models/.
+# Models are downloaded automatically on first run of the sidecar in dev mode
+# (stored in ~/.EasyOCR/model/).  This target copies them into the bin/ tree so
+# they get bundled into the production .app alongside the sidecar binary.
+#
+# Models required (vi + en):
+#   craft_mlt_25k.pth  (~79 MB)  — CRAFT text detector
+#   latin_g2.pth       (~15 MB)  — CRNN recogniser for Latin-script languages (incl. Vietnamese)
+#
+# Run once after models have been downloaded by the dev sidecar:
+#   make fetch-easyocr-models
+EASYOCR_MODEL_CACHE := $(HOME)/.EasyOCR/model
+EASYOCR_MODELS      := craft_mlt_25k.pth latin_g2.pth
 
-# Copy Tesseract binary from Homebrew into bin/tesseract so it gets bundled in the .app.
-# Requires: brew install tesseract  (on the build machine)
-# After this, run: make build  — dylibbundler will fix up dylib paths automatically.
-# Requires dylibbundler: brew install dylibbundler
-bundle-tesseract-macos:
-	@if ! command -v dylibbundler >/dev/null 2>&1; then \
-		echo "ERROR: dylibbundler not found. Install with: brew install dylibbundler"; \
+fetch-easyocr-models:
+	@missing=""; \
+	for m in $(EASYOCR_MODELS); do \
+		if [ ! -f "$(EASYOCR_MODEL_CACHE)/$$m" ]; then \
+			missing="$$missing $$m"; \
+		fi; \
+	done; \
+	if [ -n "$$missing" ]; then \
+		echo "ERROR: Missing EasyOCR models in $(EASYOCR_MODEL_CACHE):$$missing"; \
+		echo "  Fix: run the dev sidecar once so it auto-downloads the models:"; \
+		echo "    .venv/bin/python3 ocr_sidecar.py <any-page.png>"; \
 		exit 1; \
 	fi
-	@TESS=$$(command -v tesseract 2>/dev/null || echo ""); \
-	if [ -z "$$TESS" ]; then \
-		echo "ERROR: tesseract not found in PATH. Install with: brew install tesseract"; \
-		exit 1; \
-	fi; \
-	mkdir -p bin; \
-	cp "$$TESS" bin/tesseract; \
-	chmod +x bin/tesseract; \
-	echo "tesseract copied from $$TESS to bin/tesseract"
+	mkdir -p bin/easyocr_models
+	@for m in $(EASYOCR_MODELS); do \
+		cp "$(EASYOCR_MODEL_CACHE)/$$m" bin/easyocr_models/$$m; \
+		echo "  copied $$m"; \
+	done
+	@echo "EasyOCR models ready at bin/easyocr_models/"
 
 # Build macOS .app (auto-fetches binaries if missing).
 # For a fully self-contained build with PDF OCR:
@@ -116,6 +124,13 @@ build build-macos: bin/pandoc bin/pdftotext-mac bin/pdftopng-mac
 	else \
 		echo "WARN: bin/paddleocr-darwin-arm64 not found — PDF OCR disabled"; \
 		echo "  Fix: make sidecar-mac then rebuild"; \
+	fi
+	@if [ -d bin/easyocr_models ]; then \
+		cp -r bin/easyocr_models "$(APP_BUNDLE)/easyocr_models"; \
+		echo "EasyOCR models bundled into app"; \
+	else \
+		echo "WARN: bin/easyocr_models not found — OCR will fail at runtime"; \
+		echo "  Fix: make fetch-easyocr-models then rebuild"; \
 	fi
 
 # Build Windows NSIS installer (cross-compile from Mac, requires mingw-w64).
@@ -145,19 +160,23 @@ bin/pandoc.exe:
 	@exit 1
 
 # Build OCR sidecar binary for macOS arm64.
-# Run from the backend/ directory. Requires: pip install -r ../requirements.txt pyinstaller
-sidecar-mac:
-	cd .. && pyinstaller --clean paddleocr-darwin-arm64.spec
+# Run from the backend/ directory.
+# Requires:
+#   1. python3 -m venv ../.venv && ../.venv/bin/pip install -r ../requirements.txt
+#   2. EasyOCR models present: make fetch-easyocr-models
+sidecar-mac: fetch-easyocr-models
+	cd .. && $(PYINSTALLER) --clean paddleocr-darwin-arm64.spec
 	mkdir -p bin
 	cp ../dist/paddleocr-darwin-arm64 bin/paddleocr-darwin-arm64
 	chmod +x bin/paddleocr-darwin-arm64
-	@echo "Sidecar ready at bin/paddleocr-darwin-arm64"
+	@echo "Sidecar binary ready at bin/paddleocr-darwin-arm64"
+	@echo "EasyOCR models ready at bin/easyocr_models/"
 
 # Build OCR sidecar binary for Windows AMD64.
 # Must be run on Windows (AMD64 native, or ARM64 VM with AMD64 MSYS2 toolchain).
 # Requires: pip install -r ..\requirements.txt pyinstaller
 sidecar-win:
-	cd .. && pyinstaller --clean paddleocr-windows-amd64.spec
+	cd .. && $(PYINSTALLER) --clean paddleocr-windows-amd64.spec
 	mkdir -p bin
 	cp ../dist/paddleocr-windows-amd64.exe bin/paddleocr-windows-amd64.exe
 	@echo "Sidecar ready at bin/paddleocr-windows-amd64.exe"

@@ -25,6 +25,8 @@ type OCRRegion struct {
 	BBox []int `json:"bbox"`
 	// Content holds OCR text for text/title regions.
 	Content string `json:"content,omitempty"`
+	// Alignment is "left", "center", or "right" — inferred from bbox position.
+	Alignment string `json:"alignment,omitempty"`
 	// HTML holds the table HTML produced by rapid_table.
 	HTML string `json:"html,omitempty"`
 	// TextLines holds OCR-detected text for informational figure regions.

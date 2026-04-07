@@ -29,7 +29,8 @@ const pdfHTMLTemplate = `<!DOCTYPE html>
             position: relative;
             min-height: 1100px;
         }
-        h2 { font-size: 1.2em; margin-bottom: 10px; }
+        h1 { font-size: 1.5em; font-weight: bold; text-align: center; margin-bottom: 8px; margin-top: 16px; }
+        h2 { font-size: 1.15em; font-weight: bold; margin-bottom: 8px; margin-top: 16px; }
         p {
             margin-bottom: 12px;
             text-align: justify;
@@ -103,13 +104,36 @@ func assembleStructuredHTML(result *StructuredOCRResult, translated map[string]s
 			case "text":
 				content := translated[key]
 				if strings.TrimSpace(content) != "" {
-					body.WriteString(fmt.Sprintf("<p>%s</p>\n", escapeHTML(content)))
+					align := region.Alignment
+					if align == "center" || align == "right" {
+						body.WriteString(fmt.Sprintf("<div style=\"text-align:%s\">\n", align))
+						body.WriteString(renderTextBlocks(content))
+						body.WriteString("</div>\n")
+					} else {
+						body.WriteString(renderTextBlocks(content))
+					}
 				}
 
 			case "title":
 				content := translated[key]
 				if strings.TrimSpace(content) != "" {
-					body.WriteString(fmt.Sprintf("<h2>%s</h2>\n", escapeHTML(content)))
+					align := region.Alignment
+					alignStyle := ""
+					if align == "center" || align == "right" {
+						alignStyle = fmt.Sprintf(" style=\"text-align:%s\"", align)
+					}
+					// Render each newline-separated line — preserves multi-line titles
+					lines := strings.Split(strings.TrimSpace(content), "\n")
+					var parts []string
+					for _, l := range lines {
+						l = strings.TrimSpace(l)
+						if l != "" {
+							parts = append(parts, escapeHTML(l))
+						}
+					}
+					if len(parts) > 0 {
+						body.WriteString(fmt.Sprintf("<h2%s>%s</h2>\n", alignStyle, strings.Join(parts, "<br>\n")))
+					}
 				}
 
 			case "table":
@@ -150,6 +174,43 @@ func assembleStructuredHTML(result *StructuredOCRResult, translated map[string]s
 	}
 
 	return fmt.Sprintf(pdfHTMLTemplate, body.String()), nil
+}
+
+// renderTextBlocks converts OCR-extracted text into proper HTML paragraphs.
+//
+// Rules:
+//   - Double newline (\n\n) → separate <p> block
+//   - Single newline (\n)   → space within a <p> (OCR scan lines, not semantic breaks)
+//   - Trailing spaces before \n are trimmed
+//
+// Single newlines come from physical scan-line boundaries detected by EasyOCR.
+// They should NOT produce <br> tags — doing so creates an artificial right margin
+// because text stops at each scan line instead of flowing to the container edge.
+func renderTextBlocks(content string) string {
+	content = strings.ReplaceAll(content, "\r\n", "\n")
+	// Split into paragraph blocks on double newlines
+	blocks := strings.Split(content, "\n\n")
+	var out strings.Builder
+	for _, block := range blocks {
+		block = strings.TrimSpace(block)
+		if block == "" {
+			continue
+		}
+		lines := strings.Split(block, "\n")
+		var parts []string
+		for _, line := range lines {
+			line = strings.TrimRight(line, " \t")
+			if line != "" {
+				parts = append(parts, escapeHTML(line))
+			}
+		}
+		if len(parts) > 0 {
+			out.WriteString("<p>")
+			out.WriteString(strings.Join(parts, " "))
+			out.WriteString("</p>\n")
+		}
+	}
+	return out.String()
 }
 
 func escapeHTML(s string) string {

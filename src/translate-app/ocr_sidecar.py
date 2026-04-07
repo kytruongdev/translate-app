@@ -353,6 +353,11 @@ def _classify_paragraph(text, page_w, x1, x2):
                      'Các bộ phận', 'Phần dành cho', 'Cô', 'Công chức',
                      'Tên người nộp', 'Mã số thuế')) or '@' in s:
         return "text"
+    # Address sub-field labels and form section headers — physically indented or
+    # centered on tax forms but are never semantic titles in the document hierarchy.
+    if s.startswith(('Ngõ/', 'Đường/', 'Thôn/', 'Địa chỉ dự án',
+                     'Thông tin về', 'Loại bất')):
+        return "text"
     # Numbered list items (1. / 3) / 4.2.5.) are always body text.
     # Multi-level numbering (3.1, 4.2.5) positionally resembles a centered title
     # on tax forms but is never a semantic title.
@@ -911,6 +916,74 @@ _OCR_CORRECTIONS = [
     (re.compile(r'\bquyên số\b', re.UNICODE), r'quyển số'),
     # "qùa" → "quà": wrong tone mark (ù falling instead of à grave)
     (re.compile(r'\bqùa\b', re.UNICODE), r'quà'),
+    # "Công chức" — repeatedly mangled in tax-form signature lines
+    (re.compile(r'\bCônv chire\b', re.UNICODE), r'Công chức'),
+    (re.compile(r"\bCônv chire'\b", re.UNICODE), r'Công chức'),
+    (re.compile(r'\bCôno chre\b', re.UNICODE), r'Công chức'),
+    (re.compile(r'\bCône chúre\b', re.UNICODE), r'Công chức'),
+    (re.compile(r'\bCôno chúre\b', re.UNICODE), r'Công chức'),
+    (re.compile(r'\bCông chíc\b', re.UNICODE), r'Công chức'),
+    (re.compile(r'\bCônv chức\b', re.UNICODE), r'Công chức'),
+    # "tính thuế" — tone-mark and vowel confusions on recurring phrase
+    (re.compile(r'\btinh thuế\b', re.UNICODE), r'tính thuế'),
+    (re.compile(r'\btính thué\b', re.UNICODE), r'tính thuế'),
+    (re.compile(r'\btinh thué\b', re.UNICODE), r'tính thuế'),
+    # "bất động" — đ (with stroke) OCR'd as plain d or t
+    (re.compile(r'\bbất dộng\b', re.UNICODE), r'bất động'),
+    (re.compile(r'\bbất tộng\b', re.UNICODE), r'bất động'),
+    (re.compile(r'\bBất dộng\b', re.UNICODE), r'Bất động'),
+    (re.compile(r'\bBẤT DỘNG\b', re.UNICODE), r'BẤT ĐỘNG'),
+    # "bất động sản" — sán (acute) vs sản (hook) tone swap
+    (re.compile(r'\bbất động sán\b', re.UNICODE), r'bất động sản'),
+    # "cá nhân" — í misread as á
+    (re.compile(r'\bcí nhân\b', re.UNICODE), r'cá nhân'),
+    (re.compile(r'\bcỉ nhân\b', re.UNICODE), r'cá nhân'),
+    # "V/v:" subject-line header — slash misread as capital I
+    (re.compile(r'\bVIv\b', re.UNICODE), r'V/v'),
+    # Address subfield separators — slash misread as lowercase l or v
+    (re.compile(r'\bPhườnglXã\b', re.UNICODE), r'Phường/Xã'),
+    (re.compile(r'\bQuậnlHuyện\b', re.UNICODE), r'Quận/Huyện'),
+    (re.compile(r'\bTỉnhlThành\b', re.UNICODE), r'Tỉnh/Thành'),
+    (re.compile(r'\bTỉnlvThành\b', re.UNICODE), r'Tỉnh/Thành'),
+    (re.compile(r'\bĐườnglĐoạn\b', re.UNICODE), r'Đường/Đoạn'),
+    (re.compile(r'\bĐườnglđoạn\b', re.UNICODE), r'Đường/đoạn'),
+    # "Tờ bản đồ": "Tờ" OCR'd as "Tv", "bản" as "ban"
+    (re.compile(r'\bTv ban đồ\b', re.UNICODE), r'Tờ bản đồ'),
+    (re.compile(r'\bTv bản đồ\b', re.UNICODE), r'Tờ bản đồ'),
+    # "Di Trạch": place name near Kim Chung project — IFi / lFi / no-tone variants
+    (re.compile(r'\bIFi Trach\b', re.UNICODE), r'Di Trạch'),
+    (re.compile(r'\blFi Trach\b', re.UNICODE), r'Di Trạch'),
+    (re.compile(r'\bDi Trach\b', re.UNICODE), r'Di Trạch'),
+    # "Kim Chung": F misread from K at word start
+    (re.compile(r'\bF im Chung\b', re.UNICODE), r'Kim Chung'),
+    # "Năm hoàn công": final m OCR'd as n
+    (re.compile(r'\bNăn hoàn công\b', re.UNICODE), r'Năm hoàn công'),
+    # "kết cấu": final u OCR'd as v
+    (re.compile(r'\bkết cấv\b', re.UNICODE), r'kết cấu'),
+    (re.compile(r'\bKết cấv\b', re.UNICODE), r'Kết cấu'),
+    # "tường": spurious r inserted after ư in wall/partition context
+    (re.compile(r'\btưrờng\b', re.UNICODE), r'tường'),
+    (re.compile(r'\bTưrờng\b', re.UNICODE), r'Tường'),
+    # "gạch": brick/tile — dot-below lost on ạ
+    (re.compile(r'\bgach\b', re.UNICODE), r'gạch'),
+    # "tầng" (floors/stories): c misread as t at word start
+    (re.compile(r'\bcầng\b', re.UNICODE), r'tầng'),
+    # "lực": capital I misread as lowercase l
+    (re.compile(r'\bIực\b', re.UNICODE), r'lực'),
+    # "Hạnh phúc": leading H dropped entirely
+    (re.compile(r'\bạnh phúc\b', re.UNICODE), r'Hạnh phúc'),
+    # "đồng ý": spurious = artifact between the two words
+    (re.compile(r'\bđồng\s*=\s*ý\b', re.UNICODE), r'đồng ý'),
+    # "Tổng~": tilde noise after word
+    (re.compile(r'\bTổng~\b', re.UNICODE), r'Tổng'),
+    # "Hợp đồng=": spurious = appended to contract term
+    (re.compile(r'\bHợp đồng=', re.UNICODE), r'Hợp đồng'),
+    # "thừa kế": spurious n inserted before ừ
+    (re.compile(r'\bthnừa kế\b', re.UNICODE), r'thừa kế'),
+    # "Loại 1:": numeral 1 OCR'd as capital I in construction-type labels
+    (re.compile(r'\bLoại I\s*:', re.UNICODE), r'Loại 1:'),
+    # "bất động sản khác": khóc (cry) is OCR noise for khác (other/different)
+    (re.compile(r'\bsản khóc gắn liền\b', re.UNICODE), r'sản khác gắn liền'),
 ]
 
 
