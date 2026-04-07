@@ -107,18 +107,24 @@ func findPythonRunner() *ocrPythonRunner {
 	return &ocrPythonRunner{python: python, script: script}
 }
 
-// runStructuredOCR invokes the OCR sidecar with the provided page image paths
-// and returns the parsed structured result.
+// runStructuredOCR invokes OCR on the provided page image paths and returns the
+// parsed structured result.
+//
+// When openAIKey is non-empty, GPT-4o-mini vision is used instead of the local
+// Python sidecar — this gives significantly better accuracy on Vietnamese legal
+// documents with stamps, seals, and complex tables.
 //
 // onPage (optional) is called after each page completes: onPage(pagesDone, totalPages).
-// Use this to emit progress events during the OCR phase.
 //
-// Execution order:
-//  1. Try the compiled sidecar binary (production path)
-//  2. Fall back to Python interpreter + ocr_sidecar.py (dev path)
-//
-// All pages are processed in a single subprocess invocation so models load once.
-func runStructuredOCR(ctx context.Context, imagePaths []string, onPage func(done, total int)) (*StructuredOCRResult, error) {
+// Fallback order when openAIKey is empty:
+//  1. Compiled sidecar binary (production path)
+//  2. Python interpreter + ocr_sidecar.py (dev path)
+func runStructuredOCR(ctx context.Context, imagePaths []string, openAIKey string, onPage func(done, total int)) (*StructuredOCRResult, error) {
+	// GPT-4o-mini vision path — preferred when API key is available.
+	if openAIKey != "" {
+		return runGPTVisionOCR(ctx, imagePaths, openAIKey, onPage)
+	}
+
 	sidecar := findStructuredOCRSidecar()
 	if sidecar != "" {
 		result, err := invokeOCRProcessStreaming(ctx, sidecar, nil, imagePaths, onPage)

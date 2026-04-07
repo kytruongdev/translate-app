@@ -183,11 +183,18 @@ func assembleStructuredHTML(result *StructuredOCRResult, translated map[string]s
 //   - Single newline (\n)   → space within a <p> (OCR scan lines, not semantic breaks)
 //   - Trailing spaces before \n are trimmed
 //
+// When content contains inline HTML tags (<strong>, <em>, <u>) produced by the
+// GPT vision OCR, those tags are preserved as-is. Plain text lines are escaped.
+//
 // Single newlines come from physical scan-line boundaries detected by EasyOCR.
 // They should NOT produce <br> tags — doing so creates an artificial right margin
 // because text stops at each scan line instead of flowing to the container edge.
 func renderTextBlocks(content string) string {
 	content = strings.ReplaceAll(content, "\r\n", "\n")
+	hasInlineHTML := strings.Contains(content, "<strong>") ||
+		strings.Contains(content, "<em>") ||
+		strings.Contains(content, "<u>")
+
 	// Split into paragraph blocks on double newlines
 	blocks := strings.Split(content, "\n\n")
 	var out strings.Builder
@@ -201,7 +208,11 @@ func renderTextBlocks(content string) string {
 		for _, line := range lines {
 			line = strings.TrimRight(line, " \t")
 			if line != "" {
-				parts = append(parts, escapeHTML(line))
+				if hasInlineHTML {
+					parts = append(parts, line) // preserve inline tags as-is
+				} else {
+					parts = append(parts, escapeHTML(line))
+				}
 			}
 		}
 		if len(parts) > 0 {

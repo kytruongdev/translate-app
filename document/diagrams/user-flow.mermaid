@@ -1,0 +1,108 @@
+---
+title: TranslateApp — User Flow Diagram
+---
+flowchart TD
+    START([Mở ứng dụng]) --> CHECK_SETTINGS{Đã có API key?}
+
+    CHECK_SETTINGS -- Chưa --> SETTINGS_PROMPT[Mở Settings\nNhập API key]
+    SETTINGS_PROMPT --> TEST_KEY{Test key OK?}
+    TEST_KEY -- Thất bại --> SETTINGS_PROMPT
+    TEST_KEY -- Thành công --> SAVE_SETTINGS[Lưu settings]
+    SAVE_SETTINGS --> START_PAGE
+
+    CHECK_SETTINGS -- Rồi --> START_PAGE[Start Page\nGreeting + Suggestion Chips]
+
+    START_PAGE --> USER_ACTION{Người dùng chọn}
+
+    USER_ACTION -- Nhấn suggestion chip --> CHIP_INPUT[Điền text từ chip\nvào input]
+    CHIP_INPUT --> COMPOSE_INPUT
+
+    USER_ACTION -- Gõ text vào input --> COMPOSE_INPUT[Soạn input\ntext / attach file]
+
+    COMPOSE_INPUT --> INPUT_TYPE{Loại input}
+
+    %% ─── TEXT TRANSLATION FLOW ───
+    INPUT_TYPE -- Chỉ text --> MODE_CHECK{Chế độ?}
+    MODE_CHECK -- Dịch --> DETECT_LANG[Auto-detect ngôn ngữ\nEN ↔ VI]
+    MODE_CHECK -- Chat --> CHAT_SEND[Gửi như chat message\nkhông dịch]
+    CHAT_SEND --> SHOW_CHAT_VIEW
+
+    DETECT_LANG --> SEND_TEXT[Gửi → Go backend]
+    SEND_TEXT --> STREAMING[Streaming kết quả\ntừng ký tự...]
+    STREAMING --> TEXT_DONE[Hiển thị kết quả dịch\nhoàn chỉnh]
+    TEXT_DONE --> SHOW_CHAT_VIEW
+
+    %% ─── FILE TRANSLATION FLOW ───
+    INPUT_TYPE -- Có file đính kèm --> OPEN_FILE[Native File Picker\nChọn .pdf/.docx/.txt]
+    OPEN_FILE --> READ_FILE_INFO[Đọc metadata file]
+    READ_FILE_INFO --> SCAN_CHECK{PDF scan?}
+    SCAN_CHECK -- Có --> SCAN_ERROR[Hiển thị lỗi:\n'PDF scan không hỗ trợ']
+    SCAN_ERROR --> COMPOSE_INPUT
+
+    SCAN_CHECK -- Không --> FILE_PREVIEW[Hiển thị file preview\n+ước tính thời gian]
+    FILE_PREVIEW --> SEND_FILE[Gửi → Go backend\nbắt đầu chunked translation]
+    SEND_FILE --> FILE_PROGRESS[Progress bar\nchunk X/N - N%]
+    FILE_PROGRESS --> FILE_CHUNKS[Hiển thị từng chunk\nkhi hoàn thành]
+    FILE_CHUNKS --> FILE_DONE{Tất cả chunks\nxong?}
+    FILE_DONE -- Chưa --> FILE_CHUNKS
+    FILE_DONE -- Xong --> FILE_RESULT[Hiển thị kết quả hoàn chỉnh\n+ nút Export]
+
+    %% ─── CHAT VIEW ───
+    FILE_RESULT --> SHOW_CHAT_VIEW[Chat View\nDanh sách messages]
+    SHOW_CHAT_VIEW --> CHAT_ACTIONS{Người dùng làm gì?}
+
+    CHAT_ACTIONS -- Gửi message mới --> COMPOSE_INPUT
+    CHAT_ACTIONS -- Retranslate --> RETRANSLATE_FLOW
+    CHAT_ACTIONS -- Export --> EXPORT_FLOW
+    CHAT_ACTIONS -- Session management --> SESSION_FLOW
+    CHAT_ACTIONS -- Mở Settings --> SETTINGS_FLOW
+
+    %% ─── RETRANSLATE FLOW ───
+    RETRANSLATE_FLOW[Click Retranslate\ntrên message] --> RETRANS_POPUP[Mở RetranslatePopover\nChọn model / thêm note]
+    RETRANS_POPUP --> RETRANS_CONFIRM{Xác nhận?}
+    RETRANS_CONFIRM -- Hủy --> SHOW_CHAT_VIEW
+    RETRANS_CONFIRM -- Dịch lại --> RETRANS_EXEC[Gửi lại với\nparams mới]
+    RETRANS_EXEC --> STREAMING
+
+    %% ─── EXPORT FLOW ───
+    EXPORT_FLOW[Click Export] --> EXPORT_MENU[Chọn format:\nDOCX / PDF / TXT]
+    EXPORT_MENU --> EXPORT_SCOPE{Export gì?}
+    EXPORT_SCOPE -- 1 message --> EXPORT_MSG[Export message]
+    EXPORT_SCOPE -- Cả session --> EXPORT_SESSION[Export session]
+    EXPORT_SCOPE -- File translation --> EXPORT_FILE_TRANS[Export file result]
+    EXPORT_MSG & EXPORT_SESSION & EXPORT_FILE_TRANS --> SAVE_DIALOG[Native Save Dialog\nChọn vị trí lưu]
+    SAVE_DIALOG --> EXPORT_DONE[File đã lưu\nToast thành công]
+    EXPORT_DONE --> SHOW_CHAT_VIEW
+
+    %% ─── SESSION FLOW ───
+    SESSION_FLOW[Sidebar sessions] --> SESSION_ACTION{Thao tác}
+    SESSION_ACTION -- Chọn session --> SWITCH_SESSION[Load messages của session]
+    SESSION_ACTION -- Tạo mới --> CREATE_SESSION[Tạo session mới\n→ Start Page]
+    SESSION_ACTION -- Rename --> RENAME_INPUT[Inline rename input]
+    SESSION_ACTION -- Pin/Unpin --> TOGGLE_PIN[Ghim lên đầu danh sách]
+    SESSION_ACTION -- Delete --> CONFIRM_DELETE{Xác nhận xóa?}
+    CONFIRM_DELETE -- Hủy --> SHOW_CHAT_VIEW
+    CONFIRM_DELETE -- Xóa --> DELETE_SESSION[Xóa session\n+ messages]
+    SWITCH_SESSION & RENAME_INPUT & TOGGLE_PIN & DELETE_SESSION --> SHOW_CHAT_VIEW
+    CREATE_SESSION --> START_PAGE
+
+    %% ─── SETTINGS FLOW ───
+    SETTINGS_FLOW[Mở Settings Panel] --> SETTINGS_TABS{Tab}
+    SETTINGS_TABS -- Appearance --> THEME_SELECT[Chọn theme\nLight/Dark/System]
+    SETTINGS_TABS -- AI Model --> MODEL_CONFIG[Chọn provider\nChọn model\nNhập API key\nTest connection]
+    MODEL_CONFIG --> SAVE_BTN[Lưu Settings]
+    THEME_SELECT --> APPLY_THEME[Áp dụng theme ngay]
+    SAVE_BTN & APPLY_THEME --> SHOW_CHAT_VIEW
+
+    %% ─── CANCEL ───
+    FILE_PROGRESS --> CANCEL_BTN{Hủy?}
+    CANCEL_BTN -- Có --> CANCEL_TRANS[Go context cancel\nDừng translation]
+    CANCEL_TRANS --> SHOW_CHAT_VIEW
+    STREAMING --> CANCEL_STREAM{Hủy?}
+    CANCEL_STREAM -- Có --> CANCEL_TRANS
+
+    style START fill:#4A90D9,color:#fff
+    style TEXT_DONE fill:#27AE60,color:#fff
+    style FILE_RESULT fill:#27AE60,color:#fff
+    style EXPORT_DONE fill:#27AE60,color:#fff
+    style SCAN_ERROR fill:#E74C3C,color:#fff

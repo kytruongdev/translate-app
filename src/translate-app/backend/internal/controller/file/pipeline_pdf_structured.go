@@ -50,7 +50,7 @@ func (c *controller) runStructuredPDFTranslate(ctx context.Context, p fileTransl
 		Chunk: 0, Total: len(imagePaths), Percent: 0,
 	})
 
-	ocrResult, err := runStructuredOCR(ctx, imagePaths, func(done, total int) {
+	ocrResult, err := runStructuredOCR(ctx, imagePaths, c.keys.OpenAIKey, func(done, total int) {
 		pct := 0
 		if total > 0 {
 			pct = (done * 50) / total // OCR phase = 0–50 %
@@ -235,7 +235,12 @@ func collectSegments(result *StructuredOCRResult) []pdfSegment {
 			switch region.Type {
 			case "text", "title":
 				if strings.TrimSpace(region.Content) != "" {
-					segs = append(segs, pdfSegment{key: key, text: region.Content})
+					// If content contains inline HTML tags (bold/italic/underline from GPT),
+					// mark as HTML so the translation prompt preserves the tags.
+					isHTML := strings.Contains(region.Content, "<strong>") ||
+						strings.Contains(region.Content, "<em>") ||
+						strings.Contains(region.Content, "<u>")
+					segs = append(segs, pdfSegment{key: key, text: region.Content, isHTML: isHTML})
 				}
 			case "table":
 				if strings.TrimSpace(region.HTML) != "" {
