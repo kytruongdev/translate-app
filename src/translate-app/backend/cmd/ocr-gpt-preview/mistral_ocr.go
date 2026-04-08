@@ -372,12 +372,17 @@ var (
 	reRomanPrefix  = regexp.MustCompile(`(?i)^(X{0,3})(IX|IV|V?I{0,3})\.`)
 )
 
-// isMeaninglessBlock returns true for very short blocks that contain only
-// non-Latin / non-Vietnamese characters (CJK, etc.) — OCR artifacts from stamps.
+// isMeaninglessBlock returns true for very short blocks that are OCR noise:
+//  - 1-char blocks that are a single uppercase Latin letter (e.g. "U") or CJK char
+//  - 2-4 char blocks containing ONLY non-Latin / non-Vietnamese characters
 func isMeaninglessBlock(block string) bool {
 	runes := []rune(strings.TrimSpace(block))
 	if len(runes) == 0 || len(runes) > 4 {
 		return false
+	}
+	// Single uppercase ASCII letter (A-Z) → OCR artifact from logo/stamp
+	if len(runes) == 1 && runes[0] >= 'A' && runes[0] <= 'Z' {
+		return true
 	}
 	for _, r := range runes {
 		// Allow ASCII printable, Latin extended, Vietnamese diacritics
@@ -386,6 +391,23 @@ func isMeaninglessBlock(block string) bool {
 		}
 	}
 	return true // all chars are non-Latin (CJK, symbols, etc.) → garbage
+}
+
+// isImpliedHeadingBlock returns true when a text block (no markdown markers)
+// starts with an ALL-CAPS line — Mistral sometimes omits # prefixes for headings
+// (e.g. page 12 of CIPUTRA where every heading is bare ALL-CAPS text).
+func isImpliedHeadingBlock(block string) bool {
+	if strings.HasPrefix(block, "#") || strings.HasPrefix(block, "|") ||
+		strings.HasPrefix(block, "*") || strings.HasPrefix(block, "-") ||
+		strings.HasPrefix(block, "!") || strings.HasPrefix(block, ">") {
+		return false
+	}
+	firstLine := strings.TrimSpace(strings.SplitN(block, "\n", 2)[0])
+	runes := []rune(firstLine)
+	if len(runes) < 4 || len(runes) > 100 {
+		return false
+	}
+	return firstLine == strings.ToUpper(firstLine)
 }
 
 // isBoldHeading returns true when an entire block is wrapped in ** markers
@@ -407,13 +429,20 @@ func isBoldHeading(block string) bool {
 //   - "Độc lập" / "Hạnh phúc" → center (Vietnamese state header subtitle)
 //   - Everything else → left
 func headingAlignment(content string) string {
-	if reRomanPrefix.MatchString(strings.TrimSpace(content)) {
+	c := strings.TrimSpace(content)
+	// Roman numeral section heading → always left
+	if reRomanPrefix.MatchString(c) {
 		return "left"
 	}
+	// "BÊN ..." party labels in contracts → always left (section labels, not titles)
+	if strings.HasPrefix(strings.ToUpper(c), "BÊN ") {
+		return "left"
+	}
+	// Vietnamese state header subtitle → always center
 	if strings.Contains(content, "Độc lập") || strings.Contains(content, "Hạnh phúc") {
 		return "center"
 	}
-	c := strings.TrimSpace(content)
+	// ALL-CAPS content → center (document/section titles)
 	if c == strings.ToUpper(c) && len([]rune(c)) > 3 {
 		return "center"
 	}
@@ -462,6 +491,28 @@ func markdownToRegions(md string) []region {
 		if isBoldHeading(block) {
 			content := strings.TrimSpace(block[2 : len(block)-2])
 			regions = append(regions, region{Type: "title", Content: content, Alignment: headingAlignment(content)})
+			continue
+		}
+
+		// Implied heading block: Mistral outputs ALL-CAPS text without # markers.
+		// Treat ALL-CAPS lines as titles, non-ALL-CAPS follow-up lines as subtitles
+		// (inheriting parent alignment when parent was centered) or plain text.
+		if isImpliedHeadingBlock(block) {
+			currentAlign := "left"
+			for _, line := range strings.Split(block, "\n") {
+				line = strings.TrimSpace(line)
+				if line == "" {
+					continue
+				}
+				if line == strings.ToUpper(line) && len([]rune(line)) > 3 {
+					currentAlign = headingAlignment(line)
+					regions = append(regions, region{Type: "title", Content: line, Alignment: currentAlign})
+				} else if currentAlign == "center" {
+					regions = append(regions, region{Type: "title", Content: line, Alignment: "center"})
+				} else {
+					regions = append(regions, region{Type: "text", Content: line, Alignment: "left"})
+				}
+			}
 			continue
 		}
 
@@ -668,6 +719,54 @@ func detectSectionBox(rows [][]string) bool {
 	return false
 }
 
+// removeEmptyColumns strips columns where every cell across all rows is empty.
+// This fixes tables where Mistral leaves a middle column completely blank.
+// isHeader is kept in sync with rows (same slice length).
+func removeEmptyColumns(rows [][]string, isHeader []bool) [][]string {
+	if len(rows) == 0 {
+		return rows
+	}
+	maxCols := 0
+	for _, row := range rows {
+		if len(row) > maxCols {
+			maxCols = len(row)
+		}
+	}
+	if maxCols == 0 {
+		return rows
+	}
+	// Determine which column indices have at least one non-empty cell
+	keep := make([]bool, maxCols)
+	for _, row := range rows {
+		for ci, cell := range row {
+			if strings.TrimSpace(cell) != "" {
+				keep[ci] = true
+			}
+		}
+	}
+	// Count kept columns; if all are kept, return unchanged
+	keptCount := 0
+	for _, k := range keep {
+		if k {
+			keptCount++
+		}
+	}
+	if keptCount == maxCols {
+		return rows
+	}
+	result := make([][]string, len(rows))
+	for ri, row := range rows {
+		var newRow []string
+		for ci, cell := range row {
+			if ci < maxCols && keep[ci] {
+				newRow = append(newRow, cell)
+			}
+		}
+		result[ri] = newRow
+	}
+	return result
+}
+
 // mdTableToHTML converts a markdown table to an HTML table.
 func mdTableToHTML(block string) string {
 	block = joinTableContinuations(block)
@@ -699,6 +798,9 @@ func mdTableToHTML(block string) string {
 		isHeader = append(isHeader, !headerDone && !separatorSeen)
 		_ = separatorSeen
 	}
+
+	// Remove entirely empty columns (e.g. middle column that Mistral left blank).
+	rows = removeEmptyColumns(rows, isHeader)
 
 	// Section box detection (KBNN / bank sections):
 	// 1. Check all cells for right-column keywords (handles case where Mistral
