@@ -2,6 +2,7 @@ package file
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -233,62 +234,61 @@ func renderTextBlocks(content string) string {
 	return out.String()
 }
 
-// convertMarkdownInline converts markdown bold/italic markers to HTML tags,
-// then HTML-escapes all remaining plain-text segments.
-// Input may be plain text or already contain <strong>/<em> from GPT OCR.
-// Handles: **bold**, *italic*
+// reBold matches **bold** spans; reItalicOnly matches *italic* (not preceded by *).
+var (
+	reBold       = regexp.MustCompile(`\*\*([^*]+)\*\*`)
+	reItalicOnly = regexp.MustCompile(`\*([^*]+)\*`)
+)
+
+// convertMarkdownInline converts **bold** and *italic* markdown to HTML,
+// HTML-escaping all plain-text segments in between.
+// Works entirely in byte space to avoid rune/byte offset mismatch on Unicode.
+// If the string already contains HTML tags it is returned unchanged.
 func convertMarkdownInline(s string) string {
-	// If already contains HTML tags, escape only untagged portions
 	if strings.Contains(s, "<strong>") || strings.Contains(s, "<em>") || strings.Contains(s, "<u>") {
-		return s // already HTML — don't double-process
+		return s
 	}
 
 	var out strings.Builder
-	i := 0
-	runes := []rune(s)
-	n := len(runes)
+	rem := s
 
-	for i < n {
-		// **bold**
-		if i+1 < n && runes[i] == '*' && runes[i+1] == '*' {
-			end := strings.Index(string(runes[i+2:]), "**")
-			if end >= 0 {
-				inner := string(runes[i+2 : i+2+end])
-				out.WriteString("<strong>")
-				out.WriteString(escapeHTML(inner))
-				out.WriteString("</strong>")
-				i += 2 + end + 2
-				continue
-			}
+	for len(rem) > 0 {
+		boldLoc := reBold.FindStringIndex(rem)
+		italicLoc := reItalicOnly.FindStringIndex(rem)
+
+		// Pick whichever match starts earlier; bold wins on tie
+		var loc []int
+		isBold := false
+		if boldLoc != nil {
+			loc = boldLoc
+			isBold = true
 		}
-		// *italic* (single star, not double)
-		if runes[i] == '*' && (i == 0 || runes[i-1] != '*') {
-			end := strings.Index(string(runes[i+1:]), "*")
-			if end >= 0 && (i+1+end+1 >= n || runes[i+1+end+1] != '*') {
-				inner := string(runes[i+1 : i+1+end])
-				out.WriteString("<em>")
-				out.WriteString(escapeHTML(inner))
-				out.WriteString("</em>")
-				i += 1 + end + 1
-				continue
-			}
+		if italicLoc != nil && (loc == nil || italicLoc[0] < loc[0]) {
+			loc = italicLoc
+			isBold = false
 		}
-		// Plain character — escape HTML special chars
-		switch runes[i] {
-		case '&':
-			out.WriteString("&amp;")
-		case '<':
-			out.WriteString("&lt;")
-		case '>':
-			out.WriteString("&gt;")
-		case '"':
-			out.WriteString("&quot;")
-		case '\'':
-			out.WriteString("&#39;")
-		default:
-			out.WriteRune(runes[i])
+
+		if loc == nil {
+			// No more markdown — escape the rest as plain text
+			out.WriteString(escapeHTML(rem))
+			break
 		}
-		i++
+
+		// Escape plain text before the match
+		out.WriteString(escapeHTML(rem[:loc[0]]))
+
+		inner := rem[loc[0]+2 : loc[1]-2]
+		if isBold {
+			out.WriteString("<strong>")
+			out.WriteString(escapeHTML(inner))
+			out.WriteString("</strong>")
+		} else {
+			inner = rem[loc[0]+1 : loc[1]-1]
+			out.WriteString("<em>")
+			out.WriteString(escapeHTML(inner))
+			out.WriteString("</em>")
+		}
+		rem = rem[loc[1]:]
 	}
 	return out.String()
 }
