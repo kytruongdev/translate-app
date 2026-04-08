@@ -15,9 +15,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/draw"
+	"image/png"
 	"io"
 	"net/http"
 	"os"
+
+	"github.com/gen2brain/go-fitz"
 	"regexp"
 	"strings"
 )
@@ -127,7 +132,204 @@ func runMistralOCR(ctx context.Context, pdfPath string, apiKey string, onPage fu
 		}
 	}
 
+	// Pass 2: fix cross-page tables (table header on page N, data rows on page N+1)
+	fixMistralCrossPageTables(&result, pdfPath, apiKey)
+
 	return &result, nil
+}
+
+// ── Cross-page table fix ──────────────────────────────────────────────────────
+
+// fixMistralCrossPageTables scans for tables with placeholder-only data rows
+// (e.g. [2.1], [2.2]) — a sign the real data is on the next page.
+// It stitches the boundary region of consecutive pages into one PNG and
+// re-OCRs with Mistral so the full cross-page table is captured in one context.
+func fixMistralCrossPageTables(result *StructuredOCRResult, pdfPath, apiKey string) {
+	for i := 0; i < len(result.Pages)-1; i++ {
+		tableIdx := -1
+		for j, r := range result.Pages[i].Regions {
+			if r.Type == "table" && mistralIsLikelyCrossPageTable(r.HTML) {
+				tableIdx = j
+				break
+			}
+		}
+		if tableIdx == -1 {
+			continue
+		}
+
+		pageNo := result.Pages[i].PageNo
+		nextPageNo := result.Pages[i+1].PageNo
+
+		stitchedPNG, err := mistralStitchPages(pdfPath, pageNo, nextPageNo)
+		if err != nil {
+			continue
+		}
+
+		markdown, err := mistralOCRImage(stitchedPNG, apiKey)
+		if err != nil {
+			continue
+		}
+
+		stitchedRegions := mistralMarkdownToRegions(markdown)
+		origCols := mistralTableColCount(result.Pages[i].Regions[tableIdx].HTML)
+
+		for _, r := range stitchedRegions {
+			if r.typ != "table" || mistralIsLikelyCrossPageTable(r.html) {
+				continue
+			}
+			if mistralTableColCount(r.html) != origCols {
+				continue
+			}
+			merged := mistralMergeCompanionRows(result.Pages[i].Regions[tableIdx].HTML, r.html)
+			result.Pages[i].Regions[tableIdx].HTML = merged
+			break
+		}
+	}
+}
+
+var mReHasBracket = regexp.MustCompile(`\[\d[\d.]*\]`)
+
+func mistralIsLikelyCrossPageTable(html string) bool {
+	if !mReHasBracket.MatchString(html) {
+		return false
+	}
+	tbodyIdx := strings.Index(html, "<tbody>")
+	if tbodyIdx == -1 {
+		return false
+	}
+	return strings.Count(html[tbodyIdx:], "<tr>") == 1
+}
+
+func mistralTableColCount(html string) int {
+	theadIdx := strings.Index(html, "<thead>")
+	if theadIdx == -1 {
+		return 0
+	}
+	trEnd := strings.Index(html[theadIdx:], "</tr>")
+	if trEnd == -1 {
+		return 0
+	}
+	return strings.Count(html[theadIdx:theadIdx+trEnd], "<th>")
+}
+
+var (
+	mReThOpen      = regexp.MustCompile(`<th(\b[^>]*)?>`)
+	mReThClose     = regexp.MustCompile(`</th>`)
+	mReColspanAttr = regexp.MustCompile(`\s+colspan="\d+"`)
+)
+
+func mistralMergeCompanionRows(originalHTML, companionHTML string) string {
+	reTR := regexp.MustCompile(`(?s)<tr>.*?</tr>`)
+	companionRows := reTR.FindAllString(companionHTML, -1)
+
+	var extra strings.Builder
+	for _, row := range companionRows {
+		row = mReThOpen.ReplaceAllString(row, "<td$1>")
+		row = mReThClose.ReplaceAllString(row, "</td>")
+		row = mReColspanAttr.ReplaceAllString(row, "")
+		extra.WriteString(row)
+	}
+	return strings.Replace(originalHTML, "</tbody></table>", extra.String()+"</tbody></table>", 1)
+}
+
+// mistralStitchPages renders the bottom 25% of page1 + top 40% of page2
+// and stitches them into one PNG for cross-page OCR.
+func mistralStitchPages(pdfPath string, page1No, page2No int) ([]byte, error) {
+	doc, err := fitz.New(pdfPath)
+	if err != nil {
+		return nil, fmt.Errorf("open PDF: %w", err)
+	}
+	defer doc.Close()
+
+	img1, err := doc.ImageDPI(page1No-1, 200)
+	if err != nil {
+		return nil, err
+	}
+	img2, err := doc.ImageDPI(page2No-1, 200)
+	if err != nil {
+		return nil, err
+	}
+
+	h1 := img1.Bounds().Dy()
+	h2 := img2.Bounds().Dy()
+	crop1Y := h1 * 75 / 100
+	crop2H := h2 * 40 / 100
+
+	bottom1 := img1.SubImage(image.Rect(0, crop1Y, img1.Bounds().Dx(), h1))
+	top2 := img2.SubImage(image.Rect(0, 0, img2.Bounds().Dx(), crop2H))
+
+	w := bottom1.Bounds().Dx()
+	if top2.Bounds().Dx() > w {
+		w = top2.Bounds().Dx()
+	}
+	h := bottom1.Bounds().Dy() + top2.Bounds().Dy()
+
+	combined := image.NewRGBA(image.Rect(0, 0, w, h))
+	draw.Draw(combined, image.Rect(0, 0, bottom1.Bounds().Dx(), bottom1.Bounds().Dy()),
+		bottom1, bottom1.Bounds().Min, draw.Over)
+	draw.Draw(combined, image.Rect(0, bottom1.Bounds().Dy(), top2.Bounds().Dx(), h),
+		top2, top2.Bounds().Min, draw.Over)
+
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, combined); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// mistralOCRImage sends a PNG to Mistral OCR and returns the markdown text.
+func mistralOCRImage(imgData []byte, apiKey string) (string, error) {
+	b64 := base64.StdEncoding.EncodeToString(imgData)
+	dataURL := "data:image/png;base64," + b64
+
+	reqBody := mistralInternalOCRRequest{
+		Model:    mistralInternalOCRModel,
+		Document: mistralInternalDocument{Type: "image_url", DocumentURL: dataURL},
+	}
+	// image_url uses image_url field not document_url — override via raw map
+	type imgReq struct {
+		Model    string `json:"model"`
+		Document struct {
+			Type     string `json:"type"`
+			ImageURL string `json:"image_url"`
+		} `json:"document"`
+	}
+	req := imgReq{Model: mistralInternalOCRModel}
+	req.Document.Type = "image_url"
+	req.Document.ImageURL = dataURL
+	_ = reqBody
+
+	body, err := json.Marshal(req)
+	if err != nil {
+		return "", err
+	}
+
+	httpReq, err := http.NewRequest("POST", mistralInternalOCREndpoint, bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	var ocrResp mistralInternalOCRResponse
+	if err := json.Unmarshal(respBody, &ocrResp); err != nil {
+		return "", err
+	}
+	if ocrResp.Error != nil {
+		return "", fmt.Errorf("Mistral OCR image error: %s", ocrResp.Error.Message)
+	}
+	var parts []string
+	for _, p := range ocrResp.Pages {
+		parts = append(parts, p.Markdown)
+	}
+	return strings.Join(parts, "\n\n"), nil
 }
 
 // ── Internal region struct (local to this file) ────────────────────────────────

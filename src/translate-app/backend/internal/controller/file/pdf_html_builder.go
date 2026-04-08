@@ -43,9 +43,15 @@ const pdfHTMLTemplate = `<!DOCTYPE html>
         table, th, td {
             border: 1px solid #444;
         }
-        td {
-            padding: 8px;
+        td, th {
+            padding: 6px 8px;
             vertical-align: top;
+            font-size: 0.9em;
+        }
+        th {
+            background: #f5f5f5;
+            font-weight: bold;
+            text-align: center;
         }
         figure {
             margin: 15px 0;
@@ -119,20 +125,28 @@ func assembleStructuredHTML(result *StructuredOCRResult, translated map[string]s
 				if strings.TrimSpace(content) != "" {
 					align := region.Alignment
 					alignStyle := ""
-					if align == "center" || align == "right" {
-						alignStyle = fmt.Sprintf(" style=\"text-align:%s\"", align)
+					tag := "h2"
+					if align == "center" {
+						alignStyle = " style=\"text-align:center\""
+						// ALL-CAPS centered → <h1> (main title / state header)
+						// Mixed-case centered → <h2> centered (subtitle)
+						c := strings.TrimSpace(content)
+						if c == strings.ToUpper(c) && len([]rune(c)) > 3 {
+							tag = "h1"
+						}
+					} else if align == "right" {
+						alignStyle = " style=\"text-align:right\""
 					}
-					// Render each newline-separated line — preserves multi-line titles
 					lines := strings.Split(strings.TrimSpace(content), "\n")
 					var parts []string
 					for _, l := range lines {
 						l = strings.TrimSpace(l)
 						if l != "" {
-							parts = append(parts, escapeHTML(l))
+							parts = append(parts, convertMarkdownInline(l))
 						}
 					}
 					if len(parts) > 0 {
-						body.WriteString(fmt.Sprintf("<h2%s>%s</h2>\n", alignStyle, strings.Join(parts, "<br>\n")))
+						body.WriteString(fmt.Sprintf("<%s%s>%s</%s>\n", tag, alignStyle, strings.Join(parts, "<br>\n"), tag))
 					}
 				}
 
