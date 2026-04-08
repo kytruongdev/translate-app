@@ -171,15 +171,13 @@ func fixMistralCrossPageTables(result *StructuredOCRResult, pdfPath, apiKey stri
 		}
 
 		stitchedRegions := mistralMarkdownToRegions(markdown)
-		origCols := mistralTableColCount(result.Pages[i].Regions[tableIdx].HTML)
 
 		for _, r := range stitchedRegions {
 			if r.typ != "table" || mistralIsLikelyCrossPageTable(r.html) {
 				continue
 			}
-			if mistralTableColCount(r.html) != origCols {
-				continue
-			}
+			// First non-placeholder table in the stitched boundary image is the companion.
+			// (Column count matching is unreliable due to colspan/removeEmptyColumns skew.)
 			merged := mistralMergeCompanionRows(result.Pages[i].Regions[tableIdx].HTML, r.html)
 			result.Pages[i].Regions[tableIdx].HTML = merged
 			break
@@ -210,6 +208,26 @@ func mistralTableColCount(html string) int {
 		return 0
 	}
 	return strings.Count(html[theadIdx:theadIdx+trEnd], "<th>")
+}
+
+// mistralTableDataColCount counts columns from the first data row of a table.
+// Used when the companion table has no <thead> (header-less tables from stitched OCR).
+func mistralTableDataColCount(html string) int {
+	tbodyIdx := strings.Index(html, "<tbody>")
+	if tbodyIdx == -1 {
+		return 0
+	}
+	trStart := strings.Index(html[tbodyIdx:], "<tr>")
+	if trStart == -1 {
+		return 0
+	}
+	region := html[tbodyIdx+trStart:]
+	trEnd := strings.Index(region, "</tr>")
+	if trEnd == -1 {
+		return 0
+	}
+	firstRow := region[:trEnd]
+	return strings.Count(firstRow, "<td>") + strings.Count(firstRow, "<th>")
 }
 
 var (

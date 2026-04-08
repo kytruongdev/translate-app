@@ -143,6 +143,24 @@ func tableColCount(html string) int {
 	return strings.Count(html[theadIdx:theadIdx+trEnd], "<th>")
 }
 
+func tableDataColCount(html string) int {
+	tbodyIdx := strings.Index(html, "<tbody>")
+	if tbodyIdx == -1 {
+		return 0
+	}
+	trStart := strings.Index(html[tbodyIdx:], "<tr>")
+	if trStart == -1 {
+		return 0
+	}
+	region := html[tbodyIdx+trStart:]
+	trEnd := strings.Index(region, "</tr>")
+	if trEnd == -1 {
+		return 0
+	}
+	firstRow := region[:trEnd]
+	return strings.Count(firstRow, "<td>") + strings.Count(firstRow, "<th>")
+}
+
 // reHasBracket detects bracket placeholders like [2.1], [4.1.2] anywhere in a string.
 var reHasBracket = regexp.MustCompile(`\[\d[\d.]*\]`)
 
@@ -207,21 +225,19 @@ func fixCrossPageTables(results []pageResult, pdfPath string, apiKey string) []p
 		// same column count, not a placeholder-only table → merge its data rows
 		// into the original placeholder table (append after existing rows).
 		stitchedRegions := markdownToRegions(markdown)
-		origCols := tableColCount(results[i].regions[tableIdx].HTML)
 
 		for _, r := range stitchedRegions {
 			if r.Type != "table" || isLikelyCrossPageTable(r.HTML) {
 				continue
 			}
-			if tableColCount(r.HTML) != origCols {
-				continue // different table structure — skip
-			}
+			// First non-placeholder table in the stitched boundary image is the companion.
+			// (Column count matching is unreliable due to colspan/removeEmptyColumns skew.)
 			// Merge companion data rows into the original placeholder table
 			merged := mergeCompanionRows(results[i].regions[tableIdx].HTML, r.HTML)
 			results[i].regions[tableIdx].HTML = merged
 			origAfter := strings.Count(merged, "<tr>")
-			fmt.Fprintf(os.Stderr, "[cross-page] ✅ Table merged: +%d rows (cols=%d, total=%d)\n",
-				strings.Count(r.HTML, "<tr>"), origCols, origAfter)
+			fmt.Fprintf(os.Stderr, "[cross-page] ✅ Table merged: +%d rows (total=%d)\n",
+				strings.Count(r.HTML, "<tr>"), origAfter)
 			break
 		}
 	}
