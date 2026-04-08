@@ -107,20 +107,25 @@ func findPythonRunner() *ocrPythonRunner {
 	return &ocrPythonRunner{python: python, script: script}
 }
 
-// runStructuredOCR invokes OCR on the provided page image paths and returns the
-// parsed structured result.
+// runStructuredOCR invokes OCR on the provided inputs and returns the parsed
+// structured result.
 //
-// When openAIKey is non-empty, GPT-4o-mini vision is used instead of the local
-// Python sidecar — this gives significantly better accuracy on Vietnamese legal
-// documents with stamps, seals, and complex tables.
+// Tier order:
+//  1. Mistral OCR (mistral-ocr-latest) — fastest, no PNG needed, best for scanned PDFs.
+//     Used when mistralKey is non-empty. pdfPath must point to the original PDF file.
+//  2. GPT-4o vision — high accuracy, requires pre-rendered imagePaths.
+//     Used when openAIKey is non-empty.
+//  3. Compiled sidecar binary (local, production path)
+//  4. Python interpreter + ocr_sidecar.py (local, dev path)
 //
 // onPage (optional) is called after each page completes: onPage(pagesDone, totalPages).
-//
-// Fallback order when openAIKey is empty:
-//  1. Compiled sidecar binary (production path)
-//  2. Python interpreter + ocr_sidecar.py (dev path)
-func runStructuredOCR(ctx context.Context, imagePaths []string, openAIKey string, onPage func(done, total int)) (*StructuredOCRResult, error) {
-	// GPT-4o-mini vision path — preferred when API key is available.
+func runStructuredOCR(ctx context.Context, imagePaths []string, pdfPath string, mistralKey string, openAIKey string, onPage func(done, total int)) (*StructuredOCRResult, error) {
+	// Tier 1: Mistral OCR — no PNG rendering needed.
+	if mistralKey != "" {
+		return runMistralOCR(ctx, pdfPath, mistralKey, onPage)
+	}
+
+	// Tier 2: GPT-4o vision path.
 	if openAIKey != "" {
 		return runGPTVisionOCR(ctx, imagePaths, openAIKey, onPage)
 	}

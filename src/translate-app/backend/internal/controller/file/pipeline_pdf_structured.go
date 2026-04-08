@@ -33,27 +33,38 @@ const pdfStructuredChunkSize = 2500 // max runes per translation batch
 //  7. Assemble final HTML with translated text + embedded figure images
 //  8. Write source.md + translated.html to disk, update DB, emit events
 func (c *controller) runStructuredPDFTranslate(ctx context.Context, p fileTranslateParams, fail func(string)) {
-	// ── 1. Render PDF pages to PNGs ──────────────────────────────────────────
-	c.log.Info("PDFRenderStart", "fileId", p.FileID, "fileName", filepath.Base(p.FilePath))
-	imagePaths, tempDir, err := renderPDFToImages(ctx, p.FilePath)
-	if err != nil {
-		fail(fmt.Sprintf("không render được PDF: %v", err))
-		return
+	// ── 1. Render PDF pages to PNGs (bỏ qua khi dùng Mistral) ──────────────
+	usingMistral := c.keys.MistralKey != ""
+
+	var imagePaths []string
+	var tempDir string
+
+	if !usingMistral {
+		c.log.Info("PDFRenderStart", "fileId", p.FileID, "fileName", filepath.Base(p.FilePath))
+		var err error
+		imagePaths, tempDir, err = renderPDFToImages(ctx, p.FilePath)
+		if err != nil {
+			fail(fmt.Sprintf("không render được PDF: %v", err))
+			return
+		}
+		c.log.Info("PDFRenderDone", "fileId", p.FileID, "pages", len(imagePaths))
 	}
-	c.log.Info("PDFRenderDone", "fileId", p.FileID, "pages", len(imagePaths))
 
-	// ── 2. Run OCR sidecar ───────────────────────────────────────────────────
-	c.log.Info("OCRStart", "fileId", p.FileID, "pages", len(imagePaths))
+	// ── 2. Run OCR ───────────────────────────────────────────────────────────
+	pageHint := len(imagePaths)
+	if usingMistral {
+		pageHint = p.PageCount // ước tính từ ReadFileInfo
+	}
+	c.log.Info("OCRStart", "fileId", p.FileID, "engine", map[bool]string{true: "mistral", false: "gpt/sidecar"}[usingMistral])
 
-	// Emit initial OCR progress so the FE shows activity instead of a frozen ring.
 	runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{
-		Chunk: 0, Total: len(imagePaths), Percent: 0,
+		Chunk: 0, Total: pageHint, Percent: 0,
 	})
 
-	ocrResult, err := runStructuredOCR(ctx, imagePaths, c.keys.OpenAIKey, func(done, total int) {
+	ocrResult, err := runStructuredOCR(ctx, imagePaths, p.FilePath, c.keys.MistralKey, c.keys.OpenAIKey, func(done, total int) {
 		pct := 0
 		if total > 0 {
-			pct = (done * 50) / total // OCR phase = 0–50 %
+			pct = (done * 50) / total
 		}
 		runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{
 			Chunk: done, Total: total, Percent: pct,
@@ -61,7 +72,7 @@ func (c *controller) runStructuredPDFTranslate(ctx context.Context, p fileTransl
 	})
 	if err != nil {
 		_ = os.RemoveAll(tempDir)
-		fail(fmt.Sprintf("OCR sidecar thất bại: %v", err))
+		fail(fmt.Sprintf("OCR thất bại: %v", err))
 		return
 	}
 	totalRegions := 0
