@@ -452,6 +452,7 @@ func headingAlignment(content string) string {
 // markdownToRegions converts Mistral markdown output to []region for HTML rendering.
 func markdownToRegions(md string) []region {
 	var regions []region
+	seenTable := false // once a table is encountered, subsequent ALL-CAPS blocks are labels/names not headings
 
 	// Split into blocks: blank-line separated
 	blocks := splitBlocks(md)
@@ -481,6 +482,7 @@ func markdownToRegions(md string) []region {
 
 		// Markdown table block
 		if looksLikeTable(block) {
+			seenTable = true
 			html := mdTableToHTML(block)
 			regions = append(regions, region{Type: "table", HTML: html})
 			continue
@@ -497,7 +499,11 @@ func markdownToRegions(md string) []region {
 		// Implied heading block: Mistral outputs ALL-CAPS text without # markers.
 		// Treat ALL-CAPS lines as titles, non-ALL-CAPS follow-up lines as subtitles
 		// (inheriting parent alignment when parent was centered) or plain text.
-		if isImpliedHeadingBlock(block) {
+		//
+		// Exception: once a table has been seen on this page, all subsequent ALL-CAPS
+		// blocks are signature labels / names (e.g. "CHI NHƯƠNG", "LÊ THỊ THU HƯỞNG"),
+		// not section headings — skip implied heading detection for them.
+		if !seenTable && isImpliedHeadingBlock(block) {
 			currentAlign := "left"
 			for _, line := range strings.Split(block, "\n") {
 				line = strings.TrimSpace(line)
