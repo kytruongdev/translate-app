@@ -399,9 +399,17 @@ func mistralMarkdownToRegions(md string) []mistralRegion {
 
 		// Table
 		if mistralLooksLikeTable(block) {
-			seenTable = true
-			html := mistralMDTableToHTML(block)
-			regions = append(regions, mistralRegion{typ: "table", html: html})
+			if mistralIsLabelValueTable(block) {
+				// 2-column label : value form layout — render as plain text, not a table.
+				text := mistralLabelValueTableToText(block)
+				if text != "" {
+					regions = append(regions, mistralRegion{typ: "text", content: text, alignment: "left"})
+				}
+			} else {
+				seenTable = true
+				html := mistralMDTableToHTML(block)
+				regions = append(regions, mistralRegion{typ: "table", html: html})
+			}
 			continue
 		}
 
@@ -578,6 +586,57 @@ func mistralLooksLikeTable(block string) bool {
 		}
 	}
 	return count >= 2
+}
+
+// mistralIsLabelValueTable returns true when every data row of the markdown table
+// has exactly 2 columns and the second column starts with ":" — the pattern
+// Mistral uses for Vietnamese form documents that visually align label : value pairs
+// (e.g. "| Họ và tên | : Đặng Thị Hiền |"). These should be plain text, not tables.
+func mistralIsLabelValueTable(block string) bool {
+	joined := mistralJoinTableContinuations(block)
+	lines := strings.Split(joined, "\n")
+	rowCount := 0
+	for _, l := range lines {
+		t := strings.TrimSpace(l)
+		if !strings.HasPrefix(t, "|") {
+			continue
+		}
+		if mistralIsSeparatorRow(t) {
+			continue
+		}
+		cells := mistralSplitTableRow(t)
+		if len(cells) != 2 {
+			return false
+		}
+		if !strings.HasPrefix(strings.TrimSpace(cells[1]), ":") {
+			return false
+		}
+		rowCount++
+	}
+	return rowCount >= 2
+}
+
+// mistralLabelValueTableToText converts a 2-column label:value markdown table to
+// plain text lines "Label : Value" (preserving the colon already in column 2).
+func mistralLabelValueTableToText(block string) string {
+	joined := mistralJoinTableContinuations(block)
+	lines := strings.Split(joined, "\n")
+	var parts []string
+	for _, l := range lines {
+		t := strings.TrimSpace(l)
+		if !strings.HasPrefix(t, "|") || mistralIsSeparatorRow(t) {
+			continue
+		}
+		cells := mistralSplitTableRow(t)
+		if len(cells) == 2 {
+			label := strings.TrimSpace(cells[0])
+			value := strings.TrimSpace(cells[1])
+			if label != "" || value != "" {
+				parts = append(parts, label+" "+value)
+			}
+		}
+	}
+	return strings.Join(parts, "\n")
 }
 
 func mistralJoinTableContinuations(block string) string {
