@@ -22,6 +22,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -176,6 +177,23 @@ func main() {
 		}
 		for _, p := range pages {
 			fmt.Printf("  Page %d… %d regions\n", p.pageNo, len(p.regions))
+		}
+	} else if engine == "pixtral" {
+		// ── Mistral Vision (Pixtral) path ─────────────────────────────────
+		mistralKey := config.Keys.MistralKey
+		if mistralKey == "" {
+			fmt.Fprintln(os.Stderr, "ERROR: MistralKey not set in config/keys.go")
+			os.Exit(1)
+		}
+		if pageFilter != nil {
+			fmt.Printf("  Testing pages: %s\n", formatPageFilter(pageFilter))
+		}
+		fmt.Println("Running Pixtral vision OCR…")
+		var err error
+		pages, err = runMistralVision(pdfPath, pageFilter, mistralKey)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+			os.Exit(1)
 		}
 	} else {
 		// ── GPT vision path ───────────────────────────────────────────────
@@ -645,22 +663,30 @@ th { background: #f5f5f5; font-weight: bold; }
 }
 `
 
+var (
+	reMDBold   = regexp.MustCompile(`\*\*(.+?)\*\*`)
+	reMDItalic = regexp.MustCompile(`\*([^*\n]+?)\*`)
+)
+
 func esc(s string) string {
 	r := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;")
 	return r.Replace(s)
 }
 
 // contentHTML renders region content as HTML:
+// - Converts markdown **bold** and *italic* to <strong>/<em>
 // - Preserves inline tags (<strong>, <em>, <u>) from GPT
 // - Converts \n to <br> so line breaks are visible
 // - Escapes plain text
 func contentHTML(s string) string {
+	// Convert markdown inline syntax first (before escaping)
+	s = reMDBold.ReplaceAllString(s, "<strong>$1</strong>")
+	s = reMDItalic.ReplaceAllString(s, "<em>$1</em>")
+
 	hasInline := strings.Contains(s, "<strong>") || strings.Contains(s, "<em>") || strings.Contains(s, "<u>")
 	if hasInline {
-		// Has inline HTML — convert \n to <br> but keep inline tags
 		return strings.ReplaceAll(s, "\n", "<br>")
 	}
-	// Plain text — escape then convert \n to <br>
 	return strings.ReplaceAll(esc(s), "\n", "<br>")
 }
 

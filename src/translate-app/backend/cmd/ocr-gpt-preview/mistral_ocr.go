@@ -10,11 +10,16 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/draw"
+	"image/png"
 	"io"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
+
+	"github.com/gen2brain/go-fitz"
 )
 
 const mistralOCREndpoint = "https://api.mistral.ai/v1/ocr"
@@ -31,6 +36,7 @@ type mistralOCRRequest struct {
 type mistralDocument struct {
 	Type        string `json:"type"`
 	DocumentURL string `json:"document_url,omitempty"`
+	ImageURL    string `json:"image_url,omitempty"`
 }
 
 type mistralOCRResponse struct {
@@ -45,6 +51,9 @@ type mistralPage struct {
 // ── Main entry point ──────────────────────────────────────────────────────────
 
 // runMistralOCR sends the PDF to Mistral OCR and returns pageResults.
+// After the first pass, it runs a cross-page table fix:
+// any page whose last region is a table gets re-OCR'd together with the next page
+// (as a stitched PNG image) so Mistral sees the full cross-page table in one context.
 // pageFilter is 1-indexed (same convention as CLI --pages flag); nil = all pages.
 func runMistralOCR(pdfPath string, pageFilter map[int]bool, apiKey string) ([]pageResult, error) {
 	// Read PDF
@@ -111,7 +120,244 @@ func runMistralOCR(pdfPath string, pageFilter map[int]bool, apiKey string) ([]pa
 			regions: regions,
 		})
 	}
+
+	// Pass 2: fix cross-page tables
+	results = fixCrossPageTables(results, pdfPath, apiKey)
+
 	return results, nil
+}
+
+// ── Cross-page table fix (Pass 2) ────────────────────────────────────────────
+
+// tableColCount counts the number of <th> cells in the first header row of a table HTML.
+// Used to match tables with the same structure across stitched OCR results.
+func tableColCount(html string) int {
+	theadIdx := strings.Index(html, "<thead>")
+	if theadIdx == -1 {
+		return 0
+	}
+	trEnd := strings.Index(html[theadIdx:], "</tr>")
+	if trEnd == -1 {
+		return 0
+	}
+	return strings.Count(html[theadIdx:theadIdx+trEnd], "<th>")
+}
+
+// reHasBracket detects bracket placeholders like [2.1], [4.1.2] anywhere in a string.
+var reHasBracket = regexp.MustCompile(`\[\d[\d.]*\]`)
+
+// isLikelyCrossPageTable returns true when a table is missing its actual data rows —
+// specifically: the tbody has exactly 1 row AND that row contains bracket placeholders.
+// This catches templates like "| [2.1] | [2.2] | [2.3] |" which are header templates
+// whose real data rows are on the next page.
+func isLikelyCrossPageTable(html string) bool {
+	// Must contain at least one bracket placeholder somewhere in the HTML
+	if !reHasBracket.MatchString(html) {
+		return false
+	}
+	// Count <tr> inside <tbody> (data rows only, not header)
+	tbodyIdx := strings.Index(html, "<tbody>")
+	if tbodyIdx == -1 {
+		return false
+	}
+	dataRows := strings.Count(html[tbodyIdx:], "<tr>")
+	// Exactly 1 data row = template row only, real data is on next page
+	return dataRows == 1
+}
+
+// fixCrossPageTables scans all table regions on each page. If a table has only
+// placeholder data rows (e.g. [2.1], [2.2] — indicating the real data is on the
+// next page), it stitches that page + the next page into one PNG, re-OCRs with
+// Mistral, and replaces the incomplete table with the complete one.
+func fixCrossPageTables(results []pageResult, pdfPath string, apiKey string) []pageResult {
+	for i := 0; i < len(results)-1; i++ {
+		// Find any table on this page that has only placeholder rows
+		tableIdx := -1
+		for j, r := range results[i].regions {
+			if r.Type == "table" && isLikelyCrossPageTable(r.HTML) {
+				tableIdx = j
+				break
+			}
+		}
+		if tableIdx == -1 {
+			continue
+		}
+
+		pageNo := results[i].pageNo
+		nextPageNo := results[i+1].pageNo
+		fmt.Fprintf(os.Stderr, "\n[cross-page] Page %d has placeholder-only table (region %d) → stitching with page %d\n",
+			pageNo, tableIdx, nextPageNo)
+
+		// Stitch the 2 pages into one tall PNG
+		stitchedPNG, err := renderAndStitchPages(pdfPath, pageNo, nextPageNo)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[cross-page] stitch error: %v\n", err)
+			continue
+		}
+
+		// Re-OCR the stitched image with Mistral OCR
+		markdown, err := callMistralOCRImage(stitchedPNG, apiKey)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[cross-page] OCR image error: %v\n", err)
+			continue
+		}
+		fmt.Fprintf(os.Stderr, "[cross-page] stitched markdown (%d chars):\n%s\n", len(markdown), markdown)
+
+		// Find the companion table in the stitched result:
+		// same column count, not a placeholder-only table → merge its data rows
+		// into the original placeholder table (append after existing rows).
+		stitchedRegions := markdownToRegions(markdown)
+		origCols := tableColCount(results[i].regions[tableIdx].HTML)
+
+		for _, r := range stitchedRegions {
+			if r.Type != "table" || isLikelyCrossPageTable(r.HTML) {
+				continue
+			}
+			if tableColCount(r.HTML) != origCols {
+				continue // different table structure — skip
+			}
+			// Merge companion data rows into the original placeholder table
+			merged := mergeCompanionRows(results[i].regions[tableIdx].HTML, r.HTML)
+			results[i].regions[tableIdx].HTML = merged
+			origAfter := strings.Count(merged, "<tr>")
+			fmt.Fprintf(os.Stderr, "[cross-page] ✅ Table merged: +%d rows (cols=%d, total=%d)\n",
+				strings.Count(r.HTML, "<tr>"), origCols, origAfter)
+			break
+		}
+	}
+	return results
+}
+
+var (
+	reThOpen       = regexp.MustCompile(`<th(\b[^>]*)?>`)
+	reThClose      = regexp.MustCompile(`</th>`)
+	reColspanAttr  = regexp.MustCompile(`\s+colspan="\d+"`)
+)
+
+// mergeCompanionRows takes the original placeholder table HTML and appends
+// all <tr> rows from the companion table (converting any <th> to <td> so they
+// become proper data rows rather than a second header).
+// This reconstructs the complete cross-page table from its two halves.
+func mergeCompanionRows(originalHTML, companionHTML string) string {
+	reTR := regexp.MustCompile(`(?s)<tr>.*?</tr>`)
+	companionRows := reTR.FindAllString(companionHTML, -1)
+
+	var extra strings.Builder
+	for _, row := range companionRows {
+		// Convert <th ...> → <td ...> (companion rows are data rows, not headers)
+		row = reThOpen.ReplaceAllString(row, "<td$1>")
+		row = reThClose.ReplaceAllString(row, "</td>")
+		// Strip colspan from all cells — colspan was applied because the row appeared
+		// as a "header" in the stitched OCR, but it's actually a data row
+		row = reColspanAttr.ReplaceAllString(row, "")
+		extra.WriteString(row)
+	}
+
+	// Inject before the closing </tbody></table>
+	return strings.Replace(originalHTML, "</tbody></table>", extra.String()+"</tbody></table>", 1)
+}
+
+// renderAndStitchPages renders the BOUNDARY REGION between two pages:
+// bottom 50% of page1 + top 35% of page2, stitched vertically.
+// This focuses Mistral OCR on the cross-page area rather than full pages,
+// which avoids truncation and keeps the image compact.
+func renderAndStitchPages(pdfPath string, page1No, page2No int) ([]byte, error) {
+	doc, err := fitz.New(pdfPath)
+	if err != nil {
+		return nil, fmt.Errorf("open PDF: %w", err)
+	}
+	defer doc.Close()
+
+	img1, err := doc.ImageDPI(page1No-1, 200)
+	if err != nil {
+		return nil, fmt.Errorf("render page %d: %w", page1No, err)
+	}
+	img2, err := doc.ImageDPI(page2No-1, 200)
+	if err != nil {
+		return nil, fmt.Errorf("render page %d: %w", page2No, err)
+	}
+
+	// Crop tight around the page boundary:
+	// bottom 25% of page1 (where the cross-page table header sits)
+	// top 20% of page2 (where the orphaned data rows are)
+	// Keeping the crop tight removes visual inter-page gaps and context noise.
+	h1 := img1.Bounds().Dy()
+	h2 := img2.Bounds().Dy()
+	crop1Y := h1 * 75 / 100 // start at 75% of page1 → bottom 25%
+	crop2H := h2 * 40 / 100 // top 40% of page2
+
+	// *image.RGBA has SubImage directly
+	bottom1 := img1.SubImage(image.Rect(0, crop1Y, img1.Bounds().Dx(), h1))
+	top2 := img2.SubImage(image.Rect(0, 0, img2.Bounds().Dx(), crop2H))
+
+	w := bottom1.Bounds().Dx()
+	if top2.Bounds().Dx() > w {
+		w = top2.Bounds().Dx()
+	}
+	h := bottom1.Bounds().Dy() + top2.Bounds().Dy()
+
+	combined := image.NewRGBA(image.Rect(0, 0, w, h))
+	draw.Draw(combined, image.Rect(0, 0, bottom1.Bounds().Dx(), bottom1.Bounds().Dy()),
+		bottom1, bottom1.Bounds().Min, draw.Over)
+	draw.Draw(combined, image.Rect(0, bottom1.Bounds().Dy(), top2.Bounds().Dx(), h),
+		top2, top2.Bounds().Min, draw.Over)
+
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, combined); err != nil {
+		return nil, fmt.Errorf("encode PNG: %w", err)
+	}
+	fmt.Fprintf(os.Stderr, "[cross-page] stitched boundary image: %dx%d px\n", w, h)
+	return buf.Bytes(), nil
+}
+
+// callMistralOCRImage sends a PNG image to the Mistral OCR API and returns
+// the markdown of the first (and only) page in the response.
+func callMistralOCRImage(imgData []byte, apiKey string) (string, error) {
+	b64 := base64.StdEncoding.EncodeToString(imgData)
+	dataURL := "data:image/png;base64," + b64
+
+	req := mistralOCRRequest{
+		Model:    mistralOCRModel,
+		Document: mistralDocument{Type: "image_url", ImageURL: dataURL},
+	}
+
+	body, err := json.Marshal(req)
+	if err != nil {
+		return "", err
+	}
+
+	httpReq, err := http.NewRequest("POST", mistralOCREndpoint, bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		return "", fmt.Errorf("HTTP: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("Mistral API error %d: %s", resp.StatusCode, truncate(string(respBody), 300))
+	}
+
+	var ocrResp mistralOCRResponse
+	if err := json.Unmarshal(respBody, &ocrResp); err != nil {
+		return "", fmt.Errorf("parse response: %w", err)
+	}
+	if len(ocrResp.Pages) == 0 {
+		return "", fmt.Errorf("no pages in response")
+	}
+
+	// Concatenate all pages (stitched image might return 1 or 2 pages)
+	var parts []string
+	for _, p := range ocrResp.Pages {
+		parts = append(parts, p.Markdown)
+	}
+	return strings.Join(parts, "\n\n"), nil
 }
 
 // ── Markdown → regions converter ─────────────────────────────────────────────
@@ -183,21 +429,125 @@ func splitBlocks(md string) []string {
 	return blocks
 }
 
-// looksLikeTable returns true if the block contains markdown table rows.
-func looksLikeTable(block string) bool {
+// joinTableContinuations handles Mistral's multi-line cell content.
+// Mistral sometimes emits table rows with line breaks inside cells:
+//
+//	|  STT | Số tờ khai/
+//	Số quyết định/
+//	Mã định danh | ... |
+//
+// This joins each non-| continuation line onto the preceding | line with <br>.
+func joinTableContinuations(block string) string {
 	lines := strings.Split(block, "\n")
+	var result []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			result = append(result, line)
+			continue
+		}
+		if len(result) > 0 && !strings.HasPrefix(trimmed, "|") {
+			result[len(result)-1] += "<br>" + trimmed
+		} else {
+			result = append(result, line)
+		}
+	}
+	return strings.Join(result, "\n")
+}
+
+// looksLikeTable returns true if the block contains markdown table rows.
+// Joins continuations first so multi-line cells are counted correctly.
+func looksLikeTable(block string) bool {
+	joined := joinTableContinuations(block)
+	lines := strings.Split(joined, "\n")
 	tableLines := 0
 	for _, l := range lines {
 		l = strings.TrimSpace(l)
-		if strings.HasPrefix(l, "|") && strings.HasSuffix(l, "|") {
+		if strings.HasPrefix(l, "|") {
 			tableLines++
 		}
 	}
 	return tableLines >= 2
 }
 
+// rightColumnPrefixes are line prefixes that belong in the RIGHT column of
+// Vietnamese government form bordered boxes (KBNN/bank sections).
+// Mistral collapses all content into cell 0; we redistribute these lines back.
+var rightColumnPrefixes = []string{
+	"Nợ TK:", "Có TK:", "No TK:", "Co TK:",
+	"Phí:", "Phi:", "VAT:", "Vat:",
+}
+
+func isRightColumnLine(line string) bool {
+	t := strings.TrimSpace(line)
+	for _, p := range rightColumnPrefixes {
+		if strings.HasPrefix(t, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// redistributeColumns restores the 2-column layout for bordered boxes where
+// Mistral collapsed everything into column 0. It detects when:
+//  1. All non-first cells are empty across all rows, AND
+//  2. Some lines in cell 0 match rightColumnPrefixes
+//
+// When detected, those lines are moved to the last cell of each row.
+// Returns the (possibly modified) rows and whether redistribution was applied.
+// When redistribution is applied the table is a section box (not a data table)
+// and should be rendered entirely with <td> rather than <th>.
+func redistributeColumns(rows [][]string) ([][]string, bool) {
+	if len(rows) == 0 || len(rows[0]) < 2 {
+		return rows, false
+	}
+	// Check all non-first cells are empty
+	for _, row := range rows {
+		for _, cell := range row[1:] {
+			if strings.TrimSpace(cell) != "" {
+				return rows, false // already has right-column content
+			}
+		}
+	}
+	// Check at least one row has right-column lines in cell 0
+	hasRight := false
+	for _, row := range rows {
+		for _, line := range strings.Split(row[0], "<br>") {
+			if isRightColumnLine(line) {
+				hasRight = true
+				break
+			}
+		}
+		if hasRight {
+			break
+		}
+	}
+	if !hasRight {
+		return rows, false
+	}
+
+	result := make([][]string, len(rows))
+	for i, row := range rows {
+		newRow := make([]string, len(row))
+		copy(newRow, row)
+		var left, right []string
+		for _, line := range strings.Split(row[0], "<br>") {
+			if isRightColumnLine(line) {
+				right = append(right, line)
+			} else {
+				left = append(left, line)
+			}
+		}
+		newRow[0] = strings.Join(left, "<br>")
+		newRow[len(newRow)-1] = strings.Join(right, "<br>")
+		result[i] = newRow
+	}
+	return result, true
+}
+
 // mdTableToHTML converts a markdown table to an HTML table.
 func mdTableToHTML(block string) string {
+	block = joinTableContinuations(block)
 	lines := strings.Split(block, "\n")
 	var rows [][]string
 	var isHeader []bool
@@ -227,24 +577,26 @@ func mdTableToHTML(block string) string {
 		_ = separatorSeen
 	}
 
+	// Restore 2-column layout for boxes where Mistral collapsed everything to column 0.
+	// If redistribution was applied, this is a section box — render all rows as <td>.
+	var sectionBox bool
+	rows, sectionBox = redistributeColumns(rows)
+	if sectionBox {
+		for i := range isHeader {
+			isHeader[i] = false
+		}
+	}
+
 	var b strings.Builder
 	b.WriteString(`<table border="1" style="border-collapse:collapse;width:100%">`)
 	for i, row := range rows {
 		if isHeader[i] {
 			b.WriteString("<thead><tr>")
-			for _, cell := range row {
-				b.WriteString("<th>")
-				b.WriteString(cell)
-				b.WriteString("</th>")
-			}
+			writeRowCells(row, "th", true, &b)
 			b.WriteString("</tr></thead><tbody>")
 		} else {
 			b.WriteString("<tr>")
-			for _, cell := range row {
-				b.WriteString("<td>")
-				b.WriteString(cell)
-				b.WriteString("</td>")
-			}
+			writeRowCells(row, "td", false, &b)
 			b.WriteString("</tr>")
 		}
 	}
@@ -277,4 +629,31 @@ func splitTableRow(line string) []string {
 		cells = append(cells, strings.TrimSpace(p))
 	}
 	return cells
+}
+
+// writeRowCells writes table cells for one row.
+// colspan is only applied for header rows (isHeader=true): a non-empty header cell
+// followed by empty cells is treated as a merged group header.
+// For data rows, all cells are rendered individually — empty cells are genuinely
+// empty data cells, not merged cells, and applying colspan there causes incorrect rendering.
+func writeRowCells(cells []string, tag string, isHeader bool, b *strings.Builder) {
+	i := 0
+	for i < len(cells) {
+		content := cells[i]
+		span := 1
+		if isHeader && strings.TrimSpace(content) != "" {
+			// Only merge empty cells into colspan for header rows
+			for j := i + 1; j < len(cells) && strings.TrimSpace(cells[j]) == ""; j++ {
+				span++
+			}
+		}
+		if span > 1 {
+			fmt.Fprintf(b, `<%s colspan="%d">`, tag, span)
+		} else {
+			b.WriteString("<" + tag + ">")
+		}
+		b.WriteString(content)
+		b.WriteString("</" + tag + ">")
+		i += span
+	}
 }
