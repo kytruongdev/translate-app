@@ -33,35 +33,14 @@ const pdfStructuredChunkSize = 2500 // max runes per translation batch
 //  7. Assemble final HTML with translated text + embedded figure images
 //  8. Write source.md + translated.html to disk, update DB, emit events
 func (c *controller) runStructuredPDFTranslate(ctx context.Context, p fileTranslateParams, fail func(string)) {
-	// ── 1. Render PDF pages to PNGs (bỏ qua khi dùng Mistral) ──────────────
-	usingMistral := c.keys.MistralKey != ""
-
-	var imagePaths []string
-	var tempDir string
-
-	if !usingMistral {
-		c.log.Info("PDFRenderStart", "fileId", p.FileID, "fileName", filepath.Base(p.FilePath))
-		var err error
-		imagePaths, tempDir, err = renderPDFToImages(ctx, p.FilePath)
-		if err != nil {
-			fail(fmt.Sprintf("không render được PDF: %v", err))
-			return
-		}
-		c.log.Info("PDFRenderDone", "fileId", p.FileID, "pages", len(imagePaths))
-	}
-
-	// ── 2. Run OCR ───────────────────────────────────────────────────────────
-	pageHint := len(imagePaths)
-	if usingMistral {
-		pageHint = p.PageCount // ước tính từ ReadFileInfo
-	}
-	c.log.Info("OCRStart", "fileId", p.FileID, "engine", map[bool]string{true: "mistral", false: "gpt/sidecar"}[usingMistral])
+	// ── 1. Run Mistral OCR (không cần render PNG) ────────────────────────────
+	c.log.Info("OCRStart", "fileId", p.FileID, "engine", "mistral")
 
 	runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{
-		Chunk: 0, Total: pageHint, Percent: 0,
+		Chunk: 0, Total: p.PageCount, Percent: 0,
 	})
 
-	ocrResult, err := runStructuredOCR(ctx, imagePaths, p.FilePath, c.keys.MistralKey, c.keys.OpenAIKey, func(done, total int) {
+	ocrResult, err := runMistralOCR(ctx, p.FilePath, c.keys.MistralKey, func(done, total int) {
 		pct := 0
 		if total > 0 {
 			pct = (done * 50) / total
@@ -71,8 +50,7 @@ func (c *controller) runStructuredPDFTranslate(ctx context.Context, p fileTransl
 		})
 	})
 	if err != nil {
-		_ = os.RemoveAll(tempDir)
-		fail(fmt.Sprintf("OCR thất bại: %v", err))
+		fail(fmt.Sprintf("Mistral OCR thất bại: %v", err))
 		return
 	}
 	totalRegions := 0
@@ -81,13 +59,7 @@ func (c *controller) runStructuredPDFTranslate(ctx context.Context, p fileTransl
 	}
 	c.log.Info("OCRDone", "fileId", p.FileID, "pages", len(ocrResult.Pages), "totalRegions", totalRegions)
 
-	// ── 3. Crop figures to Base64 ────────────────────────────────────────────
-	figureCrops := extractFigureCrops(ocrResult, imagePaths)
-
-	// ── 4. Delete temp PNGs (before any heavy translation work) ─────────────
-	_ = os.RemoveAll(tempDir)
-
-	// ── 5. Prepare storage directory ────────────────────────────────────────
+	// ── 2. Prepare storage directory ────────────────────────────────────────
 	dir, err := userFilesDir()
 	if err != nil {
 		fail(err.Error())
@@ -176,7 +148,7 @@ func (c *controller) runStructuredPDFTranslate(ctx context.Context, p fileTransl
 
 	// ── 10. Assemble HTML ────────────────────────────────────────────────────
 	c.log.Info("AssembleHTMLStart", "fileId", p.FileID, "translatedKeys", len(translated))
-	htmlContent, err := assembleStructuredHTML(ocrResult, translated, figureCrops)
+	htmlContent, err := assembleStructuredHTML(ocrResult, translated, nil)
 	if err != nil {
 		fail(fmt.Sprintf("lỗi tạo HTML: %v", err))
 		return
