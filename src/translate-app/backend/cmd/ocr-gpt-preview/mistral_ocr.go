@@ -372,6 +372,26 @@ var (
 	reRomanPrefix  = regexp.MustCompile(`(?i)^(X{0,3})(IX|IV|V?I{0,3})\.`)
 )
 
+// headingAlignment returns "center" or "left" for a heading's content.
+// Rules:
+//   - Roman numeral prefix (I., II., III. …) → always left (section heading)
+//   - ALL-CAPS content at any level → center (document titles, state headers)
+//   - "Độc lập" / "Hạnh phúc" → center (Vietnamese state header subtitle)
+//   - Everything else → left
+func headingAlignment(content string) string {
+	if reRomanPrefix.MatchString(strings.TrimSpace(content)) {
+		return "left"
+	}
+	if strings.Contains(content, "Độc lập") || strings.Contains(content, "Hạnh phúc") {
+		return "center"
+	}
+	c := strings.TrimSpace(content)
+	if c == strings.ToUpper(c) && len([]rune(c)) > 3 {
+		return "center"
+	}
+	return "left"
+}
+
 // markdownToRegions converts Mistral markdown output to []region for HTML rendering.
 func markdownToRegions(md string) []region {
 	var regions []region
@@ -405,23 +425,32 @@ func markdownToRegions(md string) []region {
 
 		// Heading
 		if m := reHeading.FindStringSubmatch(block); m != nil {
-			level := len(m[1]) // number of # chars
 			content := strings.TrimSpace(m[2])
-			alignment := "left"
-			// Center only when ALL conditions met:
-			//   1. Level-1 heading (#)
-			//   2. Content is ALL-CAPS (main document titles in VN docs are all-caps)
-			//   3. No Roman numeral prefix (section headings like "I.", "II.", ...)
-			isAllCaps := content == strings.ToUpper(content) && len([]rune(content)) > 3
-			if level == 1 && isAllCaps && !reRomanPrefix.MatchString(content) {
-				alignment = "center"
+			regions = append(regions, region{Type: "title", Content: content, Alignment: headingAlignment(content)})
+
+			// Process continuation lines in the same block (Mistral sometimes puts a
+			// subtitle on the very next line with no blank line, e.g.:
+			//   # THÔNG BÁO NỘP TIỀN
+			//   Về thuế thu nhập cá nhân...   ← lost without this
+			//
+			//   # CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
+			//   Độc lập - Tự do - Hạnh phúc  ← lost without this)
+			lines := strings.Split(block, "\n")
+			parentAlign := headingAlignment(content)
+			for _, line := range lines[1:] {
+				line = strings.TrimSpace(line)
+				if line == "" {
+					continue
+				}
+				if mm := reHeading.FindStringSubmatch(line); mm != nil {
+					// Another heading on the next line (e.g. ## HỢP ĐỒNG MUA BÁN NHÀ Ở)
+					c2 := strings.TrimSpace(mm[2])
+					regions = append(regions, region{Type: "title", Content: c2, Alignment: headingAlignment(c2)})
+				} else {
+					// Subtitle / continuation text — inherit parent heading alignment
+					regions = append(regions, region{Type: "title", Content: line, Alignment: parentAlign})
+				}
 			}
-			// Special case: Vietnamese state header subtitle is always centered
-			// regardless of heading level ("Độc lập - Tự do - Hạnh phúc")
-			if strings.Contains(content, "Độc lập") || strings.Contains(content, "Hạnh phúc") {
-				alignment = "center"
-			}
-			regions = append(regions, region{Type: "title", Content: content, Alignment: alignment})
 			continue
 		}
 
