@@ -363,9 +363,13 @@ func callMistralOCRImage(imgData []byte, apiKey string) (string, error) {
 // ── Markdown → regions converter ─────────────────────────────────────────────
 
 var (
-	reMDTable = regexp.MustCompile(`(?m)^\|.+\|[ \t]*$`)
-	reHeading = regexp.MustCompile(`^(#{1,4})\s+(.+)`)
-	reImgTag  = regexp.MustCompile(`!\[.*?\]\(.*?\)`)
+	reMDTable      = regexp.MustCompile(`(?m)^\|.+\|[ \t]*$`)
+	reHeading      = regexp.MustCompile(`^(#{1,4})\s+(.+)`)
+	reImgTag       = regexp.MustCompile(`!\[.*?\]\(.*?\)`)
+	// reRomanPrefix matches headings that start with a Roman numeral section number,
+	// e.g. "I.", "II.", "III.", "IV.", "V.", "VI.", "VII.", "VIII.", "IX.", "X."
+	// These are section headings (→ left), not the main document title (→ center).
+	reRomanPrefix  = regexp.MustCompile(`(?i)^(X{0,3})(IX|IV|V?I{0,3})\.`)
 )
 
 // markdownToRegions converts Mistral markdown output to []region for HTML rendering.
@@ -377,6 +381,12 @@ func markdownToRegions(md string) []region {
 	for _, block := range blocks {
 		block = strings.TrimSpace(block)
 		if block == "" {
+			continue
+		}
+
+		// Skip scanner watermarks (CamScanner, etc.)
+		lowerBlock := strings.ToLower(block)
+		if strings.Contains(lowerBlock, "scanned with") || strings.Contains(lowerBlock, "camscanner") {
 			continue
 		}
 
@@ -395,7 +405,23 @@ func markdownToRegions(md string) []region {
 
 		// Heading
 		if m := reHeading.FindStringSubmatch(block); m != nil {
-			regions = append(regions, region{Type: "title", Content: m[2], Alignment: "left"})
+			level := len(m[1]) // number of # chars
+			content := strings.TrimSpace(m[2])
+			alignment := "left"
+			// Center only when ALL conditions met:
+			//   1. Level-1 heading (#)
+			//   2. Content is ALL-CAPS (main document titles in VN docs are all-caps)
+			//   3. No Roman numeral prefix (section headings like "I.", "II.", ...)
+			isAllCaps := content == strings.ToUpper(content) && len([]rune(content)) > 3
+			if level == 1 && isAllCaps && !reRomanPrefix.MatchString(content) {
+				alignment = "center"
+			}
+			// Special case: Vietnamese state header subtitle is always centered
+			// regardless of heading level ("Độc lập - Tự do - Hạnh phúc")
+			if strings.Contains(content, "Độc lập") || strings.Contains(content, "Hạnh phúc") {
+				alignment = "center"
+			}
+			regions = append(regions, region{Type: "title", Content: content, Alignment: alignment})
 			continue
 		}
 
@@ -405,7 +431,11 @@ func markdownToRegions(md string) []region {
 	return regions
 }
 
-// splitBlocks splits markdown by blank lines, keeping table blocks together.
+// splitBlocks splits markdown into logical blocks.
+// Blank lines are the primary delimiter.
+// Each line starting with '#' is also forced into its own block, so that
+// consecutive heading lines (e.g. "# Title\n## Subtitle" with no blank line)
+// are processed independently rather than the second heading being lost.
 func splitBlocks(md string) []string {
 	lines := strings.Split(md, "\n")
 	var blocks []string
@@ -419,11 +449,16 @@ func splitBlocks(md string) []string {
 	}
 
 	for _, line := range lines {
-		if strings.TrimSpace(line) == "" {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
 			flush()
-		} else {
-			cur = append(cur, line)
+			continue
 		}
+		// Each heading line starts its own block
+		if strings.HasPrefix(trimmed, "#") {
+			flush()
+		}
+		cur = append(cur, line)
 	}
 	flush()
 	return blocks
@@ -545,6 +580,23 @@ func redistributeColumns(rows [][]string) ([][]string, bool) {
 	return result, true
 }
 
+// detectSectionBox returns true when any cell in the table contains
+// right-column keywords (Nợ TK, Có TK, Phí, VAT, etc.).
+// Such tables are government form section boxes (KBNN / bank sections),
+// not data tables — all rows should render as <td>, not <th>.
+func detectSectionBox(rows [][]string) bool {
+	for _, row := range rows {
+		for _, cell := range row {
+			for _, line := range strings.Split(cell, "<br>") {
+				if isRightColumnLine(line) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // mdTableToHTML converts a markdown table to an HTML table.
 func mdTableToHTML(block string) string {
 	block = joinTableContinuations(block)
@@ -577,10 +629,17 @@ func mdTableToHTML(block string) string {
 		_ = separatorSeen
 	}
 
-	// Restore 2-column layout for boxes where Mistral collapsed everything to column 0.
-	// If redistribution was applied, this is a section box — render all rows as <td>.
-	var sectionBox bool
-	rows, sectionBox = redistributeColumns(rows)
+	// Section box detection (KBNN / bank sections):
+	// 1. Check all cells for right-column keywords (handles case where Mistral
+	//    already put them in the correct column, e.g. CIPUTRA page 15).
+	// 2. Also try redistributeColumns for the collapsed-to-col-0 case (BDS Kim Chung).
+	// Either way → render all rows as <td> (no bold header styling).
+	sectionBox := detectSectionBox(rows)
+	var wasRedistributed bool
+	rows, wasRedistributed = redistributeColumns(rows)
+	if wasRedistributed {
+		sectionBox = true
+	}
 	if sectionBox {
 		for i := range isHeader {
 			isHeader[i] = false

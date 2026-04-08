@@ -18,6 +18,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"html"
 	"image"
 	"image/png"
 	"os"
@@ -630,10 +631,12 @@ body {
     top: 10px;
     right: 16px;
 }
-h2 { font-size: 1.1em; font-weight: bold; margin: 16px 0 8px; }
-p { margin: 0 0 10px; text-align: justify; }
-table { width: 100%%; border-collapse: collapse; margin: 16px 0; }
-td, th { border: 1px solid #555; padding: 6px 8px; vertical-align: top; font-size: .95em; }
+h1 { font-size: 1.3em; font-weight: bold; margin: 18px 0 10px; text-align: center; }
+h2 { font-size: 1.1em; font-weight: bold; margin: 14px 0 6px; }
+p  { margin: 2px 0 3px; font-size: 0.9em; line-height: 1.45; }
+.inline-fields { margin: 3px 0; font-size: 0.9em; line-height: 1.45; }
+table { width: 100%%; border-collapse: collapse; margin: 10px 0; }
+td, th { border: 1px solid #555; padding: 5px 7px; vertical-align: top; font-size: .88em; }
 th { background: #f5f5f5; font-weight: bold; }
 .figure-placeholder {
     font-family: 'Segoe UI', sans-serif;
@@ -679,6 +682,9 @@ func esc(s string) string {
 // - Converts \n to <br> so line breaks are visible
 // - Escapes plain text
 func contentHTML(s string) string {
+	// Unescape HTML entities that Mistral embeds in markdown (e.g. &amp; → &)
+	// before we re-escape, to avoid double-escaping like &amp;amp;
+	s = html.UnescapeString(s)
 	// Convert markdown inline syntax first (before escaping)
 	s = reMDBold.ReplaceAllString(s, "<strong>$1</strong>")
 	s = reMDItalic.ReplaceAllString(s, "<em>$1</em>")
@@ -688,6 +694,21 @@ func contentHTML(s string) string {
 		return strings.ReplaceAll(s, "\n", "<br>")
 	}
 	return strings.ReplaceAll(esc(s), "\n", "<br>")
+}
+
+// isShortField returns true for text regions short enough to be placed inline
+// with adjacent short fields (simulating the original document's compact layout).
+// Numbered items (3., 3.1., etc.) are excluded — they must stay on their own line.
+func isShortField(s string) bool {
+	s = strings.TrimSpace(s)
+	if len([]rune(s)) >= 72 || strings.Contains(s, "\n") {
+		return false
+	}
+	// Don't inline-batch items that start with a digit (numbered list items)
+	if len(s) > 0 && s[0] >= '0' && s[0] <= '9' {
+		return false
+	}
+	return true
 }
 
 func renderHTML(pdfName string, pages []pageResult) string {
@@ -717,7 +738,9 @@ func renderHTML(pdfName string, pages []pageResult) string {
 			b.WriteString(fmt.Sprintf("<div class='error-box'>OCR error: %s</div>", esc(pg.err.Error())))
 		}
 
-		for _, r := range pg.regions {
+		regions := pg.regions
+		for i := 0; i < len(regions); {
+			r := regions[i]
 			alignStyle := ""
 			if r.Alignment == "center" || r.Alignment == "right" {
 				alignStyle = fmt.Sprintf(" style='text-align:%s'", r.Alignment)
@@ -725,13 +748,54 @@ func renderHTML(pdfName string, pages []pageResult) string {
 
 			switch r.Type {
 			case "title":
-				b.WriteString(fmt.Sprintf("<h2%s>%s</h2>", alignStyle, contentHTML(r.Content)))
+				tag := "h2"
+				if r.Alignment == "center" {
+					alignStyle = " style='text-align:center'"
+					// ALL-CAPS centered → <h1> (main title / state header)
+					// Mixed-case centered → <h2> centered (subtitle, e.g. "Độc lập - Tự do - Hạnh phúc")
+					c := strings.TrimSpace(r.Content)
+					if c == strings.ToUpper(c) && len([]rune(c)) > 3 {
+						tag = "h1"
+					}
+				}
+				b.WriteString(fmt.Sprintf("<%s%s>%s</%s>", tag, alignStyle, contentHTML(r.Content), tag))
+				i++
 
 			case "text":
-				b.WriteString(fmt.Sprintf("<p%s>%s</p>", alignStyle, contentHTML(r.Content)))
+				// Multi-line content: split on \n → each non-empty line gets its own <p>
+				if strings.Contains(r.Content, "\n") {
+					for _, line := range strings.Split(r.Content, "\n") {
+						line = strings.TrimSpace(line)
+						if line == "" {
+							continue
+						}
+						b.WriteString(fmt.Sprintf("<p%s>%s</p>", alignStyle, contentHTML(line)))
+					}
+					i++
+					break
+				}
+				// Single-line: batch consecutive short fields onto one line
+				j := i + 1
+				for j < len(regions) && regions[j].Type == "text" &&
+					isShortField(r.Content) && isShortField(regions[j].Content) {
+					j++
+				}
+				if j > i+1 {
+					var parts []string
+					for k := i; k < j; k++ {
+						parts = append(parts, contentHTML(regions[k].Content))
+					}
+					b.WriteString(fmt.Sprintf("<p class='inline-fields'%s>%s</p>",
+						alignStyle, strings.Join(parts, "&emsp;&emsp;")))
+					i = j
+				} else {
+					b.WriteString(fmt.Sprintf("<p%s>%s</p>", alignStyle, contentHTML(r.Content)))
+					i++
+				}
 
 			case "table":
 				b.WriteString(r.HTML)
+				i++
 
 			case "figure":
 				label := "🖼 [Stamp / Seal / Signature]"
@@ -739,6 +803,10 @@ func renderHTML(pdfName string, pages []pageResult) string {
 					label = "🖼 [Figure: " + esc(strings.Join(r.TextLines, " · ")) + "]"
 				}
 				b.WriteString(fmt.Sprintf("<div class='figure-placeholder'>%s</div>", label))
+				i++
+
+			default:
+				i++
 			}
 		}
 
