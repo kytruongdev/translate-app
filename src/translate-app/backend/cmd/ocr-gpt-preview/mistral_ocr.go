@@ -372,6 +372,34 @@ var (
 	reRomanPrefix  = regexp.MustCompile(`(?i)^(X{0,3})(IX|IV|V?I{0,3})\.`)
 )
 
+// isMeaninglessBlock returns true for very short blocks that contain only
+// non-Latin / non-Vietnamese characters (CJK, etc.) — OCR artifacts from stamps.
+func isMeaninglessBlock(block string) bool {
+	runes := []rune(strings.TrimSpace(block))
+	if len(runes) == 0 || len(runes) > 4 {
+		return false
+	}
+	for _, r := range runes {
+		// Allow ASCII printable, Latin extended, Vietnamese diacritics
+		if r < 0x80 || (r >= 0x00C0 && r <= 0x024F) || (r >= 0x1E00 && r <= 0x1EFF) {
+			return false // has Latin / Vietnamese → not garbage
+		}
+	}
+	return true // all chars are non-Latin (CJK, symbols, etc.) → garbage
+}
+
+// isBoldHeading returns true when an entire block is wrapped in ** markers
+// (e.g. "**Nơi nhận:**") — Mistral sometimes uses bold instead of ## for headings.
+func isBoldHeading(block string) bool {
+	b := strings.TrimSpace(block)
+	if !strings.HasPrefix(b, "**") || !strings.HasSuffix(b, "**") || len(b) < 5 {
+		return false
+	}
+	inner := b[2 : len(b)-2]
+	// Must not contain another ** pair inside (would be a bold phrase, not a heading)
+	return !strings.Contains(inner, "**") && !strings.Contains(inner, "\n")
+}
+
 // headingAlignment returns "center" or "left" for a heading's content.
 // Rules:
 //   - Roman numeral prefix (I., II., III. …) → always left (section heading)
@@ -410,6 +438,12 @@ func markdownToRegions(md string) []region {
 			continue
 		}
 
+		// Skip garbage/noise blocks: very short content (≤3 runes) that contains
+		// CJK or other non-Latin characters — typically OCR artifacts from stamps/logos.
+		if isMeaninglessBlock(block) {
+			continue
+		}
+
 		// Image reference → figure
 		if reImgTag.MatchString(block) {
 			regions = append(regions, region{Type: "figure", FigureType: "decorative"})
@@ -420,6 +454,14 @@ func markdownToRegions(md string) []region {
 		if looksLikeTable(block) {
 			html := mdTableToHTML(block)
 			regions = append(regions, region{Type: "table", HTML: html})
+			continue
+		}
+
+		// Bold-only paragraph used as heading by Mistral (e.g. "**Nơi nhận:**")
+		// Treat as a title region so it gets heading styling instead of plain <p>.
+		if isBoldHeading(block) {
+			content := strings.TrimSpace(block[2 : len(block)-2])
+			regions = append(regions, region{Type: "title", Content: content, Alignment: headingAlignment(content)})
 			continue
 		}
 

@@ -637,7 +637,7 @@ p  { margin: 2px 0 3px; font-size: 0.9em; line-height: 1.45; }
 .inline-fields { margin: 3px 0; font-size: 0.9em; line-height: 1.45; }
 table { width: 100%%; border-collapse: collapse; margin: 10px 0; }
 td, th { border: 1px solid #555; padding: 5px 7px; vertical-align: top; font-size: .88em; }
-th { background: #f5f5f5; font-weight: bold; }
+th { background: #f5f5f5; font-weight: bold; text-align: center; }
 .figure-placeholder {
     font-family: 'Segoe UI', sans-serif;
     font-size: .8em;
