@@ -191,9 +191,8 @@ func assembleStructuredHTML(result *StructuredOCRResult, translated map[string]s
 // because text stops at each scan line instead of flowing to the container edge.
 func renderTextBlocks(content string) string {
 	content = strings.ReplaceAll(content, "\r\n", "\n")
-	hasInlineHTML := strings.Contains(content, "<strong>") ||
-		strings.Contains(content, "<em>") ||
-		strings.Contains(content, "<u>")
+	// Convert markdown bold/italic to HTML before escaping
+	content = convertMarkdownInline(content)
 
 	// Split into paragraph blocks on double newlines
 	blocks := strings.Split(content, "\n\n")
@@ -208,11 +207,7 @@ func renderTextBlocks(content string) string {
 		for _, line := range lines {
 			line = strings.TrimRight(line, " \t")
 			if line != "" {
-				if hasInlineHTML {
-					parts = append(parts, line) // preserve inline tags as-is
-				} else {
-					parts = append(parts, escapeHTML(line))
-				}
+				parts = append(parts, line)
 			}
 		}
 		if len(parts) > 0 {
@@ -220,6 +215,66 @@ func renderTextBlocks(content string) string {
 			out.WriteString(strings.Join(parts, " "))
 			out.WriteString("</p>\n")
 		}
+	}
+	return out.String()
+}
+
+// convertMarkdownInline converts markdown bold/italic markers to HTML tags,
+// then HTML-escapes all remaining plain-text segments.
+// Input may be plain text or already contain <strong>/<em> from GPT OCR.
+// Handles: **bold**, *italic*
+func convertMarkdownInline(s string) string {
+	// If already contains HTML tags, escape only untagged portions
+	if strings.Contains(s, "<strong>") || strings.Contains(s, "<em>") || strings.Contains(s, "<u>") {
+		return s // already HTML — don't double-process
+	}
+
+	var out strings.Builder
+	i := 0
+	runes := []rune(s)
+	n := len(runes)
+
+	for i < n {
+		// **bold**
+		if i+1 < n && runes[i] == '*' && runes[i+1] == '*' {
+			end := strings.Index(string(runes[i+2:]), "**")
+			if end >= 0 {
+				inner := string(runes[i+2 : i+2+end])
+				out.WriteString("<strong>")
+				out.WriteString(escapeHTML(inner))
+				out.WriteString("</strong>")
+				i += 2 + end + 2
+				continue
+			}
+		}
+		// *italic* (single star, not double)
+		if runes[i] == '*' && (i == 0 || runes[i-1] != '*') {
+			end := strings.Index(string(runes[i+1:]), "*")
+			if end >= 0 && (i+1+end+1 >= n || runes[i+1+end+1] != '*') {
+				inner := string(runes[i+1 : i+1+end])
+				out.WriteString("<em>")
+				out.WriteString(escapeHTML(inner))
+				out.WriteString("</em>")
+				i += 1 + end + 1
+				continue
+			}
+		}
+		// Plain character — escape HTML special chars
+		switch runes[i] {
+		case '&':
+			out.WriteString("&amp;")
+		case '<':
+			out.WriteString("&lt;")
+		case '>':
+			out.WriteString("&gt;")
+		case '"':
+			out.WriteString("&quot;")
+		case '\'':
+			out.WriteString("&#39;")
+		default:
+			out.WriteRune(runes[i])
+		}
+		i++
 	}
 	return out.String()
 }
