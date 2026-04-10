@@ -391,6 +391,49 @@ func (c *controller) runPlainTranslate(ctx context.Context, p fileTranslateParam
 // streamTranslate streams a translation and returns (text, tokensUsed, error).
 // tokensUsed is the real API token count when the provider reports it (OpenAI),
 // or 0 for providers that don't emit usage events (Ollama, Gemini).
+// streamTranslateWithSystem is like streamTranslate but takes a pre-built system
+// prompt. Used by the PDF pipeline via BuildPDFSystemPromptGPT.
+func (c *controller) streamTranslateWithSystem(
+	ctx context.Context,
+	provider gateway.AIProvider,
+	system, text string,
+	onDelta func(string),
+) (string, int, error) {
+	events := make(chan gateway.StreamEvent, 64)
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- provider.TranslateStreamWithSystem(ctx, system, text, events)
+	}()
+
+	var full strings.Builder
+	var tokensUsed int
+	for ev := range events {
+		switch ev.Type {
+		case "chunk":
+			if ev.Content != "" {
+				full.WriteString(ev.Content)
+				if onDelta != nil {
+					onDelta(ev.Content)
+				}
+			}
+		case "usage":
+			tokensUsed = ev.TokensUsed
+		case "error":
+			errMsg := errors.New("translation failed")
+			if ev.Error != nil {
+				errMsg = ev.Error
+			}
+			<-errCh
+			return "", 0, errMsg
+		}
+	}
+
+	if streamErr := <-errCh; streamErr != nil {
+		return "", 0, streamErr
+	}
+	return full.String(), tokensUsed, nil
+}
+
 func (c *controller) streamTranslate(
 	ctx context.Context,
 	provider gateway.AIProvider,

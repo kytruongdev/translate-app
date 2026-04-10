@@ -3,7 +3,6 @@ package gateway
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -52,8 +51,29 @@ func (p *openaiProvider) TranslateBatchStream(ctx context.Context, text, from, t
 	system := BuildDocxBatchSystemPromptGPT(from, to, style)
 	userText := strings.TrimSpace(text)
 
-	fmt.Printf("[DEBUG] TranslateBatchStream — model=%s style=%s from=%s to=%s\n[DEBUG] system prompt:\n%s\n---\n", model, style, from, to, system)
 	err := openAIChatStream(ctx, p.client, model, system, userText, events, IsRetryableOpenAI)
+	if err != nil {
+		_ = emit(ctx, events, StreamEvent{Type: "error", Error: err})
+		return err
+	}
+	_ = emit(ctx, events, StreamEvent{Type: "done"})
+	return nil
+}
+
+func (p *openaiProvider) TranslateStreamWithSystem(ctx context.Context, system, text string, events chan<- StreamEvent) error {
+	defer close(events)
+
+	if p.apiKey == "" {
+		_ = emit(ctx, events, StreamEvent{Type: "error", Error: errMissingOpenAIKey})
+		return errMissingOpenAIKey
+	}
+
+	model := strings.TrimSpace(p.model)
+	if model == "" {
+		model = "gpt-4o-mini"
+	}
+
+	err := openAIChatStream(ctx, p.client, model, system, strings.TrimSpace(text), events, IsRetryableOpenAI)
 	if err != nil {
 		_ = emit(ctx, events, StreamEvent{Type: "error", Error: err})
 		return err
@@ -78,7 +98,6 @@ func (p *openaiProvider) TranslateStream(ctx context.Context, text, from, to, st
 	system := BuildTranslationSystemPromptGPT(from, to, style, preserveMarkdown)
 	userText := strings.TrimSpace(text)
 
-	fmt.Printf("[DEBUG] TranslateStream — model=%s style=%s from=%s to=%s\n[DEBUG] system prompt:\n%s\n---\n", model, style, from, to, system)
 	err := openAIChatStream(ctx, p.client, model, system, userText, events, IsRetryableOpenAI)
 	if err != nil {
 		_ = emit(ctx, events, StreamEvent{Type: "error", Error: err})

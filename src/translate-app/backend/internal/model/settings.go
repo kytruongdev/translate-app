@@ -11,11 +11,11 @@ type Settings struct {
 // SettingsFromKV maps DB settings rows (snake_case keys) to Settings.
 func SettingsFromKV(kv map[string]string) Settings {
 	s := Settings{
-		Theme:            "system",
-		ActiveProvider:   "ollama",
-		ActiveModel:      "qwen2.5:7b",
-		DefaultStyle:     StyleCasual,
-		LastTargetLang:   "en-US",
+		Theme:          "system",
+		ActiveProvider: "openai",
+		ActiveModel:    "gpt-4o-mini",
+		DefaultStyle:   StyleCasual,
+		LastTargetLang: "en-US",
 	}
 	if v := kv["theme"]; v != "" {
 		s.Theme = v

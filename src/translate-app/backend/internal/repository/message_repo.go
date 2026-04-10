@@ -67,25 +67,41 @@ func (r *messageRepo) Insert(ctx context.Context, msg *model.Message) error {
 }
 
 func (r *messageRepo) ListByCursor(ctx context.Context, sessionID string, cursor, limit int) ([]model.Message, error) {
+	const q = `
+		SELECT m.id, m.session_id, m.role, m.display_order, m.display_mode,
+		       m.original_content, m.translated_content, m.file_id, m.source_lang, m.target_lang,
+		       m.style, m.model_used, m.original_message_id, m.tokens, m.created_at, m.updated_at,
+		       COALESCE(f.file_size, 0) AS file_size
+		FROM messages m
+		LEFT JOIN files f ON f.id = m.file_id
+		WHERE m.session_id = ?
+		  AND (? = 0 OR m.display_order < ?)
+		ORDER BY m.display_order DESC
+		LIMIT ?`
 	c := int64(cursor)
-	rows, err := r.q.GetMessagesBySessionCursor(ctx, sqlcgen.GetMessagesBySessionCursorParams{
-		SessionID:    sessionID,
-		Cursor:       c,
-		CursorBefore: c,
-		RowLimit:     int64(limit),
-	})
+	rows, err := r.db.QueryContext(ctx, q, sessionID, c, c, int64(limit))
 	if err != nil {
 		return nil, err
 	}
-	out := make([]model.Message, 0, len(rows))
-	for _, row := range rows {
+	defer rows.Close()
+	out := make([]model.Message, 0, limit)
+	for rows.Next() {
+		var row sqlcgen.GetMessageByIdRow
+		if err := rows.Scan(
+			&row.ID, &row.SessionID, &row.Role, &row.DisplayOrder, &row.DisplayMode,
+			&row.OriginalContent, &row.TranslatedContent, &row.FileID, &row.SourceLang, &row.TargetLang,
+			&row.Style, &row.ModelUsed, &row.OriginalMessageID, &row.Tokens, &row.CreatedAt, &row.UpdatedAt,
+			&row.FileSize,
+		); err != nil {
+			return nil, err
+		}
 		m, err := messageFromRow(row)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, m)
 	}
-	return out, nil
+	return out, rows.Err()
 }
 
 func (r *messageRepo) UpdateTranslated(ctx context.Context, id, translated string, tokens int) error {
@@ -114,7 +130,7 @@ func (r *messageRepo) UpdateOriginalContent(ctx context.Context, id, original st
 }
 
 func (r *messageRepo) DeleteByFileID(ctx context.Context, fileID string) error {
-	return r.q.DeleteMessagesByFileID(ctx, fileID)
+	return r.q.DeleteMessagesByFileID(ctx, sqlNullStr(fileID))
 }
 
 func (r *messageRepo) GetByID(ctx context.Context, id string) (*model.Message, error) {

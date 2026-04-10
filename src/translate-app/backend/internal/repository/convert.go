@@ -61,7 +61,7 @@ func sessionFromRow(r sqlcgen.Session) (model.Session, error) {
 	}, nil
 }
 
-func messageFromRow(r sqlcgen.Message) (model.Message, error) {
+func messageFromRow(r sqlcgen.GetMessageByIdRow) (model.Message, error) {
 	var fileID *string
 	if r.FileID.Valid {
 		fileID = &r.FileID.String
