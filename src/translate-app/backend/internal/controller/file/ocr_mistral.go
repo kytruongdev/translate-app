@@ -21,6 +21,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/gen2brain/go-fitz"
 	"regexp"
@@ -59,13 +60,14 @@ type mistralInternalPage struct {
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 // runMistralOCR sends the PDF to Mistral OCR and returns a *StructuredOCRResult
-// compatible with the rest of the PDF translation pipeline.
+// compatible with the rest of the PDF translation pipeline, plus the concatenated
+// raw per-page markdown (used for glossary extraction before region conversion).
 //
 // onPage (optional) is called after each page is parsed: onPage(done, total).
-func runMistralOCR(ctx context.Context, pdfPath string, apiKey string, onPage func(done, total int)) (*StructuredOCRResult, error) {
+func runMistralOCR(ctx context.Context, pdfPath string, apiKey string, onPage func(done, total int)) (*StructuredOCRResult, string, error) {
 	pdfData, err := os.ReadFile(pdfPath)
 	if err != nil {
-		return nil, fmt.Errorf("đọc PDF: %w", err)
+		return nil, "", fmt.Errorf("đọc PDF: %w", err)
 	}
 	b64 := base64.StdEncoding.EncodeToString(pdfData)
 	dataURL := "data:application/pdf;base64," + b64
@@ -76,42 +78,45 @@ func runMistralOCR(ctx context.Context, pdfPath string, apiKey string, onPage fu
 	}
 	body, err := json.Marshal(reqBody)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", mistralInternalOCREndpoint, bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
 
-	resp, err := http.DefaultClient.Do(httpReq)
+	httpClient := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := httpClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("HTTP request: %w", err)
+		return nil, "", fmt.Errorf("HTTP request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("đọc response: %w", err)
+		return nil, "", fmt.Errorf("đọc response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Mistral API lỗi %d: %s", resp.StatusCode, truncateMistral(string(respBody), 300))
+		return nil, "", fmt.Errorf("Mistral API lỗi %d: %s", resp.StatusCode, truncateMistral(string(respBody), 300))
 	}
 
 	var ocrResp mistralInternalOCRResponse
 	if err := json.Unmarshal(respBody, &ocrResp); err != nil {
-		return nil, fmt.Errorf("parse response: %w", err)
+		return nil, "", fmt.Errorf("parse response: %w", err)
 	}
 	if ocrResp.Error != nil {
-		return nil, fmt.Errorf("Mistral API error: %s", ocrResp.Error.Message)
+		return nil, "", fmt.Errorf("Mistral API error: %s", ocrResp.Error.Message)
 	}
 
 	total := len(ocrResp.Pages)
 	var result StructuredOCRResult
+	var rawMDParts []string
 	for _, p := range ocrResp.Pages {
 		pageNo := p.Index + 1
+		rawMDParts = append(rawMDParts, p.Markdown)
 		regions := mistralMarkdownToRegions(p.Markdown)
 		var ocrRegions []OCRRegion
 		for _, r := range regions {
@@ -135,7 +140,8 @@ func runMistralOCR(ctx context.Context, pdfPath string, apiKey string, onPage fu
 	// Pass 2: fix cross-page tables (table header on page N, data rows on page N+1)
 	fixMistralCrossPageTables(&result, pdfPath, apiKey)
 
-	return &result, nil
+	rawMarkdown := strings.Join(rawMDParts, "\n\n")
+	return &result, rawMarkdown, nil
 }
 
 // ── Cross-page table fix ──────────────────────────────────────────────────────
@@ -608,7 +614,10 @@ func mistralIsLabelValueTable(block string) bool {
 		if len(cells) != 2 {
 			return false
 		}
-		if !strings.HasPrefix(strings.TrimSpace(cells[1]), ":") {
+		cell2 := strings.TrimSpace(cells[1])
+		// Empty cells are allowed (e.g. "Passport" row with no value).
+		// Only non-empty cells in column 2 must start with ":" to qualify.
+		if cell2 != "" && !strings.HasPrefix(cell2, ":") {
 			return false
 		}
 		rowCount++

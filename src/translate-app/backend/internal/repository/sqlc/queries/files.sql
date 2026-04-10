@@ -19,3 +19,9 @@ WHERE id = ?;
 
 -- name: GetFileById :one
 SELECT * FROM files WHERE id = ? LIMIT 1;
+
+-- name: DeleteFileByID :exec
+DELETE FROM files WHERE id = ?;
+
+-- name: GetCancelledFileIdsBySession :many
+SELECT id FROM files WHERE session_id = ? AND status = 'cancelled';

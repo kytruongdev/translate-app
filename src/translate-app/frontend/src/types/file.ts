@@ -34,4 +34,5 @@ export interface FileProgress {
   chunk: number
   total: number
   percent: number
+  phase?: 'ocr' | 'glossary' | 'translating'
 }

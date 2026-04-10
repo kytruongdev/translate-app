@@ -8,6 +8,11 @@ import (
 	"database/sql"
 )
 
+type DocType struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
 type File struct {
 	ID             string         `json:"id"`
 	SessionID      string         `json:"session_id"`
@@ -23,9 +28,27 @@ type File struct {
 	ModelUsed      sql.NullString `json:"model_used"`
 	Status         string         `json:"status"`
 	ErrorMsg       sql.NullString `json:"error_msg"`
-	OutputFormat   string         `json:"output_format"`
 	CreatedAt      string         `json:"created_at"`
 	UpdatedAt      string         `json:"updated_at"`
+	OutputFormat   string         `json:"output_format"`
+}
+
+type GlossaryEntry struct {
+	ID              string         `json:"id"`
+	SourceLang      string         `json:"source_lang"`
+	TargetLang      string         `json:"target_lang"`
+	Target          string         `json:"target"`
+	DocType         sql.NullString `json:"doc_type"`
+	Status          string         `json:"status"`
+	CreatedAt       string         `json:"created_at"`
+	UpdatedAt       string         `json:"updated_at"`
+	CurrentFileName sql.NullString `json:"current_file_name"`
+}
+
+type GlossaryVariant struct {
+	ID      string `json:"id"`
+	EntryID string `json:"entry_id"`
+	Source  string `json:"source"`
 }
 
 type Message struct {
@@ -45,7 +68,6 @@ type Message struct {
 	Tokens            sql.NullInt64  `json:"tokens"`
 	CreatedAt         string         `json:"created_at"`
 	UpdatedAt         string         `json:"updated_at"`
-	FileSize          int64          `json:"file_size"`
 }
 
 type Session struct {
@@ -63,4 +85,16 @@ type Setting struct {
 	Key       string `json:"key"`
 	Value     string `json:"value"`
 	UpdatedAt string `json:"updated_at"`
+}
+
+type TranslationRule struct {
+	ID         string         `json:"id"`
+	Name       string         `json:"name"`
+	Content    string         `json:"content"`
+	DocType    sql.NullString `json:"doc_type"`
+	TargetLang sql.NullString `json:"target_lang"`
+	Enabled    int64          `json:"enabled"`
+	SortOrder  int64          `json:"sort_order"`
+	CreatedAt  string         `json:"created_at"`
+	UpdatedAt  string         `json:"updated_at"`
 }

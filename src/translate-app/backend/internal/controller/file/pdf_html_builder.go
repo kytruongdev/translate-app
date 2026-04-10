@@ -195,17 +195,18 @@ func assembleStructuredHTML(result *StructuredOCRResult, translated map[string]s
 //
 // Rules:
 //   - Double newline (\n\n) → separate <p> block
-//   - Single newline (\n)   → space within a <p> (OCR scan lines, not semantic breaks)
+//   - Single newline (\n)   → <br> within a <p> (Mistral OCR uses \n for semantic line breaks)
 //   - Trailing spaces before \n are trimmed
 //
-// When content contains inline HTML tags (<strong>, <em>, <u>) produced by the
-// GPT vision OCR, those tags are preserved as-is. Plain text lines are escaped.
-//
-// Single newlines come from physical scan-line boundaries detected by EasyOCR.
-// They should NOT produce <br> tags — doing so creates an artificial right margin
-// because text stops at each scan line instead of flowing to the container edge.
+// Mistral OCR produces semantic \n — e.g. each label:value field in a form is a
+// separate line. We preserve those as <br> so the layout matches the source document.
 func renderTextBlocks(content string) string {
 	content = strings.ReplaceAll(content, "\r\n", "\n")
+	// Normalize <br> tags (from OCR or translation output) to \n so the
+	// existing newline-splitting logic renders them correctly as <br> in HTML.
+	content = strings.ReplaceAll(content, "<br/>", "\n")
+	content = strings.ReplaceAll(content, "<br />", "\n")
+	content = strings.ReplaceAll(content, "<br>", "\n")
 	// Convert markdown bold/italic to HTML before escaping
 	content = convertMarkdownInline(content)
 
@@ -227,7 +228,7 @@ func renderTextBlocks(content string) string {
 		}
 		if len(parts) > 0 {
 			out.WriteString("<p>")
-			out.WriteString(strings.Join(parts, " "))
+			out.WriteString(strings.Join(parts, "<br>\n"))
 			out.WriteString("</p>\n")
 		}
 	}

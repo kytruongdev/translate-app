@@ -10,14 +10,18 @@ import (
 	"database/sql"
 )
 
-const deleteFileByID = `DELETE FROM files WHERE id = ?`
+const deleteFileByID = `-- name: DeleteFileByID :exec
+DELETE FROM files WHERE id = ?
+`
 
 func (q *Queries) DeleteFileByID(ctx context.Context, id string) error {
 	_, err := q.db.ExecContext(ctx, deleteFileByID, id)
 	return err
 }
 
-const getCancelledFileIdsBySession = `SELECT id FROM files WHERE session_id = ? AND status = 'cancelled'`
+const getCancelledFileIdsBySession = `-- name: GetCancelledFileIdsBySession :many
+SELECT id FROM files WHERE session_id = ? AND status = 'cancelled'
+`
 
 func (q *Queries) GetCancelledFileIdsBySession(ctx context.Context, sessionID string) ([]string, error) {
 	rows, err := q.db.QueryContext(ctx, getCancelledFileIdsBySession, sessionID)
@@ -25,19 +29,25 @@ func (q *Queries) GetCancelledFileIdsBySession(ctx context.Context, sessionID st
 		return nil, err
 	}
 	defer rows.Close()
-	var ids []string
+	items := []string{}
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
-		ids = append(ids, id)
+		items = append(items, id)
 	}
-	return ids, rows.Err()
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getFileById = `-- name: GetFileById :one
-SELECT id, session_id, file_name, file_type, file_size, original_path, source_path, translated_path, char_count, page_count, style, model_used, status, error_msg, output_format, created_at, updated_at FROM files WHERE id = ? LIMIT 1
+SELECT id, session_id, file_name, file_type, file_size, original_path, source_path, translated_path, char_count, page_count, style, model_used, status, error_msg, created_at, updated_at, output_format FROM files WHERE id = ? LIMIT 1
 `
 
 func (q *Queries) GetFileById(ctx context.Context, id string) (File, error) {
@@ -58,9 +68,9 @@ func (q *Queries) GetFileById(ctx context.Context, id string) (File, error) {
 		&i.ModelUsed,
 		&i.Status,
 		&i.ErrorMsg,
-		&i.OutputFormat,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OutputFormat,
 	)
 	return i, err
 }

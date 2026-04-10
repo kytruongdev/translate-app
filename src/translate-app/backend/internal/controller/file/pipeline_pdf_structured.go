@@ -2,6 +2,7 @@ package file
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,10 +16,10 @@ import (
 
 	"translate-app/internal/bridge"
 	"translate-app/internal/gateway"
-	"translate-app/internal/model"
+	"translate-app/internal/repository"
 )
 
-const pdfStructuredChunkSize = 2500 // max runes per translation batch
+const pdfStructuredChunkSize = 5000 // max runes per translation batch
 
 // runStructuredPDFTranslate is the single pipeline for all PDF files.
 // It replaces the old Tesseract-based runPDFTranslate entirely.
@@ -34,19 +35,17 @@ const pdfStructuredChunkSize = 2500 // max runes per translation batch
 //  8. Write source.md + translated.html to disk, update DB, emit events
 func (c *controller) runStructuredPDFTranslate(ctx context.Context, p fileTranslateParams, fail func(string)) {
 	// ── 1. Run Mistral OCR (không cần render PNG) ────────────────────────────
+	ocrStart := time.Now()
+	fmt.Printf("[PDF] OCRStart fileId=%s\n", p.FileID)
 	c.log.Info("OCRStart", "fileId", p.FileID, "engine", "mistral")
 
 	runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{
-		Chunk: 0, Total: p.PageCount, Percent: 0,
+		Chunk: 0, Total: 0, Percent: 0, Phase: "ocr",
 	})
 
-	ocrResult, err := runMistralOCR(ctx, p.FilePath, c.keys.MistralKey, func(done, total int) {
-		pct := 0
-		if total > 0 {
-			pct = (done * 50) / total
-		}
+	ocrResult, rawMarkdown, err := runMistralOCR(ctx, p.FilePath, c.keys.MistralKey, func(done, total int) {
 		runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{
-			Chunk: done, Total: total, Percent: pct,
+			Chunk: done, Total: total, Percent: 0, Phase: "ocr",
 		})
 	})
 	if err != nil {
@@ -57,7 +56,14 @@ func (c *controller) runStructuredPDFTranslate(ctx context.Context, p fileTransl
 	for _, pg := range ocrResult.Pages {
 		totalRegions += len(pg.Regions)
 	}
-	c.log.Info("OCRDone", "fileId", p.FileID, "pages", len(ocrResult.Pages), "totalRegions", totalRegions)
+	fmt.Printf("[PDF] OCRDone pages=%d totalRegions=%d durationMs=%d\n",
+		len(ocrResult.Pages), totalRegions, time.Since(ocrStart).Milliseconds())
+	c.log.Info("OCRDone",
+		"fileId", p.FileID,
+		"pages", len(ocrResult.Pages),
+		"totalRegions", totalRegions,
+		"durationMs", time.Since(ocrStart).Milliseconds(),
+	)
 
 	// ── 2. Prepare storage directory ────────────────────────────────────────
 	dir, err := userFilesDir()
@@ -111,27 +117,83 @@ func (c *controller) runStructuredPDFTranslate(ctx context.Context, p fileTransl
 	// ── 8. Collect translatable segments ────────────────────────────────────
 	segments := collectSegments(ocrResult)
 	total := len(segments)
+	fmt.Printf("[PDF] SegmentsCollected segments=%d\n", total)
 	c.log.Info("SegmentsCollected", "fileId", p.FileID, "segments", total)
 
 	// Emit 50 % to indicate OCR is done and translation is starting.
 	runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{
-		Chunk:   0,
-		Total:   total,
-		Percent: 50,
+		Chunk: 0, Total: total, Percent: 0, Phase: "glossary",
 	})
 
-	// ── 9. Translate segments concurrently ───────────────────────────────────
-	c.log.Info("TranslationStart", "fileId", p.FileID, "segments", total, "targetLang", p.TargetLang)
-	translated, totalTokens, err := c.translatePDFSegments(ctx, segments, srcLang, p.TargetLang, p.Style, p.Provider,
+	// ── 8b. Glossary extraction + active rules load ──────────────────────────
+	// For >2 page docs: call GPT to extract terminology, then load DB-backed
+	// translation rules (e.g. honorifics). Both are injected into every batch prompt.
+	glossary := ""
+	activeRules := ""
+	detectedDocType := ""
+	if pageCount > 2 {
+		glossaryStart := time.Now()
+		fmt.Printf("[PDF] GlossaryExtractionStart pages=%d\n", pageCount)
+		c.log.Info("GlossaryExtractionStart", "fileId", p.FileID, "pages", pageCount)
+
+		docTypeIDs, dtErr := c.reg.Glossary().ListDocTypeIDs(ctx)
+		if dtErr != nil {
+			c.log.Info("GlossaryExtractionWarn", "fileId", p.FileID, "error", dtErr.Error())
+		} else {
+			docTypesList := strings.Join(docTypeIDs, ", ")
+			extractionSystem := gateway.BuildGlossaryExtractionPrompt(docTypesList)
+			rawJSON, extractTokens, extractErr := c.streamTranslateWithSystem(ctx, p.Provider, extractionSystem, rawMarkdown, nil)
+			if extractErr != nil {
+				fmt.Printf("[PDF] GlossaryExtractionWarn error=%s\n", extractErr.Error())
+				c.log.Info("GlossaryExtractionWarn", "fileId", p.FileID, "error", extractErr.Error())
+			} else {
+				fmt.Printf("[PDF] GlossaryExtractionDone tokens=%d durationMs=%d\n",
+					extractTokens, time.Since(glossaryStart).Milliseconds())
+				c.log.Info("GlossaryExtractionDone",
+					"fileId", p.FileID,
+					"tokens", extractTokens,
+					"durationMs", time.Since(glossaryStart).Milliseconds(),
+				)
+				glossary, detectedDocType = c.processGlossaryExtractionResult(ctx, rawJSON, srcLang, p.TargetLang, filepath.Base(p.FilePath))
+				fmt.Printf("[PDF] GlossaryReady terms=%d docType=%q\n", strings.Count(glossary, "\n")+1, detectedDocType)
+			}
+		}
+	}
+
+	// Load active translation rules (global + doc-type-specific).
+	if r, err := c.reg.Glossary().LoadActiveRules(ctx, detectedDocType, p.TargetLang); err != nil {
+		c.log.Info("LoadActiveRulesWarn", "fileId", p.FileID, "error", err.Error())
+	} else {
+		activeRules = r
+		fmt.Printf("[PDF] ActiveRulesLoaded rules=%d bytes\n", len(activeRules))
+	}
+
+	// ── 9. Translate segments (batch text, individual HTML) ──────────────────
+	translationStart := time.Now()
+	glossaryTermCount := 0
+	if glossary != "" {
+		glossaryTermCount = strings.Count(glossary, "\n") + 1
+	}
+	fmt.Printf("[PDF] TranslationStart segments=%d targetLang=%s glossaryTerms=%d\n",
+		total, p.TargetLang, glossaryTermCount)
+	c.log.Info("TranslationStart",
+		"fileId", p.FileID,
+		"segments", total,
+		"targetLang", p.TargetLang,
+		"glossaryTerms", glossaryTermCount,
+	)
+	// Signal start of translation phase (real progress begins here).
+	runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{
+		Chunk: 0, Total: total, Percent: 0, Phase: "translating",
+	})
+	translated, totalTokens, err := c.translatePDFSegments(ctx, p.FileID, segments, srcLang, p.TargetLang, p.Provider, glossary, activeRules,
 		func(completed int) {
-			pct := 50 // translation phase = 50–100 %
+			pct := 0
 			if total > 0 {
-				pct = 50 + (completed*50)/total
+				pct = (completed * 100) / total
 			}
 			runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{
-				Chunk:   completed,
-				Total:   total,
-				Percent: pct,
+				Chunk: completed, Total: total, Percent: pct, Phase: "translating",
 			})
 		},
 	)
@@ -140,20 +202,36 @@ func (c *controller) runStructuredPDFTranslate(ctx context.Context, p fileTransl
 		return
 	}
 
+	// Clear glossary file tag now that translation is complete.
+	if pageCount > 2 {
+		_ = c.reg.Glossary().ClearFileGlossary(ctx, filepath.Base(p.FilePath))
+	}
+
+	fmt.Printf("[PDF] TranslationDone totalTokens=%d durationMs=%d\n",
+		totalTokens, time.Since(translationStart).Milliseconds())
+	c.log.Info("TranslationDone",
+		"fileId", p.FileID,
+		"segments", total,
+		"totalTokens", totalTokens,
+		"durationMs", time.Since(translationStart).Milliseconds(),
+	)
+
 	runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{
-		Chunk:   total,
-		Total:   total,
-		Percent: 100,
+		Chunk: total, Total: total, Percent: 100, Phase: "translating",
 	})
 
 	// ── 10. Assemble HTML ────────────────────────────────────────────────────
-	c.log.Info("AssembleHTMLStart", "fileId", p.FileID, "translatedKeys", len(translated))
+	assembleStart := time.Now()
 	htmlContent, err := assembleStructuredHTML(ocrResult, translated, nil)
 	if err != nil {
 		fail(fmt.Sprintf("lỗi tạo HTML: %v", err))
 		return
 	}
-	c.log.Info("AssembleHTMLDone", "fileId", p.FileID, "htmlBytes", len(htmlContent))
+	c.log.Info("AssembleHTMLDone",
+		"fileId", p.FileID,
+		"htmlBytes", len(htmlContent),
+		"durationMs", time.Since(assembleStart).Milliseconds(),
+	)
 
 	translatedPath := filepath.Join(subDir, "translated.html")
 	if err := os.WriteFile(translatedPath, []byte(htmlContent), 0o644); err != nil {
@@ -269,14 +347,34 @@ func extractSourceTextFromOCR(result *StructuredOCRResult) string {
 	return strings.TrimSpace(sb.String())
 }
 
-// translatePDFSegments translates all segments concurrently, respecting the
-// provider's MaxBatchConcurrency. Returns a map[key]→translatedText.
+
+// buildPDFBatchInput formats a slice of text segments as a <<<N>>> numbered list
+// for a single batched AI translation call.
+func buildPDFBatchInput(segments []pdfSegment) string {
+	const instruction = "Translate each segment below, preserving the <<<N>>> markers:\n\n"
+	var sb strings.Builder
+	sb.WriteString(instruction)
+	for i, seg := range segments {
+		if i > 0 {
+			sb.WriteString("\n\n")
+		}
+		fmt.Fprintf(&sb, "<<<%d>>>\n%s", i+1, seg.text)
+	}
+	return sb.String()
+}
+
+// translatePDFSegments translates all segments concurrently.
+//
+// Text batches (isHTML=false) are sent as <<<N>>>-marked calls.
+// HTML segments (tables) are sent individually with HTML-specific instructions.
+// All batches receive the same glossary for cross-batch terminology consistency.
 func (c *controller) translatePDFSegments(
 	ctx context.Context,
+	fileID string,
 	segments []pdfSegment,
 	srcLang, tgtLang string,
-	style model.TranslationStyle,
 	provider gateway.AIProvider,
+	glossary, rules string,
 	onProgress func(completed int),
 ) (map[string]string, int, error) {
 	results := make(map[string]string, len(segments))
@@ -284,65 +382,113 @@ func (c *controller) translatePDFSegments(
 		return results, 0, nil
 	}
 
-	// Group consecutive segments into batches of up to pdfStructuredChunkSize runes.
 	batches := batchPDFSegments(segments)
-
-	maxConcurrent := provider.MaxBatchConcurrency()
-	if maxConcurrent < 1 {
-		maxConcurrent = 1
-	}
-	sem := make(chan struct{}, maxConcurrent)
+	totalBatches := len(batches)
 
 	var (
 		mu          sync.Mutex
+		totalTokens int64
+		completed   int64
 		firstErr    error
-		totalTokens int32
-		completed   int32
+		errOnce     sync.Once
 	)
+
+	sem := make(chan struct{}, provider.MaxBatchConcurrency())
 	var wg sync.WaitGroup
 
-	for _, batch := range batches {
-		batch := batch // capture
+	for bi, batch := range batches {
+		if ctx.Err() != nil {
+			break
+		}
+
+		batchIdx := bi
+		batchCopy := batch
+
 		wg.Add(1)
+		sem <- struct{}{}
+
 		go func() {
 			defer wg.Done()
-			sem <- struct{}{}
 			defer func() { <-sem }()
 
 			if ctx.Err() != nil {
 				return
 			}
 
-			for _, seg := range batch {
-				translatedText, tokens, err := c.streamTranslate(
-					ctx, provider, seg.text,
-					srcLang, tgtLang, style,
-					seg.isHTML, // preserveMarkdown = true for HTML segments
-					nil,        // no streaming delta for batch PDF
-				)
-				if err != nil {
-					mu.Lock()
-					if firstErr == nil {
-						firstErr = err
-					}
-					mu.Unlock()
-					return
-				}
-				// If the AI refused to translate (e.g. privacy/PII refusal),
-				// fall back to the original source text so we don't embed
-				// refusal strings in the output HTML.
-				if isAIRefusal(translatedText) {
-					translatedText = seg.text
-				}
-				atomic.AddInt32(&totalTokens, int32(tokens))
-
-				mu.Lock()
-				results[seg.key] = translatedText
-				mu.Unlock()
-
-				n := int(atomic.AddInt32(&completed, 1))
-				onProgress(n)
+			batchType := "text"
+			if len(batchCopy) == 1 && batchCopy[0].isHTML {
+				batchType = "html"
 			}
+
+			batchStart := time.Now()
+			c.log.Info("PDFBatchStart",
+				"fileId", fileID,
+				"batch", fmt.Sprintf("%d/%d", batchIdx+1, totalBatches),
+				"type", batchType,
+				"segments", len(batchCopy),
+			)
+
+			var batchResults map[string]string
+			var tokens int
+			var err error
+
+			if batchType == "html" {
+				system := gateway.BuildPDFHTMLSystemPromptGPT(tgtLang, glossary, rules)
+				translatedText, tok, e := c.streamTranslateWithSystem(ctx, provider, system, batchCopy[0].text, nil)
+				tokens = tok
+				if e != nil {
+					err = e
+				} else {
+					if isAIRefusal(translatedText) {
+						translatedText = batchCopy[0].text
+					}
+					batchResults = map[string]string{batchCopy[0].key: translatedText}
+				}
+			} else {
+				system := gateway.BuildPDFBatchSystemPromptGPT(tgtLang, glossary, rules)
+				input := buildPDFBatchInput(batchCopy)
+				raw, tok, e := c.streamTranslateWithSystem(ctx, provider, system, input, nil)
+				tokens = tok
+				if e != nil {
+					err = e
+				} else {
+					parsed := parseBatchOutput(raw, len(batchCopy))
+					batchResults = make(map[string]string, len(batchCopy))
+					for i, seg := range batchCopy {
+						text := ""
+						if i < len(parsed) {
+							text = parsed[i]
+						}
+						if text == "" || isAIRefusal(text) {
+							text = seg.text
+						}
+						batchResults[seg.key] = text
+					}
+				}
+			}
+
+			if err != nil {
+				errOnce.Do(func() { firstErr = err })
+				return
+			}
+
+			mu.Lock()
+			for k, v := range batchResults {
+				results[k] = v
+			}
+			mu.Unlock()
+
+			atomic.AddInt64(&totalTokens, int64(tokens))
+			done := int(atomic.AddInt64(&completed, int64(len(batchCopy))))
+			onProgress(done)
+
+			c.log.Info("PDFBatchDone",
+				"fileId", fileID,
+				"batch", fmt.Sprintf("%d/%d", batchIdx+1, totalBatches),
+				"type", batchType,
+				"tokens", tokens,
+				"durationMs", time.Since(batchStart).Milliseconds(),
+			)
 		}()
 	}
 
@@ -351,7 +497,77 @@ func (c *controller) translatePDFSegments(
 	if firstErr != nil {
 		return nil, 0, firstErr
 	}
-	return results, int(atomic.LoadInt32(&totalTokens)), nil
+	return results, int(totalTokens), nil
+}
+
+// processGlossaryExtractionResult parses the raw JSON from the GPT glossary extraction call,
+// saves the extracted terms to the DB (tagged to fileName), and returns the formatted glossary
+// string ready for injection into translation prompts.
+// On any error it logs a warning and returns "" so translation proceeds without a glossary.
+func (c *controller) processGlossaryExtractionResult(ctx context.Context, rawJSON, srcLang, tgtLang, fileName string) (glossary, docType string) {
+	// Print raw response for debugging.
+	fmt.Printf("[Glossary] === RAW JSON FROM GPT ===\n%s\n[Glossary] === END RAW JSON ===\n", rawJSON)
+
+	// Strip markdown code fences if the model wrapped the JSON.
+	clean := strings.TrimSpace(rawJSON)
+	if idx := strings.Index(clean, "{"); idx > 0 {
+		clean = clean[idx:]
+	}
+	if idx := strings.LastIndex(clean, "}"); idx >= 0 && idx < len(clean)-1 {
+		clean = clean[:idx+1]
+	}
+
+	var result gateway.GlossaryExtractionResult
+	if err := json.Unmarshal([]byte(clean), &result); err != nil {
+		fmt.Printf("[Glossary] PARSE ERROR: %v\n", err)
+		c.log.Info("GlossaryParseWarn", "fileName", fileName, "error", err.Error())
+		return "", ""
+	}
+
+	fmt.Printf("[Glossary] Parsed: doc_type=%q is_new=%v terms=%d\n",
+		result.DocType, result.IsNewDocType, len(result.Glossary))
+	for i, g := range result.Glossary {
+		fmt.Printf("[Glossary]   [%d] sources=%v → %q\n", i+1, g.Sources, g.Target)
+	}
+
+	if result.DocType != "" {
+		if err := c.reg.Glossary().EnsureDocType(ctx, result.DocType, ""); err != nil {
+			fmt.Printf("[Glossary] EnsureDocType warn: %v\n", err)
+			c.log.Info("GlossaryDocTypeWarn", "fileName", fileName, "docType", result.DocType, "error", err.Error())
+		} else {
+			fmt.Printf("[Glossary] EnsureDocType OK: %q\n", result.DocType)
+		}
+	}
+
+	terms := make([]repository.GlossaryTerm, 0, len(result.Glossary))
+	for _, g := range result.Glossary {
+		if len(g.Sources) == 0 || strings.TrimSpace(g.Target) == "" {
+			continue
+		}
+		terms = append(terms, repository.GlossaryTerm{Sources: g.Sources, Target: g.Target})
+	}
+
+	if len(terms) == 0 {
+		fmt.Printf("[Glossary] No valid terms to save\n")
+		return "", result.DocType
+	}
+
+	if err := c.reg.Glossary().SaveExtractedGlossary(ctx, srcLang, tgtLang, result.DocType, fileName, terms); err != nil {
+		fmt.Printf("[Glossary] SaveExtractedGlossary error: %v\n", err)
+		c.log.Info("GlossarySaveWarn", "fileName", fileName, "error", err.Error())
+		return "", result.DocType
+	}
+	fmt.Printf("[Glossary] Saved %d terms to DB for file=%q\n", len(terms), fileName)
+
+	loaded, err := c.reg.Glossary().LoadGlossaryForFile(ctx, fileName)
+	if err != nil {
+		fmt.Printf("[Glossary] LoadGlossaryForFile error: %v\n", err)
+		c.log.Info("GlossaryLoadWarn", "fileName", fileName, "error", err.Error())
+		return "", result.DocType
+	}
+
+	fmt.Printf("[Glossary] === GLOSSARY INJECTED INTO PROMPTS ===\n%s\n[Glossary] === END GLOSSARY ===\n", loaded)
+	return loaded, result.DocType
 }
 
 // batchPDFSegments groups segments into batches where each batch's total

@@ -234,9 +234,9 @@ function TranslationCardView({
   const modelLabel = `${activeProvider} · ${activeModel}`
   const fileJobActive = Boolean(m.fileId && streaming)
   const showFileProgressStrip = fileJobActive
-  const fileProgressIndeterminate = !fileTranslateProgress || fileTranslateProgress.total < 1
+  const fileProgressIndeterminate = !fileTranslateProgress || fileTranslateProgress.phase !== 'translating'
   const fileBufferPercent =
-    fileTranslateProgress && fileTranslateProgress.total > 0 ? fileTranslateProgress.percent : 0
+    fileTranslateProgress?.phase === 'translating' ? fileTranslateProgress.percent : 0
   const showPartialDestTail = fileJobShowPartialDestTail(fileJobActive, streaming, dest, fileTranslateProgress ?? null)
   const destTailMinPx = useMemo(() => fileJobDestTailMinPx(fileTranslateProgress ?? null), [fileTranslateProgress])
   const srcPanelBody = (
@@ -675,7 +675,7 @@ function FileTranslationCard({
   else if (rawPct > maxPctRef.current) maxPctRef.current = rawPct
   const pct = streaming ? maxPctRef.current : rawPct
 
-  const indeterminate = !fileTranslateProgress || fileTranslateProgress.total < 1
+  const indeterminate = !fileTranslateProgress || fileTranslateProgress.phase !== 'translating'
 
   const handleDownload = async () => {
     if (!m.fileId) return
@@ -743,7 +743,13 @@ function FileTranslationCard({
               {cancelledByUser ? (
                 <span className="file-translation-card-cancelled">Đã hủy phiên dịch</span>
               ) : streaming ? (
-                indeterminate ? 'Đang dịch...' : `Đang dịch · ${pct}%`
+                indeterminate
+                  ? fileTranslateProgress?.phase === 'ocr'
+                    ? 'Đang đọc tài liệu...'
+                    : fileTranslateProgress?.phase === 'glossary'
+                      ? 'Đang phân tích thuật ngữ...'
+                      : 'Đang dịch...'
+                  : `Đang dịch · ${pct}%`
               ) : downloadError ? (
                 <span className="file-translation-card-error">{downloadError}</span>
               ) : m.tokens > 0 ? (
