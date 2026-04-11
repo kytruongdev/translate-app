@@ -131,13 +131,15 @@ func (c *controller) runStructuredPDFTranslate(ctx context.Context, p fileTransl
 	glossary := ""
 	activeRules := ""
 	detectedDocType := ""
-	if pageCount > 2 {
+	var glossaryTokens int
+	{
 		glossaryStart := time.Now()
 		fmt.Printf("[PDF] GlossaryExtractionStart pages=%d\n", pageCount)
 		c.log.Info("GlossaryExtractionStart", "fileId", p.FileID, "pages", pageCount)
 
 		docTypeIDs, dtErr := c.reg.Glossary().ListDocTypeIDs(ctx)
 		if dtErr != nil {
+			fmt.Printf("[PDF] GlossaryExtractionWarn ListDocTypeIDs error=%s\n", dtErr.Error())
 			c.log.Info("GlossaryExtractionWarn", "fileId", p.FileID, "error", dtErr.Error())
 		} else {
 			docTypesList := strings.Join(docTypeIDs, ", ")
@@ -147,6 +149,7 @@ func (c *controller) runStructuredPDFTranslate(ctx context.Context, p fileTransl
 				fmt.Printf("[PDF] GlossaryExtractionWarn error=%s\n", extractErr.Error())
 				c.log.Info("GlossaryExtractionWarn", "fileId", p.FileID, "error", extractErr.Error())
 			} else {
+				glossaryTokens = extractTokens
 				fmt.Printf("[PDF] GlossaryExtractionDone tokens=%d durationMs=%d\n",
 					extractTokens, time.Since(glossaryStart).Milliseconds())
 				c.log.Info("GlossaryExtractionDone",
@@ -155,7 +158,11 @@ func (c *controller) runStructuredPDFTranslate(ctx context.Context, p fileTransl
 					"durationMs", time.Since(glossaryStart).Milliseconds(),
 				)
 				glossary, detectedDocType = c.processGlossaryExtractionResult(ctx, rawJSON, srcLang, p.TargetLang, filepath.Base(p.FilePath))
-				fmt.Printf("[PDF] GlossaryReady terms=%d docType=%q\n", strings.Count(glossary, "\n")+1, detectedDocType)
+				termCount := 0
+				if glossary != "" {
+					termCount = strings.Count(glossary, "\n") + 1
+				}
+				fmt.Printf("[PDF] GlossaryReady terms=%d docType=%q\n", termCount, detectedDocType)
 			}
 		}
 	}
@@ -203,9 +210,7 @@ func (c *controller) runStructuredPDFTranslate(ctx context.Context, p fileTransl
 	}
 
 	// Clear glossary file tag now that translation is complete.
-	if pageCount > 2 {
-		_ = c.reg.Glossary().ClearFileGlossary(ctx, filepath.Base(p.FilePath))
-	}
+	_ = c.reg.Glossary().ClearFileGlossary(ctx, filepath.Base(p.FilePath))
 
 	fmt.Printf("[PDF] TranslationDone totalTokens=%d durationMs=%d\n",
 		totalTokens, time.Since(translationStart).Milliseconds())
@@ -240,7 +245,7 @@ func (c *controller) runStructuredPDFTranslate(ctx context.Context, p fileTransl
 	}
 
 	// ── 11. Persist + emit ───────────────────────────────────────────────────
-	usedTokens := totalTokens
+	usedTokens := totalTokens + glossaryTokens
 	if usedTokens == 0 {
 		usedTokens = estimateTokens(sourceMD)
 	}
@@ -421,6 +426,8 @@ func (c *controller) translatePDFSegments(
 			}
 
 			batchStart := time.Now()
+			fmt.Printf("[PDF] BatchStart batch=%d/%d type=%s segments=%d\n",
+				batchIdx+1, totalBatches, batchType, len(batchCopy))
 			c.log.Info("PDFBatchStart",
 				"fileId", fileID,
 				"batch", fmt.Sprintf("%d/%d", batchIdx+1, totalBatches),
@@ -478,10 +485,12 @@ func (c *controller) translatePDFSegments(
 			}
 			mu.Unlock()
 
-			atomic.AddInt64(&totalTokens, int64(tokens))
+			running := atomic.AddInt64(&totalTokens, int64(tokens))
 			done := int(atomic.AddInt64(&completed, int64(len(batchCopy))))
 			onProgress(done)
 
+			fmt.Printf("[PDF] BatchDone batch=%d/%d type=%s tokens=%d runningTotal=%d durationMs=%d\n",
+				batchIdx+1, totalBatches, batchType, tokens, running, time.Since(batchStart).Milliseconds())
 			c.log.Info("PDFBatchDone",
 				"fileId", fileID,
 				"batch", fmt.Sprintf("%d/%d", batchIdx+1, totalBatches),

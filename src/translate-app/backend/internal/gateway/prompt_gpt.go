@@ -19,13 +19,27 @@ const properNounRule = `PROPER NOUNS (preserve — do not translate):
 - Government agencies and offices: keep in original Vietnamese
 - Real estate project names: keep in original Vietnamese
 - Personal names: romanize by removing all Vietnamese diacritics (e.g. "Đặng Thị Hiền" → "Dang Thi Hien", "Nguyễn Văn A" → "Nguyen Van A"). Do NOT keep diacritics in English output.
-- Administrative units: keep the Vietnamese place name (without diacritics) and append the correct English level (e.g. "Hoài Đức" → "Hoai Duc District", "Hà Nội" → "Hanoi City")`
+- Administrative units: keep the Vietnamese place name (without diacritics) and append the correct English level (e.g. "Hoài Đức" → "Hoai Duc District", "Hà Nội" → "Hanoi City")
+
+EXCEPTION — document type names and titles are NOT proper nouns; translate them:
+- "GIẤY KHAI SINH" → "BIRTH CERTIFICATE"
+- "Hợp đồng mua bán" → "Purchase Agreement"
+- "Biên bản" → "Minutes" / "Record"
+- Any Vietnamese document title must be translated to its English equivalent.`
 
 // abbreviationRule instructs the AI to translate Vietnamese abbreviations to their
 // full English meaning rather than retaining them as opaque Vietnamese acronyms.
 const abbreviationRule = `ABBREVIATIONS:
 Vietnamese abbreviations must be translated to their full English meaning.
 Do not retain Vietnamese acronyms in the output (e.g. "CCCD số" → "ID Card No.", "UBND" → "People's Committee").`
+
+// vietnameseDateRule explains the Vietnamese date-in-words pattern so the model
+// does not misread "năm [X][Y]" (year seventy-something) as a generic time phrase.
+const vietnameseDateRule = `VIETNAMESE WRITTEN-OUT DATES:
+The pattern "Ngày [X] tháng [Y] năm [Z]" (or variants with words instead of numbers) is a specific calendar date — day X, month Y, year Z.
+"năm bảy sáu" = year seventy-six (1976); "năm chín ba" = year ninety-three (1993), etc.
+Translate these as natural English dates: e.g. "Ngày hai tháng tám năm bảy sáu" → "The second day of August, nineteen seventy-six (1976)".
+Do NOT interpret them as relative time descriptions ("previous year", "next month", etc.).`
 
 // buildCompletenessRule returns a rule that forbids summarising, abbreviating, or
 // generating placeholder text — critical for long-form PDF/document chunks where
@@ -95,6 +109,8 @@ func BuildPDFBatchSystemPromptGPT(targetLocale, glossary, rules string) string {
 	sb.WriteString("\n\n")
 	sb.WriteString(abbreviationRule)
 	sb.WriteString("\n\n")
+	sb.WriteString(vietnameseDateRule)
+	sb.WriteString("\n\n")
 	if rules != "" {
 		sb.WriteString(rules)
 		sb.WriteString("\n\n")
@@ -130,6 +146,8 @@ func BuildPDFHTMLSystemPromptGPT(targetLocale, glossary, rules string) string {
 	sb.WriteString(properNounRule)
 	sb.WriteString("\n\n")
 	sb.WriteString(abbreviationRule)
+	sb.WriteString("\n\n")
+	sb.WriteString(vietnameseDateRule)
 	sb.WriteString("\n\n")
 	if rules != "" {
 		sb.WriteString(rules)
@@ -193,40 +211,51 @@ type GlossaryExtractionResult struct {
 // and detecting document type from raw OCR markdown.
 // docTypesList is a comma-separated string of existing doc_type IDs.
 func BuildGlossaryExtractionPrompt(docTypesList string) string {
-	return `You are a professional translator specializing in Vietnamese legal and real estate documents.
+	return `You are an Expert Terminologist and Knowledge Engineer. Your task is to analyze the provided text and extract a comprehensive Glossary of terms that are essential for an accurate and professional translation.
 
-TASK 1 - DOCUMENT TYPE:
+TASK 1 — DOCUMENT TYPE:
 From this list of document types: "` + docTypesList + `"
-Identify which type best matches the document below.
-If none match, suggest a new type in English snake_case (e.g. "insurance_contract").
+Identify which type best matches the document. If none match, suggest a new type in English snake_case (e.g. "insurance_contract") and set is_new_doc_type to true.
 
-TASK 2 - GLOSSARY EXTRACTION:
-Extract terms that require consistent translation. For each entry in "glossary":
+TASK 2 — GLOSSARY EXTRACTION:
+Extract ONLY terms from these categories:
+- Acronyms & abbreviations with their full forms (e.g. "UBND" / "Ủy ban nhân dân")
+- Official organization names, government bodies, notary offices that appear multiple times
+- Contract party labels used repeatedly (Bên A → Party A, Bên B → Party B)
+- Domain-specific technical terms that could be translated inconsistently across batches
+
+OCR VARIANT DETECTION — for each term, group all surface forms of the SAME concept:
+- Case variations (ALL CAPS vs Title Case)
+- Potential OCR errors or misspellings of that same term
+- Short forms vs full forms of the same concept
 
 GROUPING RULE (critical):
-One entry = one concept only. "sources" must contain ONLY different surface forms of the EXACT SAME concept — abbreviations, spelling variants, or OCR capitalization differences of that one concept.
-NEVER group different concepts into one entry, even if they are related.
+One entry = one concept only. "sources" must contain ONLY different written forms of the EXACT SAME concept.
+NEVER group different concepts, even if they appear near each other.
 
-BAD (different concepts grouped): sources: ["Văn phòng công chứng Đông Đô", "Công chứng viên"]
-GOOD: two separate entries — one for the office name, one for the job title
+BAD — label grouped with value:   sources: ["Họ và tên", "Nguyễn Văn A"]
+GOOD: omit both — labels are structural, names are data
 
-BAD (different place names grouped): sources: ["Kim Chung", "Di Trạch", "Hoài Đức"]
+BAD — different concepts grouped: sources: ["Văn phòng công chứng Đông Đô", "Công chứng viên"]
+GOOD: two separate entries — one for the office, one for the job title
+
+BAD — different place names:      sources: ["Kim Chung", "Di Trạch", "Hoài Đức"]
 GOOD: three separate entries — one per place name
 
-BAD (different contract parties grouped): sources: ["Bên A", "Bên B"]
+BAD — different parties grouped:  sources: ["Bên A", "Bên B"]
 GOOD: two separate entries — "Bên A" → "Party A", "Bên B" → "Party B"
 
-WHAT TO EXTRACT:
-- Organization and company names (all capitalization variants of the same name)
-- Legal abbreviations and their full forms when they refer to the same concept (e.g. "UBND" + "Ủy ban nhân dân" + "Uỷ ban nhân dân" → all mean People's Committee)
-- Government agencies and offices
-- Personal names: romanize by removing all diacritics (e.g. "Nguyen Van A" not "Nguyễn Văn A")
-- Administrative units: one entry per place, Vietnamese name without diacritics + English level label (e.g. "Hoai Duc District", "Hanoi City")
-- Domain-specific technical terms
+WHAT NOT TO EXTRACT — skip all of the following:
+- Form field labels (Họ và tên, Địa chỉ, Mã số thuế, Ngày tháng năm, Tỉnh/TP, Quận/Huyện, ...)
+- Personal names of individuals (buyers, sellers, signatories, witnesses, tax officers)
+- Specific addresses, streets, wards, communes
+- Tax codes, reference numbers, file IDs, phone numbers, dates, monetary amounts
+- Common Vietnamese words with obvious translations (không, và, của, người mua, người bán, ...)
+- Anything appearing only once that is clearly document-specific data
 
-WHAT NOT TO EXTRACT:
-- Common Vietnamese words that translate naturally (không, và, của, ...)
-- Generic role labels that are obvious (người mua → buyer, người bán → seller)
+TRANSLATION STANDARD:
+Provide the most formal, professionally accepted equivalent in the target language.
+Avoid literal translations — use industry-standard legal or domain-appropriate terms.
 
 Return ONLY valid JSON, no commentary:
 {
@@ -244,10 +273,6 @@ Return ONLY valid JSON, no commentary:
     {
       "sources": ["Bên B"],
       "target": "Party B"
-    },
-    {
-      "sources": ["Hoài Đức", "Hoai Duc"],
-      "target": "Hoai Duc District"
     }
   ]
 }`

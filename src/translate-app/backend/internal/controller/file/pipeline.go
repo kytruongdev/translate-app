@@ -237,6 +237,7 @@ func (c *controller) runDocxTranslate(ctx context.Context, p fileTranslateParams
 		OutputFormat: "docx",
 		CharCount:    charCount,
 		PageCount:    pageCount,
+		TokensUsed:   usedTokens,
 	})
 }
 

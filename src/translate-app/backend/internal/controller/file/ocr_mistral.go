@@ -3,24 +3,32 @@ package file
 // ocr_mistral.go — Gọi Mistral OCR API (mistral-ocr-latest) để extract structured
 // content từ PDF và trả về *StructuredOCRResult (cùng type với GPT-4o vision path).
 //
-// Mistral nhận toàn bộ PDF dạng base64 data URL, trả về per-page markdown.
+// Flow (3 bước):
+//  1. Upload PDF binary lên Mistral Files API (multipart/form-data, không base64)
+//  2. Lấy signed URL của file vừa upload
+//  3. Gửi OCR request với signed URL, sau đó xoá file khỏi Mistral storage
+//
+// Dùng file upload thay vì inline base64 để tránh inflate 33% request body,
+// giúp tăng tốc đáng kể với file lớn.
+//
 // Markdown được parse thành []OCRRegion (text/title/table/figure) giống như
 // sidecar Python — pipeline_pdf_structured.go không cần biết engine nào được dùng.
-//
-// Không cần render PNG trước → nhanh hơn và không cần go-fitz ở bước OCR.
 
 import (
 	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"image/draw"
 	"image/png"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/gen2brain/go-fitz"
@@ -29,8 +37,9 @@ import (
 )
 
 const (
-	mistralInternalOCREndpoint = "https://api.mistral.ai/v1/ocr"
-	mistralInternalOCRModel    = "mistral-ocr-latest"
+	mistralInternalOCREndpoint   = "https://api.mistral.ai/v1/ocr"
+	mistralInternalFilesEndpoint = "https://api.mistral.ai/v1/files"
+	mistralInternalOCRModel      = "mistral-ocr-latest"
 )
 
 // ── Mistral API types ─────────────────────────────────────────────────────────
@@ -57,24 +66,137 @@ type mistralInternalPage struct {
 	Markdown string `json:"markdown"`
 }
 
+type mistralFileUploadResponse struct {
+	ID    string `json:"id"`
+	Error *struct {
+		Message string `json:"message"`
+	} `json:"error,omitempty"`
+}
+
+type mistralFileURLResponse struct {
+	URL   string `json:"url"`
+	Error *struct {
+		Message string `json:"message"`
+	} `json:"error,omitempty"`
+}
+
+// mistralHTTPError carries the HTTP status code so callers can decide whether to retry.
+type mistralHTTPError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *mistralHTTPError) Error() string {
+	return fmt.Sprintf("Mistral API lỗi %d: %s", e.StatusCode, e.Body)
+}
+
+// mistralIsRetryable returns true for transient errors worth retrying:
+//   - HTTP 5xx responses from Mistral (e.g. 520 Cloudflare, 503 overload)
+//   - Network-level timeouts (Client.Timeout exceeded, context deadline exceeded)
+//   - Connection resets / unexpected EOF (server dropped the connection mid-request)
+func mistralIsRetryable(err error) bool {
+	if err == nil {
+		return false
+	}
+	var me *mistralHTTPError
+	if errors.As(err, &me) {
+		return me.StatusCode >= 500
+	}
+	s := err.Error()
+	return strings.Contains(s, "deadline exceeded") ||
+		strings.Contains(s, "timeout") ||
+		strings.Contains(s, "connection reset") ||
+		strings.Contains(s, "EOF") ||
+		strings.Contains(s, "connection refused")
+}
+
 // ── Entry point ───────────────────────────────────────────────────────────────
+
+const (
+	mistralOCRMaxAttempts = 3
+	mistralOCRRetryBase   = 5 * time.Second
+)
 
 // runMistralOCR sends the PDF to Mistral OCR and returns a *StructuredOCRResult
 // compatible with the rest of the PDF translation pipeline, plus the concatenated
 // raw per-page markdown (used for glossary extraction before region conversion).
 //
+// Retries up to mistralOCRMaxAttempts times on transient 5xx errors (e.g. 520).
+// Each attempt uploads a fresh copy of the PDF; the uploaded file is explicitly
+// deleted after each attempt (success or failure).
+//
 // onPage (optional) is called after each page is parsed: onPage(done, total).
 func runMistralOCR(ctx context.Context, pdfPath string, apiKey string, onPage func(done, total int)) (*StructuredOCRResult, string, error) {
-	pdfData, err := os.ReadFile(pdfPath)
-	if err != nil {
-		return nil, "", fmt.Errorf("đọc PDF: %w", err)
-	}
-	b64 := base64.StdEncoding.EncodeToString(pdfData)
-	dataURL := "data:application/pdf;base64," + b64
+	var lastErr error
+	for attempt := 0; attempt < mistralOCRMaxAttempts; attempt++ {
+		if attempt > 0 {
+			delay := mistralOCRRetryBase * time.Duration(attempt)
+			fmt.Printf("[OCR] Retry %d/%d in %s — last error: %v\n",
+				attempt, mistralOCRMaxAttempts-1, delay, lastErr)
+			select {
+			case <-ctx.Done():
+				return nil, "", ctx.Err()
+			case <-time.After(delay):
+			}
+		}
 
+		result, rawMD, err := runMistralOCRAttempt(ctx, pdfPath, apiKey, onPage)
+		if err == nil {
+			fixMistralCrossPageTables(result, pdfPath, apiKey)
+			return result, rawMD, nil
+		}
+
+		lastErr = err
+		if !mistralIsRetryable(err) {
+			return nil, "", err
+		}
+		fmt.Printf("[OCR] Retryable error (attempt %d/%d): %v\n",
+			attempt+1, mistralOCRMaxAttempts, err)
+	}
+	fmt.Printf("[OCR] All %d attempts failed. Last error: %v\n", mistralOCRMaxAttempts, lastErr)
+	return nil, "", fmt.Errorf("sau %d lần thử: %w", mistralOCRMaxAttempts, lastErr)
+}
+
+// runMistralOCRAttempt performs one full upload → URL → OCR cycle.
+// The uploaded file is always deleted before returning (success or error).
+func runMistralOCRAttempt(ctx context.Context, pdfPath, apiKey string, onPage func(done, total int)) (*StructuredOCRResult, string, error) {
+	// Step 1: Upload PDF binary to Mistral Files API (no base64 inflation).
+	fmt.Printf("[OCR] Step1/3 uploading file: %s\n", filepath.Base(pdfPath))
+	fileID, err := mistralUploadFile(ctx, pdfPath, apiKey)
+	if err != nil {
+		fmt.Printf("[OCR] Step1/3 upload FAILED: %v\n", err)
+		return nil, "", err
+	}
+	fmt.Printf("[OCR] Step1/3 upload OK fileId=%s\n", fileID)
+
+	// Step 2: Retrieve signed URL for the uploaded file.
+	fmt.Printf("[OCR] Step2/3 getting signed URL\n")
+	signedURL, err := mistralGetFileURL(ctx, fileID, apiKey)
+	if err != nil {
+		fmt.Printf("[OCR] Step2/3 getURL FAILED: %v\n", err)
+		mistralDeleteFile(fileID, apiKey)
+		return nil, "", err
+	}
+	fmt.Printf("[OCR] Step2/3 getURL OK\n")
+
+	// Step 3: Run OCR with the signed URL.
+	fmt.Printf("[OCR] Step3/3 running OCR\n")
+	result, rawMD, err := mistralOCRWithURL(ctx, signedURL, apiKey, onPage)
+	mistralDeleteFile(fileID, apiKey) // always cleanup, regardless of outcome
+	if err != nil {
+		fmt.Printf("[OCR] Step3/3 OCR FAILED: %v\n", err)
+	} else {
+		fmt.Printf("[OCR] Step3/3 OCR OK pages=%d\n", len(result.Pages))
+	}
+	return result, rawMD, err
+}
+
+// mistralOCRWithURL calls the Mistral OCR endpoint with a pre-obtained signed URL
+// and returns the structured result + raw markdown.
+func mistralOCRWithURL(ctx context.Context, signedURL, apiKey string, onPage func(done, total int)) (*StructuredOCRResult, string, error) {
 	reqBody := mistralInternalOCRRequest{
 		Model:    mistralInternalOCRModel,
-		Document: mistralInternalDocument{Type: "document_url", DocumentURL: dataURL},
+		Document: mistralInternalDocument{Type: "document_url", DocumentURL: signedURL},
 	}
 	body, err := json.Marshal(reqBody)
 	if err != nil {
@@ -100,7 +222,10 @@ func runMistralOCR(ctx context.Context, pdfPath string, apiKey string, onPage fu
 		return nil, "", fmt.Errorf("đọc response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, "", fmt.Errorf("Mistral API lỗi %d: %s", resp.StatusCode, truncateMistral(string(respBody), 300))
+		return nil, "", &mistralHTTPError{
+			StatusCode: resp.StatusCode,
+			Body:       truncateMistral(string(respBody), 300),
+		}
 	}
 
 	var ocrResp mistralInternalOCRResponse
@@ -137,11 +262,114 @@ func runMistralOCR(ctx context.Context, pdfPath string, apiKey string, onPage fu
 		}
 	}
 
-	// Pass 2: fix cross-page tables (table header on page N, data rows on page N+1)
-	fixMistralCrossPageTables(&result, pdfPath, apiKey)
+	return &result, strings.Join(rawMDParts, "\n\n"), nil
+}
 
-	rawMarkdown := strings.Join(rawMDParts, "\n\n")
-	return &result, rawMarkdown, nil
+// ── Mistral Files API helpers ─────────────────────────────────────────────────
+
+// mistralUploadFile uploads the PDF at pdfPath to Mistral Files API and returns
+// the file ID. The caller is responsible for deleting the file after use.
+func mistralUploadFile(ctx context.Context, pdfPath, apiKey string) (string, error) {
+	f, err := os.Open(pdfPath)
+	if err != nil {
+		return "", fmt.Errorf("open PDF: %w", err)
+	}
+	defer f.Close()
+
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	if err := mw.WriteField("purpose", "ocr"); err != nil {
+		return "", err
+	}
+	fw, err := mw.CreateFormFile("file", filepath.Base(pdfPath))
+	if err != nil {
+		return "", err
+	}
+	if _, err := io.Copy(fw, f); err != nil {
+		return "", err
+	}
+	mw.Close()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", mistralInternalFilesEndpoint, &buf)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("upload request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return "", &mistralHTTPError{StatusCode: resp.StatusCode, Body: truncateMistral(string(respBody), 300)}
+	}
+
+	var uploadResp mistralFileUploadResponse
+	if err := json.Unmarshal(respBody, &uploadResp); err != nil {
+		return "", fmt.Errorf("parse upload response: %w", err)
+	}
+	if uploadResp.Error != nil {
+		return "", fmt.Errorf("Mistral upload error: %s", uploadResp.Error.Message)
+	}
+	if uploadResp.ID == "" {
+		return "", fmt.Errorf("Mistral upload: empty file ID in response")
+	}
+	return uploadResp.ID, nil
+}
+
+// mistralGetFileURL retrieves the signed download URL for a previously uploaded file.
+func mistralGetFileURL(ctx context.Context, fileID, apiKey string) (string, error) {
+	endpoint := mistralInternalFilesEndpoint + "/" + fileID + "/url"
+	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("get file URL: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return "", &mistralHTTPError{StatusCode: resp.StatusCode, Body: truncateMistral(string(respBody), 300)}
+	}
+
+	var urlResp mistralFileURLResponse
+	if err := json.Unmarshal(respBody, &urlResp); err != nil {
+		return "", fmt.Errorf("parse URL response: %w", err)
+	}
+	if urlResp.Error != nil {
+		return "", fmt.Errorf("Mistral get URL error: %s", urlResp.Error.Message)
+	}
+	if urlResp.URL == "" {
+		return "", fmt.Errorf("Mistral get URL: empty URL in response")
+	}
+	return urlResp.URL, nil
+}
+
+// mistralDeleteFile deletes a previously uploaded file from Mistral storage.
+// Errors are silently ignored — this is best-effort cleanup.
+func mistralDeleteFile(fileID, apiKey string) {
+	endpoint := mistralInternalFilesEndpoint + "/" + fileID
+	req, err := http.NewRequest("DELETE", endpoint, nil)
+	if err != nil {
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return
+	}
+	resp.Body.Close()
 }
 
 // ── Cross-page table fix ──────────────────────────────────────────────────────
@@ -397,6 +625,13 @@ func mistralMarkdownToRegions(md string) []mistralRegion {
 			continue
 		}
 
+		// Skip text OCR'd from circular government stamps — these are typically
+		// short ALL-CAPS blocks containing "TM/", "UBND", "UBHC", or "PHÊ DUYỆT"
+		// that bleed into the page content from an overlaid ink stamp.
+		if mistralIsStampNoise(block) {
+			continue
+		}
+
 		// Figure (image reference)
 		if mReImgTag.MatchString(block) {
 			regions = append(regions, mistralRegion{typ: "figure", figureType: "decorative"})
@@ -523,6 +758,45 @@ func mistralIsMeaninglessBlock(block string) bool {
 		}
 	}
 	return true
+}
+
+// mistralIsStampNoise returns true when a block looks like text OCR'd from an
+// overlaid circular ink stamp rather than from the document's printed content.
+//
+// Heuristic: short (≤ 60 runes), ALL-CAPS or near-ALL-CAPS block that contains
+// at least one of the stamp-specific Vietnamese administrative keywords.
+// These blocks are safe to skip — their content either duplicates information
+// already present in the document or is illegible stamp artefact.
+func mistralIsStampNoise(block string) bool {
+	trimmed := strings.TrimSpace(block)
+	runes := []rune(trimmed)
+	// Only consider short blocks — real headings are typically ≤ 60 runes.
+	if len(runes) == 0 || len(runes) > 60 {
+		return false
+	}
+	upper := strings.ToUpper(trimmed)
+	// Must look like ALL-CAPS (or near — allow a couple of lower-case runes for OCR noise).
+	lowerCount := 0
+	for _, r := range trimmed {
+		if r >= 'a' && r <= 'z' {
+			lowerCount++
+		}
+	}
+	if lowerCount > 3 {
+		return false
+	}
+	// Only match abbreviations that are exclusive to administrative ink stamps
+	// and cannot appear as legitimate document headings. "XÁC NHẬN" and
+	// "CHỨNG THỰC" are excluded because they are valid section titles.
+	stampKeywords := []string{
+		"TM/UBND", "TM/UBHC", "TM/", "UBHC",
+	}
+	for _, kw := range stampKeywords {
+		if strings.Contains(upper, kw) {
+			return true
+		}
+	}
+	return false
 }
 
 func mistralIsImpliedHeadingBlock(block string) bool {
@@ -687,10 +961,25 @@ func mistralMDTableToHTML(block string) string {
 		cells := mistralSplitTableRow(line)
 		rows = append(rows, cells)
 		isHeader = append(isHeader, !headerDone && !separatorSeen)
-		_ = separatorSeen
 	}
 
 	rows = mistralRemoveEmptyColumns(rows)
+
+	// Form table detection: when Mistral adds a separator after the first row of a
+	// Vietnamese government form, the first row gets treated as a column header —
+	// but it's actually a data row (label | value). Detect this by checking:
+	//   col1 is short (≤ 30 runes, a form field label)
+	//   col2 is substantively long (≥ 10 runes, an actual value)
+	// Real data-table headers have short column descriptors in both columns.
+	if separatorSeen && len(rows) > 2 && len(isHeader) > 0 && isHeader[0] && len(rows[0]) > 1 {
+		col1Len := len([]rune(strings.TrimSpace(rows[0][0])))
+		col2Len := len([]rune(strings.TrimSpace(rows[0][1])))
+		if col1Len > 0 && col1Len <= 30 && col2Len >= 10 {
+			for i := range isHeader {
+				isHeader[i] = false
+			}
+		}
+	}
 
 	// Section box detection
 	sectionBox := mistralDetectSectionBox(rows)
