@@ -104,7 +104,13 @@ func assembleStructuredHTML(result *StructuredOCRResult, translated map[string]s
 	for _, page := range result.Pages {
 		body.WriteString(fmt.Sprintf("<div class=\"page\" id=\"page-%d\">\n", page.PageNo))
 
+		// consumedTitles tracks region indices already merged into a preceding title block.
+		consumedTitles := map[int]bool{}
+
 		for ri, region := range page.Regions {
+			if consumedTitles[ri] {
+				continue
+			}
 			key := regionKey(page.PageNo, ri)
 
 			switch region.Type {
@@ -122,7 +128,25 @@ func assembleStructuredHTML(result *StructuredOCRResult, translated map[string]s
 				}
 
 			case "title":
+				// Merge consecutive title regions that look like continuation lines of a
+				// multi-line document title (e.g. "CONTRACT FOR THE TRANSFER OF RIGHTS" /
+				// "SALE AND PURCHASE AGREEMENT"). A region is eligible for merging only if
+				// it does NOT look like a standalone section header:
+				//   - does not start with a Roman numeral label  (I., II., III. …)
+				//   - does not end with a colon  (e.g. "CERTIFICATE:", "Based on:")
+				//   - is short  (≤ 80 runes — section headers tend to be short but distinctive)
 				content := translated[key]
+				for next := ri + 1; next < len(page.Regions); next++ {
+					if page.Regions[next].Type != "title" {
+						break
+					}
+					nextContent := strings.TrimSpace(translated[regionKey(page.PageNo, next)])
+					if nextContent == "" || !isMergableTitle(nextContent) {
+						break
+					}
+					content += "\n" + nextContent
+					consumedTitles[next] = true
+				}
 				if strings.TrimSpace(content) != "" {
 					align := region.Alignment
 					alignStyle := ""
@@ -198,6 +222,30 @@ func assembleStructuredHTML(result *StructuredOCRResult, translated map[string]s
 //   - Single newline (\n)   → <br> within a <p> (Mistral OCR uses \n for semantic line breaks)
 //   - Trailing spaces before \n are trimmed
 //
+// isMergableTitle returns true when a translated title line looks like a
+// continuation of a multi-line document title rather than a standalone section
+// header. We refuse to merge if the line:
+//   - starts with a Roman numeral label  (I., II., III., IV. …)
+//   - ends with a colon  ("CERTIFICATE:", "Based on:")
+//   - exceeds 80 runes  (section headers are usually short but unambiguous)
+func isMergableTitle(s string) bool {
+	runes := []rune(strings.TrimSpace(s))
+	if len(runes) > 80 {
+		return false
+	}
+	if strings.HasSuffix(s, ":") {
+		return false
+	}
+	// Reject Roman-numeral section labels: "I.", "II.", "III.", "IV.", "V.", …
+	romanPrefixes := []string{"I.", "II.", "III.", "IV.", "V.", "VI.", "VII.", "VIII.", "IX.", "X."}
+	for _, p := range romanPrefixes {
+		if strings.HasPrefix(s, p+" ") || s == p {
+			return false
+		}
+	}
+	return true
+}
+
 // Mistral OCR produces semantic \n — e.g. each label:value field in a form is a
 // separate line. We preserve those as <br> so the layout matches the source document.
 func renderTextBlocks(content string) string {

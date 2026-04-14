@@ -49,7 +49,7 @@ UPDATE glossary_entries SET current_file_name = NULL, updated_at = ?
 WHERE current_file_name = ?;
 
 -- name: LoadGlossaryForFile :many
-SELECT v.source, e.target
+SELECT e.id, v.source, e.target
 FROM glossary_variants v
 JOIN glossary_entries e ON v.entry_id = e.id
 WHERE e.current_file_name = ?

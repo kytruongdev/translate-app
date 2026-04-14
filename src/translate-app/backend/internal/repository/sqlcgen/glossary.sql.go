@@ -395,7 +395,7 @@ func (q *Queries) LoadActiveRules(ctx context.Context, arg LoadActiveRulesParams
 }
 
 const loadGlossaryForFile = `-- name: LoadGlossaryForFile :many
-SELECT v.source, e.target
+SELECT e.id, v.source, e.target
 FROM glossary_variants v
 JOIN glossary_entries e ON v.entry_id = e.id
 WHERE e.current_file_name = ?
@@ -403,6 +403,7 @@ ORDER BY e.id, v.source
 `
 
 type LoadGlossaryForFileRow struct {
+	ID     string `json:"id"`
 	Source string `json:"source"`
 	Target string `json:"target"`
 }
@@ -416,7 +417,7 @@ func (q *Queries) LoadGlossaryForFile(ctx context.Context, currentFileName sql.N
 	items := []LoadGlossaryForFileRow{}
 	for rows.Next() {
 		var i LoadGlossaryForFileRow
-		if err := rows.Scan(&i.Source, &i.Target); err != nil {
+		if err := rows.Scan(&i.ID, &i.Source, &i.Target); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

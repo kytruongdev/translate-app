@@ -151,11 +151,28 @@ func (r *glossaryRepo) LoadGlossaryForFile(ctx context.Context, fileName string)
 	if len(rows) == 0 {
 		return "", nil
 	}
-	var sb strings.Builder
+	// Group variants by entry ID so all surface forms of the same concept
+	// appear on one line: "UBND / Ủy ban nhân dân / UB nhân dân → People's Committee"
+	type entry struct {
+		sources []string
+		target  string
+	}
+	order := make([]string, 0)
+	byID := make(map[string]*entry)
 	for _, row := range rows {
-		sb.WriteString(row.Source)
+		if e, ok := byID[row.ID]; ok {
+			e.sources = append(e.sources, row.Source)
+		} else {
+			byID[row.ID] = &entry{sources: []string{row.Source}, target: row.Target}
+			order = append(order, row.ID)
+		}
+	}
+	var sb strings.Builder
+	for _, id := range order {
+		e := byID[id]
+		sb.WriteString(strings.Join(e.sources, " / "))
 		sb.WriteString(" → ")
-		sb.WriteString(row.Target)
+		sb.WriteString(e.target)
 		sb.WriteByte('\n')
 	}
 	return strings.TrimRight(sb.String(), "\n"), nil

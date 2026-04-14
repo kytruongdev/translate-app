@@ -14,18 +14,12 @@ Only translate text content; never translate or modify Markdown syntax.`
 // original form. Administrative units keep the Vietnamese place name with an
 // accurate English level label appended.
 // This is a category-based rule, not a term-specific whitelist.
-const properNounRule = `PROPER NOUNS (preserve — do not translate):
-- Organization and company names: keep in original Vietnamese (e.g. "Tổng Công ty cổ phần X" stays as-is)
-- Government agencies and offices: keep in original Vietnamese
+const properNounRule = `PROPER NOUNS (for terms NOT listed in the terminology above):
+- Private company and organization names: keep in original Vietnamese
 - Real estate project names: keep in original Vietnamese
-- Personal names: romanize by removing all Vietnamese diacritics (e.g. "Đặng Thị Hiền" → "Dang Thi Hien", "Nguyễn Văn A" → "Nguyen Van A"). Do NOT keep diacritics in English output.
+- Personal names: romanize by removing all Vietnamese diacritics (e.g. "Đặng Thị Hiền" → "Dang Thi Hien"). Do NOT keep diacritics in English output.
 - Administrative units: keep the Vietnamese place name (without diacritics) and append the correct English level (e.g. "Hoài Đức" → "Hoai Duc District", "Hà Nội" → "Hanoi City")
-
-EXCEPTION — document type names and titles are NOT proper nouns; translate them:
-- "GIẤY KHAI SINH" → "BIRTH CERTIFICATE"
-- "Hợp đồng mua bán" → "Purchase Agreement"
-- "Biên bản" → "Minutes" / "Record"
-- Any Vietnamese document title must be translated to its English equivalent.`
+- Government agencies and official titles: translate to English unless a specific rule or glossary entry already provides the translation`
 
 // abbreviationRule instructs the AI to translate Vietnamese abbreviations to their
 // full English meaning rather than retaining them as opaque Vietnamese acronyms.
@@ -45,7 +39,7 @@ Do NOT interpret them as relative time descriptions ("previous year", "next mont
 // generating placeholder text — critical for long-form PDF/document chunks where
 // GPT-4o-mini might otherwise write "[Summary continues]" or "[Figures continue]".
 func buildCompletenessRule(target string) string {
-	return "COMPLETENESS RULE (critical):\n" +
+	return "COMPLETENESS RULE:\n" +
 		"Translate EVERY sentence and EVERY item completely.\n" +
 		"Do NOT summarise, skip, abbreviate, or replace any content with placeholders " +
 		`(e.g. "[continues]", "[summary]", "[omitted]", "..." or similar).` + "\n" +
@@ -90,8 +84,10 @@ func BuildTranslationSystemPromptGPT(sourceLang, targetLocale, style string, pre
 // BuildPDFBatchSystemPromptGPT builds the system prompt for batched PDF text
 // segment translation using <<<N>>> markers. glossary is an optional pre-built
 // glossary string injected for terminology consistency across batches.
+// docContext is an optional document summary injected to help the model maintain
+// consistent register and understand the document's purpose and parties.
 // rules is an optional newline-joined list of active translation_rules content blocks.
-func BuildPDFBatchSystemPromptGPT(targetLocale, glossary, rules string) string {
+func BuildPDFBatchSystemPromptGPT(targetLocale, glossary, docContext, rules string) string {
 	target := TargetLangLabel(targetLocale)
 
 	var sb strings.Builder
@@ -99,8 +95,14 @@ func BuildPDFBatchSystemPromptGPT(targetLocale, glossary, rules string) string {
 	sb.WriteString(target)
 	sb.WriteString(" in a formal, clear, and professional tone. Preserve technical terms.\n\n")
 
+	if docContext != "" {
+		sb.WriteString("DOCUMENT CONTEXT (use this to maintain consistent register and terminology):\n")
+		sb.WriteString(docContext)
+		sb.WriteString("\n\n")
+	}
+
 	if glossary != "" {
-		sb.WriteString("GLOSSARY (critical — when a term appears here, use the exact translation provided, do not deviate):\n\n")
+		sb.WriteString("TERMINOLOGY (use these exact translations for consistency — takes precedence over all rules below):\n\n")
 		sb.WriteString(glossary)
 		sb.WriteString("\n\n")
 	}
@@ -127,9 +129,9 @@ func BuildPDFBatchSystemPromptGPT(targetLocale, glossary, rules string) string {
 
 // BuildPDFHTMLSystemPromptGPT builds the system prompt for individual PDF HTML
 // segment (table) translation. glossary is an optional pre-built glossary string
-// for terminology consistency. rules is an optional newline-joined list of active
-// translation_rules content blocks.
-func BuildPDFHTMLSystemPromptGPT(targetLocale, glossary, rules string) string {
+// for terminology consistency. docContext is an optional document summary.
+// rules is an optional newline-joined list of active translation_rules content blocks.
+func BuildPDFHTMLSystemPromptGPT(targetLocale, glossary, docContext, rules string) string {
 	target := TargetLangLabel(targetLocale)
 
 	var sb strings.Builder
@@ -137,8 +139,14 @@ func BuildPDFHTMLSystemPromptGPT(targetLocale, glossary, rules string) string {
 	sb.WriteString(target)
 	sb.WriteString(" in a formal, clear, and professional tone. Preserve technical terms.\n\n")
 
+	if docContext != "" {
+		sb.WriteString("DOCUMENT CONTEXT:\n")
+		sb.WriteString(docContext)
+		sb.WriteString("\n\n")
+	}
+
 	if glossary != "" {
-		sb.WriteString("GLOSSARY (critical — when a term appears here, use the exact translation provided, do not deviate):\n\n")
+		sb.WriteString("TERMINOLOGY (use these exact translations for consistency — takes precedence over all rules below):\n\n")
 		sb.WriteString(glossary)
 		sb.WriteString("\n\n")
 	}
@@ -197,70 +205,94 @@ func BuildDocxBatchSystemPromptGPT(from, to, style string) string {
 	return base + markerRule + "\n\n" + buildCompletenessRule(target)
 }
 
-// GlossaryExtractionResult is the structured JSON response from BuildGlossaryExtractionPrompt.
-type GlossaryExtractionResult struct {
+// ContextExtractionResult is the structured JSON response from BuildContextExtractionPrompt.
+type ContextExtractionResult struct {
 	DocType      string `json:"doc_type"`
 	IsNewDocType bool   `json:"is_new_doc_type"`
-	Glossary     []struct {
+	Summary      string `json:"summary"`
+}
+
+// BuildContextExtractionPrompt builds the system prompt for detecting document type
+// and extracting a brief translation context from the first few pages of OCR text.
+// docTypesList is a comma-separated string of existing doc_type IDs.
+// The result is used to inform the glossary extraction call and each translation batch.
+func BuildContextExtractionPrompt(docTypesList string) string {
+	return `You are a document analyst. Your task is to identify the document type and write a brief translation context from the provided text (first pages of a document).
+
+TASK 1 — DOCUMENT TYPE:
+From this list of document types: "` + docTypesList + `"
+Identify which type best matches the document. If none match, suggest a new type in English snake_case (e.g. "insurance_contract") and set is_new_doc_type to true.
+
+TASK 2 — TRANSLATION CONTEXT:
+Write a single short paragraph (2-4 sentences) summarizing:
+- What type of document this is and its purpose
+- The key parties involved (e.g. "Party A (seller): [name], Party B (buyer): [name]")
+- The subject matter (e.g. property address, contract value, issuing authority)
+
+This context will be provided to the translator to help maintain consistent register and terminology.
+Keep it factual and concise. Do not translate — write the summary in English.
+
+Return ONLY valid JSON, no commentary:
+{
+  "doc_type": "real_estate_transfer_contract",
+  "is_new_doc_type": false,
+  "summary": "This is a real estate transfer agreement for apartment unit X at Ciputra Hanoi project. Party A (seller): Nguyen Van A; Party B (buyer): Tran Thi B. The transfer value is 4.1 billion VND, notarized at Dong Do Notary Office."
+}`
+}
+
+// GlossaryExtractionResult is the structured JSON response from BuildGlossaryExtractionPrompt.
+type GlossaryExtractionResult struct {
+	Glossary []struct {
 		Sources []string `json:"sources"`
 		Target  string   `json:"target"`
 	} `json:"glossary"`
 }
 
 // BuildGlossaryExtractionPrompt builds the system prompt for extracting glossary terms
-// and detecting document type from raw OCR markdown.
-// docTypesList is a comma-separated string of existing doc_type IDs.
-func BuildGlossaryExtractionPrompt(docTypesList string) string {
-	return `You are an Expert Terminologist and Knowledge Engineer. Your task is to analyze the provided text and extract a comprehensive Glossary of terms that are essential for an accurate and professional translation.
+// from raw OCR markdown. context is the translation context extracted in the prior call
+// (doc type + summary), used to improve extraction accuracy.
+func BuildGlossaryExtractionPrompt(context string) string {
+	prompt := `You are an Expert Terminologist. Your task is to extract a Glossary of terms that must be translated consistently across all batches.`
 
-TASK 1 — DOCUMENT TYPE:
-From this list of document types: "` + docTypesList + `"
-Identify which type best matches the document. If none match, suggest a new type in English snake_case (e.g. "insurance_contract") and set is_new_doc_type to true.
+	if context != "" {
+		prompt += "\n\nDOCUMENT CONTEXT:\n" + context
+	}
 
-TASK 2 — GLOSSARY EXTRACTION:
-Extract ONLY terms from these categories:
+	prompt += `
+
+EXTRACT ONLY terms from these categories:
 - Acronyms & abbreviations with their full forms (e.g. "UBND" / "Ủy ban nhân dân")
 - Official organization names, government bodies, notary offices that appear multiple times
 - Contract party labels used repeatedly (Bên A → Party A, Bên B → Party B)
 - Domain-specific technical terms that could be translated inconsistently across batches
 
-OCR VARIANT DETECTION — for each term, group all surface forms of the SAME concept:
-- Case variations (ALL CAPS vs Title Case)
-- Potential OCR errors or misspellings of that same term
-- Short forms vs full forms of the same concept
+VARIANT GROUPING — for each term, group all written forms of the SAME concept:
+- Abbreviation and its full form (e.g. "UBND" and "Ủy ban nhân dân" → same entry)
+- ALL CAPS vs Title Case of the same name
 
-GROUPING RULE (critical):
+GROUPING RULE:
 One entry = one concept only. "sources" must contain ONLY different written forms of the EXACT SAME concept.
-NEVER group different concepts, even if they appear near each other.
-
-BAD — label grouped with value:   sources: ["Họ và tên", "Nguyễn Văn A"]
-GOOD: omit both — labels are structural, names are data
 
 BAD — different concepts grouped: sources: ["Văn phòng công chứng Đông Đô", "Công chứng viên"]
 GOOD: two separate entries — one for the office, one for the job title
 
-BAD — different place names:      sources: ["Kim Chung", "Di Trạch", "Hoài Đức"]
-GOOD: three separate entries — one per place name
-
-BAD — different parties grouped:  sources: ["Bên A", "Bên B"]
+BAD — different parties grouped: sources: ["Bên A", "Bên B"]
 GOOD: two separate entries — "Bên A" → "Party A", "Bên B" → "Party B"
 
-WHAT NOT TO EXTRACT — skip all of the following:
-- Form field labels (Họ và tên, Địa chỉ, Mã số thuế, Ngày tháng năm, Tỉnh/TP, Quận/Huyện, ...)
-- Personal names of individuals (buyers, sellers, signatories, witnesses, tax officers)
+WHAT NOT TO EXTRACT:
+- Form field labels (Họ và tên, Địa chỉ, Mã số thuế, ...)
+- Personal names of individuals
 - Specific addresses, streets, wards, communes
-- Tax codes, reference numbers, file IDs, phone numbers, dates, monetary amounts
-- Common Vietnamese words with obvious translations (không, và, của, người mua, người bán, ...)
+- Tax codes, reference numbers, dates, monetary amounts
+- Common Vietnamese words with obvious translations
 - Anything appearing only once that is clearly document-specific data
 
 TRANSLATION STANDARD:
-Provide the most formal, professionally accepted equivalent in the target language.
+Use the most formal, professionally accepted equivalent.
 Avoid literal translations — use industry-standard legal or domain-appropriate terms.
 
 Return ONLY valid JSON, no commentary:
 {
-  "doc_type": "legal",
-  "is_new_doc_type": false,
   "glossary": [
     {
       "sources": ["UBND", "Ủy ban nhân dân", "Uỷ ban nhân dân"],
@@ -269,11 +301,8 @@ Return ONLY valid JSON, no commentary:
     {
       "sources": ["Bên A"],
       "target": "Party A"
-    },
-    {
-      "sources": ["Bên B"],
-      "target": "Party B"
     }
   ]
 }`
+	return prompt
 }
