@@ -23,17 +23,16 @@ const pdfStructuredChunkSize = 5000 // max runes per translation batch
 const pdfMaxSegmentsPerBatch = 30   // max segments per text batch (prevents marker skip)
 
 // runStructuredPDFTranslate is the single pipeline for all PDF files.
-// It replaces the old Tesseract-based runPDFTranslate entirely.
 //
 // Pipeline:
-//  1. Render all pages to PNG via go-fitz (200 DPI)
-//  2. Run OCR sidecar → StructuredOCRResult (text/title/table/figure regions)
-//  3. Crop all figure regions to Base64 PNG
-//  4. Delete temp PNG directory
-//  5. Detect source language from OCR text
-//  6. Collect translatable segments, batch & translate concurrently
-//  7. Assemble final HTML with translated text + embedded figure images
-//  8. Write source.md + translated.html to disk, update DB, emit events
+//  1. Mistral OCR → StructuredOCRResult (text/title/table/figure regions)
+//  2. Prepare storage directory, write source.md, update DB
+//  3. Detect source language from OCR text
+//  4. Call 1 — context extraction from first 3 pages → docType + docContext
+//  5. Call 2 — glossary extraction from full markdown, informed by docContext
+//  6. Load active translation rules (global + doc-type-specific)
+//  7. Collect translatable segments, batch & translate concurrently
+//  8. Assemble final HTML, write to disk, update DB, emit events
 func (c *controller) runStructuredPDFTranslate(ctx context.Context, p fileTranslateParams, fail func(string)) {
 	// Always clear the glossary file tag when this pipeline exits — success or failure.
 	// Uses Background context because ctx may already be cancelled on the error path.
