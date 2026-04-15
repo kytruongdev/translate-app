@@ -29,11 +29,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/gen2brain/go-fitz"
-	"regexp"
-	"strings"
+
+	"translate-app/internal/logger"
 )
 
 const (
@@ -126,13 +128,16 @@ const (
 // deleted after each attempt (success or failure).
 //
 // onPage (optional) is called after each page is parsed: onPage(done, total).
-func runMistralOCR(ctx context.Context, pdfPath string, apiKey string, onPage func(done, total int)) (*StructuredOCRResult, string, error) {
+func runMistralOCR(ctx context.Context, pdfPath string, apiKey string, log logger.Logger, onPage func(done, total int)) (*StructuredOCRResult, string, error) {
 	var lastErr error
 	for attempt := 0; attempt < mistralOCRMaxAttempts; attempt++ {
 		if attempt > 0 {
 			delay := mistralOCRRetryBase * time.Duration(attempt)
-			fmt.Printf("[OCR] Retry %d/%d in %s — last error: %v\n",
-				attempt, mistralOCRMaxAttempts-1, delay, lastErr)
+			log.Warn("OCRRetry",
+				"attempt", fmt.Sprintf("%d/%d", attempt, mistralOCRMaxAttempts-1),
+				"delay", delay.String(),
+				"lastError", lastErr.Error(),
+			)
 			select {
 			case <-ctx.Done():
 				return nil, "", ctx.Err()
@@ -140,7 +145,7 @@ func runMistralOCR(ctx context.Context, pdfPath string, apiKey string, onPage fu
 			}
 		}
 
-		result, rawMD, err := runMistralOCRAttempt(ctx, pdfPath, apiKey, onPage)
+		result, rawMD, err := runMistralOCRAttempt(ctx, pdfPath, apiKey, log, onPage)
 		if err == nil {
 			fixMistralCrossPageTables(result, pdfPath, apiKey)
 			return result, rawMD, nil
@@ -150,43 +155,48 @@ func runMistralOCR(ctx context.Context, pdfPath string, apiKey string, onPage fu
 		if !mistralIsRetryable(err) {
 			return nil, "", err
 		}
-		fmt.Printf("[OCR] Retryable error (attempt %d/%d): %v\n",
-			attempt+1, mistralOCRMaxAttempts, err)
+		log.Warn("OCRRetryableError",
+			"attempt", fmt.Sprintf("%d/%d", attempt+1, mistralOCRMaxAttempts),
+			"error", err.Error(),
+		)
 	}
-	fmt.Printf("[OCR] All %d attempts failed. Last error: %v\n", mistralOCRMaxAttempts, lastErr)
+	log.Error("OCRAllAttemptsFailed",
+		"attempts", mistralOCRMaxAttempts,
+		"lastError", lastErr.Error(),
+	)
 	return nil, "", fmt.Errorf("sau %d lần thử: %w", mistralOCRMaxAttempts, lastErr)
 }
 
 // runMistralOCRAttempt performs one full upload → URL → OCR cycle.
 // The uploaded file is always deleted before returning (success or error).
-func runMistralOCRAttempt(ctx context.Context, pdfPath, apiKey string, onPage func(done, total int)) (*StructuredOCRResult, string, error) {
+func runMistralOCRAttempt(ctx context.Context, pdfPath, apiKey string, log logger.Logger, onPage func(done, total int)) (*StructuredOCRResult, string, error) {
 	// Step 1: Upload PDF binary to Mistral Files API (no base64 inflation).
-	fmt.Printf("[OCR] Step1/3 uploading file: %s\n", filepath.Base(pdfPath))
+	log.Info("OCRUploadStart", "file", filepath.Base(pdfPath))
 	fileID, err := mistralUploadFile(ctx, pdfPath, apiKey)
 	if err != nil {
-		fmt.Printf("[OCR] Step1/3 upload FAILED: %v\n", err)
+		log.Error("OCRUploadFailed", "file", filepath.Base(pdfPath), "error", err.Error())
 		return nil, "", err
 	}
-	fmt.Printf("[OCR] Step1/3 upload OK fileId=%s\n", fileID)
+	log.Info("OCRUploadDone", "file", filepath.Base(pdfPath), "mistralFileId", fileID)
 
 	// Step 2: Retrieve signed URL for the uploaded file.
-	fmt.Printf("[OCR] Step2/3 getting signed URL\n")
+	log.Info("OCRGetURLStart", "mistralFileId", fileID)
 	signedURL, err := mistralGetFileURL(ctx, fileID, apiKey)
 	if err != nil {
-		fmt.Printf("[OCR] Step2/3 getURL FAILED: %v\n", err)
+		log.Error("OCRGetURLFailed", "mistralFileId", fileID, "error", err.Error())
 		mistralDeleteFile(fileID, apiKey)
 		return nil, "", err
 	}
-	fmt.Printf("[OCR] Step2/3 getURL OK\n")
+	log.Info("OCRGetURLDone", "mistralFileId", fileID)
 
 	// Step 3: Run OCR with the signed URL.
-	fmt.Printf("[OCR] Step3/3 running OCR\n")
+	log.Info("OCRRequestStart", "mistralFileId", fileID)
 	result, rawMD, err := mistralOCRWithURL(ctx, signedURL, apiKey, onPage)
 	mistralDeleteFile(fileID, apiKey) // always cleanup, regardless of outcome
 	if err != nil {
-		fmt.Printf("[OCR] Step3/3 OCR FAILED: %v\n", err)
+		log.Error("OCRRequestFailed", "mistralFileId", fileID, "error", err.Error())
 	} else {
-		fmt.Printf("[OCR] Step3/3 OCR OK pages=%d\n", len(result.Pages))
+		log.Info("OCRRequestDone", "mistralFileId", fileID, "pages", len(result.Pages))
 	}
 	return result, rawMD, err
 }

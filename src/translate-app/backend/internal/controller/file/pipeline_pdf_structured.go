@@ -51,7 +51,7 @@ func (c *controller) runStructuredPDFTranslate(ctx context.Context, p fileTransl
 		Chunk: 0, Total: 0, Percent: 0, Phase: "ocr",
 	})
 
-	ocrResult, rawMarkdown, err := runMistralOCR(ctx, p.FilePath, c.keys.MistralKey, func(done, total int) {
+	ocrResult, rawMarkdown, err := runMistralOCR(ctx, p.FilePath, c.keys.MistralKey, c.log, func(done, total int) {
 		runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{
 			Chunk: done, Total: total, Percent: 0, Phase: "ocr",
 		})
