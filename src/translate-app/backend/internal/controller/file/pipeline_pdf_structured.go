@@ -638,36 +638,14 @@ func extractFirstPagesMarkdown(result *StructuredOCRResult, n int) string {
 					sb.WriteString("\n\n")
 				}
 			case "table":
-				if plain := stripHTMLTagsSimple(region.HTML); plain != "" {
-					sb.WriteString(plain)
+				if strings.TrimSpace(region.HTML) != "" {
+					sb.WriteString(region.HTML)
 					sb.WriteString("\n\n")
 				}
 			}
 		}
 	}
 	return strings.TrimSpace(sb.String())
-}
-
-// stripHTMLTagsSimple removes HTML tags from s using a simple state machine.
-// Used to extract plain text from table HTML for context extraction prompts,
-// avoiding inflating token counts with raw HTML markup.
-func stripHTMLTagsSimple(s string) string {
-	var out strings.Builder
-	inTag := false
-	for _, r := range s {
-		switch {
-		case r == '<':
-			inTag = true
-		case r == '>':
-			inTag = false
-			out.WriteRune(' ')
-		case !inTag:
-			out.WriteRune(r)
-		}
-	}
-	// Collapse runs of whitespace into single spaces.
-	result := strings.Join(strings.Fields(out.String()), " ")
-	return strings.TrimSpace(result)
 }
 
 // batchPDFSegments groups segments into batches where each batch's total
