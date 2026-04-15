@@ -637,11 +637,6 @@ func extractFirstPagesMarkdown(result *StructuredOCRResult, n int) string {
 					sb.WriteString(region.Content)
 					sb.WriteString("\n\n")
 				}
-			case "table":
-				if strings.TrimSpace(region.HTML) != "" {
-					sb.WriteString(region.HTML)
-					sb.WriteString("\n\n")
-				}
 			}
 		}
 	}
