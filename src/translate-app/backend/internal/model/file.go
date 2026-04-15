@@ -15,6 +15,7 @@ type File struct {
 	ModelUsed      string           `json:"modelUsed"`
 	Status         string           `json:"status"`
 	ErrorMsg       string           `json:"errorMsg"`
-	CreatedAt      string           `json:"createdAt"` // RFC3339
+	OutputFormat   string           `json:"outputFormat"` // "docx" | "html"
+	CreatedAt      string           `json:"createdAt"`    // RFC3339
 	UpdatedAt      string           `json:"updatedAt"`
 }

@@ -43,7 +43,7 @@ import {
   IconFullscreen,
 } from '@/components/TranslationFullscreenModal'
 import { LazyChunkedMarkdown, LazyChunkedPlainText } from '@/components/LazyChunkedMarkdown'
-import { Copy, ChevronDown, FileText, ClipboardList, X, Info } from 'lucide-react'
+import { Copy, ChevronDown, FileText, ClipboardList, X } from 'lucide-react'
 
 
 /** Snippet trích từ bản dịch gốc — giống mockup (≈140 ký tự). */
@@ -234,9 +234,9 @@ function TranslationCardView({
   const modelLabel = `${activeProvider} · ${activeModel}`
   const fileJobActive = Boolean(m.fileId && streaming)
   const showFileProgressStrip = fileJobActive
-  const fileProgressIndeterminate = !fileTranslateProgress || fileTranslateProgress.total < 1
+  const fileProgressIndeterminate = !fileTranslateProgress || fileTranslateProgress.phase !== 'translating'
   const fileBufferPercent =
-    fileTranslateProgress && fileTranslateProgress.total > 0 ? fileTranslateProgress.percent : 0
+    fileTranslateProgress?.phase === 'translating' ? fileTranslateProgress.percent : 0
   const showPartialDestTail = fileJobShowPartialDestTail(fileJobActive, streaming, dest, fileTranslateProgress ?? null)
   const destTailMinPx = useMemo(() => fileJobDestTailMinPx(fileTranslateProgress ?? null), [fileTranslateProgress])
   const srcPanelBody = (
@@ -641,8 +641,6 @@ function FileTranslationCard({
   const [cancelTooltipPos, setCancelTooltipPos] = useState<{ top: number; left: number } | null>(null)
   const cancelBtnRef = useRef<HTMLButtonElement | null>(null)
   const [cancelPopoverPos, setCancelPopoverPos] = useState<{ top: number; left: number; width: number; isAbove: boolean } | null>(null)
-  const [infoTooltipPos, setInfoTooltipPos] = useState<{ top: number; left: number } | null>(null)
-  const infoLabelRef = useRef<HTMLSpanElement | null>(null)
 
   useLayoutEffect(() => {
     if (!cancelPopoverOpen || !cancelBtnRef.current) {
@@ -666,7 +664,6 @@ function FileTranslationCard({
     parseFileAttachmentDisplayName(precedingUserContent ?? '') ??
     parseFileAttachmentDisplayName(m.originalContent ?? '') ??
     'document.docx'
-  const isPDF = fileName.toLowerCase().endsWith('.pdf')
   const isXlsx = fileName.toLowerCase().endsWith('.xlsx')
   const fileExportFormat = isXlsx ? 'xlsx' : 'docx'
 
@@ -678,7 +675,7 @@ function FileTranslationCard({
   else if (rawPct > maxPctRef.current) maxPctRef.current = rawPct
   const pct = streaming ? maxPctRef.current : rawPct
 
-  const indeterminate = !fileTranslateProgress || fileTranslateProgress.total < 1
+  const indeterminate = !fileTranslateProgress || fileTranslateProgress.phase !== 'translating'
 
   const handleDownload = async () => {
     if (!m.fileId) return
@@ -746,28 +743,17 @@ function FileTranslationCard({
               {cancelledByUser ? (
                 <span className="file-translation-card-cancelled">Đã hủy phiên dịch</span>
               ) : streaming ? (
-                indeterminate ? 'Đang dịch...' : `Đang dịch · ${pct}%`
+                indeterminate
+                  ? fileTranslateProgress?.phase === 'ocr'
+                    ? 'Đang đọc tài liệu...'
+                    : fileTranslateProgress?.phase === 'glossary'
+                      ? 'Đang phân tích thuật ngữ...'
+                      : 'Đang dịch...'
+                  : `Đang dịch · ${pct}%`
               ) : downloadError ? (
                 <span className="file-translation-card-error">{downloadError}</span>
               ) : m.tokens > 0 ? (
-                <>
-                  {m.tokens.toLocaleString()} tokens
-                  {isPDF && (
-                    <span
-                      ref={infoLabelRef}
-                      className="pdf-info-label"
-                      onMouseEnter={() => {
-                        if (!infoLabelRef.current) return
-                        const r = infoLabelRef.current.getBoundingClientRect()
-                        setInfoTooltipPos({ top: r.top - 8, left: r.left + r.width / 2 })
-                      }}
-                      onMouseLeave={() => setInfoTooltipPos(null)}
-                    >
-                      <Info size={11} />
-                      Chỉ dịch nội dung
-                    </span>
-                  )}
-                </>
+                `${m.tokens.toLocaleString()} tokens`
               ) : null}
             </span>
           </div>
@@ -839,22 +825,7 @@ function FileTranslationCard({
       </div>,
       document.body,
     )}
-    {infoTooltipPos && createPortal(
-      <div
-        className="pdf-info-tooltip-portal"
-        style={{ top: infoTooltipPos.top, left: infoTooltipPos.left }}
-      >
-        <div className="pdf-info-tooltip-header">
-          <Info size={11} />
-          Chỉ dịch nội dung
-        </div>
-        <div className="pdf-info-tooltip-body">
-          File pdf chỉ hỗ trợ dịch nội dung, các bảng biểu, hình ảnh sẽ bị lược bỏ. Xin cảm phiền vì hạn chế này.
-        </div>
-      </div>,
-      document.body,
-    )}
-    </>
+</>
   )
 }
 

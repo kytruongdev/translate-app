@@ -149,6 +149,35 @@ func extractPDFWithPDFToText(pdftotextPath, pdfPath string) (string, error) {
 	return strings.TrimSpace(text), nil
 }
 
+// extractPDFPageTexts runs pdftotext WITHOUT -nopgbrk so it emits a form-feed (\f)
+// character between pages. The output is split on \f to produce one string per page
+// (trimmed, CRLF-normalised). Used for per-page sparse detection in mixed PDFs.
+func extractPDFPageTexts(pdftotextPath, pdfPath string) ([]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, pdftotextPath,
+		"-enc", "UTF-8",
+		// intentionally omit -nopgbrk → \f separates pages
+		pdfPath,
+		"-",
+	).Output()
+	if err != nil {
+		return nil, fmt.Errorf("pdftotext: %w", err)
+	}
+	text := strings.ReplaceAll(string(out), "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+	parts := strings.Split(text, "\f")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		result = append(result, strings.TrimSpace(p))
+	}
+	// pdftotext appends a trailing \f, so the last element is usually empty.
+	for len(result) > 0 && result[len(result)-1] == "" {
+		result = result[:len(result)-1]
+	}
+	return result, nil
+}
+
 // extractPDFSample extracts text from the first lastPage pages only.
 // Used in ReadFileInfo for fast scan detection without reading the full document.
 func extractPDFSample(pdftotextPath, pdfPath string, lastPage int) (string, error) {

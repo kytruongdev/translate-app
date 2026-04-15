@@ -10,14 +10,18 @@ import (
 	"database/sql"
 )
 
-const deleteFileByID = `DELETE FROM files WHERE id = ?`
+const deleteFileByID = `-- name: DeleteFileByID :exec
+DELETE FROM files WHERE id = ?
+`
 
 func (q *Queries) DeleteFileByID(ctx context.Context, id string) error {
 	_, err := q.db.ExecContext(ctx, deleteFileByID, id)
 	return err
 }
 
-const getCancelledFileIdsBySession = `SELECT id FROM files WHERE session_id = ? AND status = 'cancelled'`
+const getCancelledFileIdsBySession = `-- name: GetCancelledFileIdsBySession :many
+SELECT id FROM files WHERE session_id = ? AND status = 'cancelled'
+`
 
 func (q *Queries) GetCancelledFileIdsBySession(ctx context.Context, sessionID string) ([]string, error) {
 	rows, err := q.db.QueryContext(ctx, getCancelledFileIdsBySession, sessionID)
@@ -25,19 +29,25 @@ func (q *Queries) GetCancelledFileIdsBySession(ctx context.Context, sessionID st
 		return nil, err
 	}
 	defer rows.Close()
-	var ids []string
+	items := []string{}
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
-		ids = append(ids, id)
+		items = append(items, id)
 	}
-	return ids, rows.Err()
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getFileById = `-- name: GetFileById :one
-SELECT id, session_id, file_name, file_type, file_size, original_path, source_path, translated_path, char_count, page_count, style, model_used, status, error_msg, created_at, updated_at FROM files WHERE id = ? LIMIT 1
+SELECT id, session_id, file_name, file_type, file_size, original_path, source_path, translated_path, char_count, page_count, style, model_used, status, error_msg, created_at, updated_at, output_format FROM files WHERE id = ? LIMIT 1
 `
 
 func (q *Queries) GetFileById(ctx context.Context, id string) (File, error) {
@@ -60,6 +70,7 @@ func (q *Queries) GetFileById(ctx context.Context, id string) (File, error) {
 		&i.ErrorMsg,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OutputFormat,
 	)
 	return i, err
 }
@@ -67,8 +78,8 @@ func (q *Queries) GetFileById(ctx context.Context, id string) (File, error) {
 const insertFile = `-- name: InsertFile :exec
 INSERT INTO files (
   id, session_id, file_name, file_type, file_size, original_path, source_path, translated_path,
-  char_count, page_count, style, model_used, status, error_msg, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  char_count, page_count, style, model_used, status, error_msg, output_format, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertFileParams struct {
@@ -86,6 +97,7 @@ type InsertFileParams struct {
 	ModelUsed      sql.NullString `json:"model_used"`
 	Status         string         `json:"status"`
 	ErrorMsg       sql.NullString `json:"error_msg"`
+	OutputFormat   string         `json:"output_format"`
 	CreatedAt      string         `json:"created_at"`
 	UpdatedAt      string         `json:"updated_at"`
 }
@@ -106,6 +118,7 @@ func (q *Queries) InsertFile(ctx context.Context, arg InsertFileParams) error {
 		arg.ModelUsed,
 		arg.Status,
 		arg.ErrorMsg,
+		arg.OutputFormat,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -160,7 +173,7 @@ func (q *Queries) UpdateFileStatus(ctx context.Context, arg UpdateFileStatusPara
 
 const updateFileTranslated = `-- name: UpdateFileTranslated :exec
 UPDATE files
-SET source_path = ?, translated_path = ?, status = ?, char_count = ?, page_count = ?, model_used = ?, updated_at = ?
+SET source_path = ?, translated_path = ?, status = ?, char_count = ?, page_count = ?, model_used = ?, output_format = ?, updated_at = ?
 WHERE id = ?
 `
 
@@ -171,6 +184,7 @@ type UpdateFileTranslatedParams struct {
 	CharCount      sql.NullInt64  `json:"char_count"`
 	PageCount      sql.NullInt64  `json:"page_count"`
 	ModelUsed      sql.NullString `json:"model_used"`
+	OutputFormat   string         `json:"output_format"`
 	UpdatedAt      string         `json:"updated_at"`
 	ID             string         `json:"id"`
 }
@@ -183,6 +197,7 @@ func (q *Queries) UpdateFileTranslated(ctx context.Context, arg UpdateFileTransl
 		arg.CharCount,
 		arg.PageCount,
 		arg.ModelUsed,
+		arg.OutputFormat,
 		arg.UpdatedAt,
 		arg.ID,
 	)

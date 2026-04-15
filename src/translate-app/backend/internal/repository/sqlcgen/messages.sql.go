@@ -10,17 +10,22 @@ import (
 	"database/sql"
 )
 
-const deleteMessagesByFileID = `DELETE FROM messages WHERE file_id = ?`
+const deleteMessagesByFileID = `-- name: DeleteMessagesByFileID :exec
+DELETE FROM messages WHERE file_id = ?
+`
 
-func (q *Queries) DeleteMessagesByFileID(ctx context.Context, fileID string) error {
+func (q *Queries) DeleteMessagesByFileID(ctx context.Context, fileID sql.NullString) error {
 	_, err := q.db.ExecContext(ctx, deleteMessagesByFileID, fileID)
 	return err
 }
 
 const getMaxDisplayOrder = `-- name: GetMaxDisplayOrder :one
+
 SELECT COALESCE(MAX(display_order), 0) AS max_order FROM messages WHERE session_id = ?
 `
 
+// NOTE: GetMessagesBySessionCursor uses dynamic cursor logic and is implemented
+// as raw SQL in message_repo.go - not generated via SQLC.
 func (q *Queries) GetMaxDisplayOrder(ctx context.Context, sessionID string) (interface{}, error) {
 	row := q.db.QueryRowContext(ctx, getMaxDisplayOrder, sessionID)
 	var max_order interface{}
@@ -29,12 +34,35 @@ func (q *Queries) GetMaxDisplayOrder(ctx context.Context, sessionID string) (int
 }
 
 const getMessageById = `-- name: GetMessageById :one
-SELECT m.id, m.session_id, m.role, m.display_order, m.display_mode, m.original_content, m.translated_content, m.file_id, m.source_lang, m.target_lang, m.style, m.model_used, m.original_message_id, m.tokens, m.created_at, m.updated_at, COALESCE(f.file_size, 0) AS file_size FROM messages m LEFT JOIN files f ON f.id = m.file_id WHERE m.id = ? LIMIT 1
+SELECT m.id, m.session_id, m.role, m.display_order, m.display_mode, m.original_content, m.translated_content, m.file_id, m.source_lang, m.target_lang, m.style, m.model_used, m.original_message_id, m.tokens, m.created_at, m.updated_at, COALESCE(f.file_size, 0) AS file_size
+FROM messages m
+LEFT JOIN files f ON f.id = m.file_id
+WHERE m.id = ? LIMIT 1
 `
 
-func (q *Queries) GetMessageById(ctx context.Context, id string) (Message, error) {
+type GetMessageByIdRow struct {
+	ID                string         `json:"id"`
+	SessionID         string         `json:"session_id"`
+	Role              string         `json:"role"`
+	DisplayOrder      int64          `json:"display_order"`
+	DisplayMode       string         `json:"display_mode"`
+	OriginalContent   string         `json:"original_content"`
+	TranslatedContent sql.NullString `json:"translated_content"`
+	FileID            sql.NullString `json:"file_id"`
+	SourceLang        sql.NullString `json:"source_lang"`
+	TargetLang        sql.NullString `json:"target_lang"`
+	Style             sql.NullString `json:"style"`
+	ModelUsed         sql.NullString `json:"model_used"`
+	OriginalMessageID sql.NullString `json:"original_message_id"`
+	Tokens            sql.NullInt64  `json:"tokens"`
+	CreatedAt         string         `json:"created_at"`
+	UpdatedAt         string         `json:"updated_at"`
+	FileSize          int64          `json:"file_size"`
+}
+
+func (q *Queries) GetMessageById(ctx context.Context, id string) (GetMessageByIdRow, error) {
 	row := q.db.QueryRowContext(ctx, getMessageById, id)
-	var i Message
+	var i GetMessageByIdRow
 	err := row.Scan(
 		&i.ID,
 		&i.SessionID,
@@ -55,67 +83,6 @@ func (q *Queries) GetMessageById(ctx context.Context, id string) (Message, error
 		&i.FileSize,
 	)
 	return i, err
-}
-
-const getMessagesBySessionCursor = `-- name: GetMessagesBySessionCursor :many
-SELECT m.id, m.session_id, m.role, m.display_order, m.display_mode, m.original_content, m.translated_content, m.file_id, m.source_lang, m.target_lang, m.style, m.model_used, m.original_message_id, m.tokens, m.created_at, m.updated_at, COALESCE(f.file_size, 0) AS file_size FROM messages m LEFT JOIN files f ON f.id = m.file_id
-WHERE m.session_id = ?1
-  AND (?2 = 0 OR m.display_order < ?3)
-ORDER BY m.display_order DESC
-LIMIT ?4
-`
-
-type GetMessagesBySessionCursorParams struct {
-	SessionID    string      `json:"session_id"`
-	Cursor       interface{} `json:"cursor"`
-	CursorBefore int64       `json:"cursor_before"`
-	RowLimit     int64       `json:"row_limit"`
-}
-
-func (q *Queries) GetMessagesBySessionCursor(ctx context.Context, arg GetMessagesBySessionCursorParams) ([]Message, error) {
-	rows, err := q.db.QueryContext(ctx, getMessagesBySessionCursor,
-		arg.SessionID,
-		arg.Cursor,
-		arg.CursorBefore,
-		arg.RowLimit,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Message{}
-	for rows.Next() {
-		var i Message
-		if err := rows.Scan(
-			&i.ID,
-			&i.SessionID,
-			&i.Role,
-			&i.DisplayOrder,
-			&i.DisplayMode,
-			&i.OriginalContent,
-			&i.TranslatedContent,
-			&i.FileID,
-			&i.SourceLang,
-			&i.TargetLang,
-			&i.Style,
-			&i.ModelUsed,
-			&i.OriginalMessageID,
-			&i.Tokens,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.FileSize,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const insertMessage = `-- name: InsertMessage :exec
@@ -167,21 +134,6 @@ func (q *Queries) InsertMessage(ctx context.Context, arg InsertMessageParams) er
 	return err
 }
 
-const updateMessageSourceLang = `-- name: UpdateMessageSourceLang :exec
-UPDATE messages SET source_lang = ?, updated_at = ? WHERE id = ?
-`
-
-type UpdateMessageSourceLangParams struct {
-	SourceLang sql.NullString `json:"source_lang"`
-	UpdatedAt  string         `json:"updated_at"`
-	ID         string         `json:"id"`
-}
-
-func (q *Queries) UpdateMessageSourceLang(ctx context.Context, arg UpdateMessageSourceLangParams) error {
-	_, err := q.db.ExecContext(ctx, updateMessageSourceLang, arg.SourceLang, arg.UpdatedAt, arg.ID)
-	return err
-}
-
 const updateMessageOriginalContent = `-- name: UpdateMessageOriginalContent :exec
 UPDATE messages
 SET original_content = ?, updated_at = ?
@@ -196,6 +148,21 @@ type UpdateMessageOriginalContentParams struct {
 
 func (q *Queries) UpdateMessageOriginalContent(ctx context.Context, arg UpdateMessageOriginalContentParams) error {
 	_, err := q.db.ExecContext(ctx, updateMessageOriginalContent, arg.OriginalContent, arg.UpdatedAt, arg.ID)
+	return err
+}
+
+const updateMessageSourceLang = `-- name: UpdateMessageSourceLang :exec
+UPDATE messages SET source_lang = ?, updated_at = ? WHERE id = ?
+`
+
+type UpdateMessageSourceLangParams struct {
+	SourceLang sql.NullString `json:"source_lang"`
+	UpdatedAt  string         `json:"updated_at"`
+	ID         string         `json:"id"`
+}
+
+func (q *Queries) UpdateMessageSourceLang(ctx context.Context, arg UpdateMessageSourceLangParams) error {
+	_, err := q.db.ExecContext(ctx, updateMessageSourceLang, arg.SourceLang, arg.UpdatedAt, arg.ID)
 	return err
 }
 

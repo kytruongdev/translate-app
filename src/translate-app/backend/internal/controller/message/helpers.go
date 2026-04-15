@@ -32,15 +32,8 @@ func resolveModelUsed(settings model.Settings, overrideProvider, overrideModel s
 	return settings.ActiveModel
 }
 
-func defaultModelForProvider(name string) string {
-	switch strings.TrimSpace(strings.ToLower(name)) {
-	case "ollama":
-		return "qwen2.5:7b"
-	case "openai":
-		return "gpt-4o-mini"
-	default:
-		return "gemini-2.0-flash"
-	}
+func defaultModelForProvider(_ string) string {
+	return "gpt-4o-mini"
 }
 
 func (c *controller) resolveProvider(ctx context.Context, overrideProvider, overrideModel string) (gateway.AIProvider, model.Settings, error) {
