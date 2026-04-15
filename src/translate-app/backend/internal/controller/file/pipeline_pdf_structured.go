@@ -35,6 +35,12 @@ const pdfMaxSegmentsPerBatch = 30   // max segments per text batch (prevents mar
 //  7. Assemble final HTML with translated text + embedded figure images
 //  8. Write source.md + translated.html to disk, update DB, emit events
 func (c *controller) runStructuredPDFTranslate(ctx context.Context, p fileTranslateParams, fail func(string)) {
+	// Always clear the glossary file tag when this pipeline exits — success or failure.
+	// Uses Background context because ctx may already be cancelled on the error path.
+	defer func() {
+		_ = c.reg.Glossary().ClearFileGlossary(context.Background(), filepath.Base(p.FilePath))
+	}()
+
 	// ── 1. Run Mistral OCR (không cần render PNG) ────────────────────────────
 	ocrStart := time.Now()
 	c.log.Info(strings.Repeat("-", 80))
@@ -227,9 +233,6 @@ func (c *controller) runStructuredPDFTranslate(ctx context.Context, p fileTransl
 		fail(err.Error())
 		return
 	}
-
-	// Clear glossary file tag now that translation is complete.
-	_ = c.reg.Glossary().ClearFileGlossary(ctx, filepath.Base(p.FilePath))
 
 	c.log.Info("TranslationDone",
 		"fileId", p.FileID,
