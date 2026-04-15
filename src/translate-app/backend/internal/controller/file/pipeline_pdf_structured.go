@@ -162,6 +162,7 @@ func (c *controller) runStructuredPDFTranslate(ctx context.Context, p fileTransl
 				c.log.Info("ContextExtractionDone",
 					"fileId", p.FileID,
 					"docType", detectedDocType,
+					"docContext", docContext,
 					"tokens", contextTokens,
 					"durationMs", time.Since(extractStart).Milliseconds(),
 				)
