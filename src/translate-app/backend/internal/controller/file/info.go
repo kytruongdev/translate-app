@@ -100,11 +100,8 @@ func readPDFInfo(path, name string, size int64) (*bridge.FileInfo, error) {
 				avgCharsPerPage = sampleChars / sampleCount
 			}
 			if avgCharsPerPage < 50 {
-				if !ocrAvailable() {
-					return nil, errors.New("Ứng dụng chưa hỗ trợ dịch thuật từ văn bản scan")
-				}
 				isScanned = true
-				charCount = pages * 2000 // OCR will extract actual text; rough estimate for UI
+				charCount = pages * 2000 // Mistral OCR will extract actual text; rough estimate for UI
 			} else {
 				charCount = sampleChars
 				if pages > sampleCount {
@@ -117,9 +114,6 @@ func readPDFInfo(path, name string, size int64) (*bridge.FileInfo, error) {
 			// Modern iText/AcroForm PDFs have 0 Tj/TJ operators yet contain real text,
 			// so only reject when we have strong evidence of a scan (very large file, 0 operators).
 			if isLikelyScanned(path, pages) {
-				if !ocrAvailable() {
-					return nil, errors.New("Ứng dụng chưa hỗ trợ dịch thuật từ văn bản scan")
-				}
 				isScanned = true
 			}
 			charCount = pages * 2000
@@ -127,9 +121,6 @@ func readPDFInfo(path, name string, size int64) (*bridge.FileInfo, error) {
 	} else {
 		// pdftotext unavailable: use operator heuristic (same tolerant check).
 		if isLikelyScanned(path, pages) {
-			if !ocrAvailable() {
-				return nil, errors.New("Ứng dụng chưa hỗ trợ dịch thuật từ văn bản scan")
-			}
 			isScanned = true
 		}
 		charCount = pages * 2000 // rough estimate for UI preview

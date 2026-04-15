@@ -1,6 +1,10 @@
-# Build script for native Windows.
+# Build script for native Windows ARM64 → target AMD64.
 # Usage (from backend/): .\scripts\build-windows.ps1
-# Requires: Go, Wails CLI, Node.js, MinGW (TDM-GCC or MSYS2) — all in PATH
+# Requires:
+#   - Go, Wails CLI, Node.js — all in PATH
+#   - MSYS2 with AMD64 toolchain:
+#       pacman -S mingw-w64-x86_64-gcc
+#       Add C:\msys64\mingw64\bin to PATH
 
 $ErrorActionPreference = "Stop"
 
@@ -44,6 +48,8 @@ if (-not (Test-Path (Join-Path $BIN "pdftotext.exe"))) {
 
 # --- Build ---
 Set-Location $ROOT
-Write-Host "Building GnJ Windows installer..."
+Write-Host "Building GnJ Windows AMD64 installer..."
+$env:GOARCH = "amd64"
+$env:CC     = "x86_64-w64-mingw32-gcc"
 wails build --platform windows/amd64 -nsis
 Write-Host "Done: build\bin\GnJ-amd64-installer.exe"
