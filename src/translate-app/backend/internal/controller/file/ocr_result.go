@@ -29,6 +29,10 @@ type OCRRegion struct {
 	Alignment string `json:"alignment,omitempty"`
 	// HTML holds the table HTML produced by rapid_table.
 	HTML string `json:"html,omitempty"`
+	// ImageData holds the base64 data URL (data:image/png;base64,...) for figure
+	// regions. Populated from Mistral OCR's embedded image response — no extra API
+	// call needed.
+	ImageData string `json:"image_data,omitempty"`
 	// TextLines holds OCR-detected text for informational figure regions.
 	TextLines []string `json:"text_lines,omitempty"`
 }
