@@ -412,12 +412,13 @@ func (c *controller) translatePDFSegments(
 	totalBatches := len(batches)
 
 	var (
-		mu              sync.Mutex
-		totalTokens     int64
-		completed       int64
-		firstErr        error
-		errOnce         sync.Once
-		promptLogOnce   sync.Once
+		mu                  sync.Mutex
+		totalTokens         int64
+		completed           int64
+		firstErr            error
+		errOnce             sync.Once
+		promptLogOnceText   sync.Once
+		promptLogOnceHTML   sync.Once
 	)
 
 	sem := make(chan struct{}, provider.MaxBatchConcurrency())
@@ -461,7 +462,7 @@ func (c *controller) translatePDFSegments(
 
 			if batchType == "html" {
 				system := gateway.BuildPDFHTMLSystemPromptGPT(tgtLang, glossary, docContext, rules)
-				promptLogOnce.Do(func() {
+				promptLogOnceHTML.Do(func() {
 					c.log.Info("PromptBatchTranslation", "fileId", fileID, "type", "html", "system", system)
 				})
 				translatedText, tok, e := c.streamTranslateWithSystem(ctx, provider, system, batchCopy[0].text, nil)
@@ -476,7 +477,7 @@ func (c *controller) translatePDFSegments(
 				}
 			} else {
 				system := gateway.BuildPDFBatchSystemPromptGPT(tgtLang, glossary, docContext, rules)
-				promptLogOnce.Do(func() {
+				promptLogOnceText.Do(func() {
 					c.log.Info("PromptBatchTranslation", "fileId", fileID, "type", "text", "system", system)
 				})
 				input := buildPDFBatchInput(batchCopy)
