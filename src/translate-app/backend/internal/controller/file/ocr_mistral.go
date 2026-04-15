@@ -147,7 +147,7 @@ func runMistralOCR(ctx context.Context, pdfPath string, apiKey string, log logge
 
 		result, rawMD, err := runMistralOCRAttempt(ctx, pdfPath, apiKey, log, onPage)
 		if err == nil {
-			fixMistralCrossPageTables(result, pdfPath, apiKey)
+			fixMistralCrossPageTables(ctx, result, pdfPath, apiKey)
 			return result, rawMD, nil
 		}
 
@@ -369,8 +369,11 @@ func mistralGetFileURL(ctx context.Context, fileID, apiKey string) (string, erro
 // mistralDeleteFile deletes a previously uploaded file from Mistral storage.
 // Errors are silently ignored — this is best-effort cleanup.
 func mistralDeleteFile(fileID, apiKey string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
 	endpoint := mistralInternalFilesEndpoint + "/" + fileID
-	req, err := http.NewRequest("DELETE", endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, "DELETE", endpoint, nil)
 	if err != nil {
 		return
 	}
@@ -388,7 +391,7 @@ func mistralDeleteFile(fileID, apiKey string) {
 // (e.g. [2.1], [2.2]) — a sign the real data is on the next page.
 // It stitches the boundary region of consecutive pages into one PNG and
 // re-OCRs with Mistral so the full cross-page table is captured in one context.
-func fixMistralCrossPageTables(result *StructuredOCRResult, pdfPath, apiKey string) {
+func fixMistralCrossPageTables(ctx context.Context, result *StructuredOCRResult, pdfPath, apiKey string) {
 	for i := 0; i < len(result.Pages)-1; i++ {
 		tableIdx := -1
 		for j, r := range result.Pages[i].Regions {
@@ -409,7 +412,7 @@ func fixMistralCrossPageTables(result *StructuredOCRResult, pdfPath, apiKey stri
 			continue
 		}
 
-		markdown, err := mistralOCRImage(stitchedPNG, apiKey)
+		markdown, err := mistralOCRImage(ctx, stitchedPNG, apiKey)
 		if err != nil {
 			continue
 		}
@@ -540,15 +543,11 @@ func mistralStitchPages(pdfPath string, page1No, page2No int) ([]byte, error) {
 }
 
 // mistralOCRImage sends a PNG to Mistral OCR and returns the markdown text.
-func mistralOCRImage(imgData []byte, apiKey string) (string, error) {
+func mistralOCRImage(ctx context.Context, imgData []byte, apiKey string) (string, error) {
 	b64 := base64.StdEncoding.EncodeToString(imgData)
 	dataURL := "data:image/png;base64," + b64
 
-	reqBody := mistralInternalOCRRequest{
-		Model:    mistralInternalOCRModel,
-		Document: mistralInternalDocument{Type: "image_url", DocumentURL: dataURL},
-	}
-	// image_url uses image_url field not document_url — override via raw map
+	// image_url uses image_url field, not document_url
 	type imgReq struct {
 		Model    string `json:"model"`
 		Document struct {
@@ -559,14 +558,13 @@ func mistralOCRImage(imgData []byte, apiKey string) (string, error) {
 	req := imgReq{Model: mistralInternalOCRModel}
 	req.Document.Type = "image_url"
 	req.Document.ImageURL = dataURL
-	_ = reqBody
 
 	body, err := json.Marshal(req)
 	if err != nil {
 		return "", err
 	}
 
-	httpReq, err := http.NewRequest("POST", mistralInternalOCREndpoint, bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", mistralInternalOCREndpoint, bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}
