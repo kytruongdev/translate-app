@@ -97,9 +97,8 @@ const pdfHTMLTemplate = `<!DOCTYPE html>
 //   - table regions       → translated table HTML (cells replaced)
 //   - informational figure → translated annotation text
 //
-// Figure images are taken directly from OCRRegion.ImageData (base64 data URL
-// embedded in the Mistral OCR response) — no external figureCrops map needed.
-func assembleStructuredHTML(result *StructuredOCRResult, translated map[string]string) (string, error) {
+// figureCrops maps regionKey(pageNo, regionIdx) → base64-encoded PNG for figure regions.
+func assembleStructuredHTML(result *StructuredOCRResult, translated map[string]string, figureCrops map[string]string) (string, error) {
 	var body strings.Builder
 
 	for _, page := range result.Pages {
@@ -184,31 +183,28 @@ func assembleStructuredHTML(result *StructuredOCRResult, translated map[string]s
 				}
 
 			case "figure":
-				// ImageData is populated from Mistral's embedded base64 response —
-				// no extra PNG rendering needed.
-				imgData := region.ImageData
+				b64 := figureCrops[key]
 				if region.FigureType == "decorative" {
-					if imgData != "" {
+					// Embed image as-is — no translation
+					if b64 != "" {
 						body.WriteString("<figure>\n")
-						body.WriteString(fmt.Sprintf("<img src=\"%s\" alt=\"Hình ảnh\">\n", imgData))
+						body.WriteString(fmt.Sprintf("<img src=\"data:image/png;base64,%s\" alt=\"Hình ảnh\">\n", b64))
 						body.WriteString("</figure>\n")
 					}
 				} else {
 					// Informational: embed image + translated annotation below
 					annotation := translated[key]
-					if imgData != "" || strings.TrimSpace(annotation) != "" {
-						body.WriteString("<figure>\n")
-						if imgData != "" {
-							body.WriteString(fmt.Sprintf("<img src=\"%s\" alt=\"Hình ảnh có văn bản\">\n", imgData))
-						}
-						if strings.TrimSpace(annotation) != "" {
-							body.WriteString("<figcaption>\n")
-							body.WriteString("<span class=\"label-meta\">[Nội dung hình ảnh - đã dịch]</span>\n")
-							body.WriteString(escapeHTML(annotation))
-							body.WriteString("\n</figcaption>\n")
-						}
-						body.WriteString("</figure>\n")
+					body.WriteString("<figure>\n")
+					if b64 != "" {
+						body.WriteString(fmt.Sprintf("<img src=\"data:image/png;base64,%s\" alt=\"Hình ảnh có văn bản\">\n", b64))
 					}
+					if strings.TrimSpace(annotation) != "" {
+						body.WriteString("<figcaption>\n")
+						body.WriteString(fmt.Sprintf("<span class=\"label-meta\">[Nội dung hình ảnh - đã dịch]</span>\n"))
+						body.WriteString(escapeHTML(annotation))
+						body.WriteString("\n</figcaption>\n")
+					}
+					body.WriteString("</figure>\n")
 				}
 			}
 		}

@@ -247,7 +247,7 @@ func (c *controller) runStructuredPDFTranslate(ctx context.Context, p fileTransl
 
 	// ── 10. Assemble HTML ────────────────────────────────────────────────────
 	assembleStart := time.Now()
-	htmlContent, err := assembleStructuredHTML(ocrResult, translated)
+	htmlContent, err := assembleStructuredHTML(ocrResult, translated, nil)
 	if err != nil {
 		fail(fmt.Sprintf("lỗi tạo HTML: %v", err))
 		return

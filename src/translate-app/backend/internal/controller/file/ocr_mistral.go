@@ -261,7 +261,6 @@ func mistralOCRWithURL(ctx context.Context, signedURL, apiKey string, onPage fun
 				Alignment:  r.alignment,
 				HTML:       r.html,
 				FigureType: r.figureType,
-				ImageData:  r.imageData,
 			})
 		}
 		result.Pages = append(result.Pages, OCRPage{
@@ -603,7 +602,6 @@ type mistralRegion struct {
 	alignment  string
 	html       string
 	figureType string
-	imageData  string // base64 data URL from Mistral response (data:image/...;base64,...)
 }
 
 // ── Markdown → regions ────────────────────────────────────────────────────────
@@ -612,7 +610,6 @@ var (
 	mReMDTable     = regexp.MustCompile(`(?m)^\|.+\|[ \t]*$`)
 	mReHeading     = regexp.MustCompile(`^(#{1,4})\s+(.+)`)
 	mReImgTag      = regexp.MustCompile(`!\[.*?\]\(.*?\)`)
-	mReImgSrc      = regexp.MustCompile(`!\[.*?\]\((data:image/[^)]+)\)`)
 	mReRomanPrefix = regexp.MustCompile(`(?i)^(X{0,3})(IX|IV|V?I{0,3})\.`)
 )
 
@@ -645,13 +642,9 @@ func mistralMarkdownToRegions(md string) []mistralRegion {
 			continue
 		}
 
-		// Figure (image reference) — extract base64 data URL if Mistral embedded it.
+		// Figure (image reference)
 		if mReImgTag.MatchString(block) {
-			imgData := ""
-			if m := mReImgSrc.FindStringSubmatch(block); len(m) == 2 {
-				imgData = m[1]
-			}
-			regions = append(regions, mistralRegion{typ: "figure", figureType: "decorative", imageData: imgData})
+			regions = append(regions, mistralRegion{typ: "figure", figureType: "decorative"})
 			continue
 		}
 
