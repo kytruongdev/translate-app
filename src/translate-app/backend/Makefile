@@ -1,10 +1,14 @@
-.PHONY: dev build build-macos build-windows fetch-pandoc fetch-pdftotext-macos fetch-pdftotext-windows sqlc migrate tidy seed-sample reset-data
+.PHONY: dev build build-macos build-windows sidecar-mac sidecar-win fetch-pandoc fetch-pdftotext-macos fetch-pdftotext-windows fetch-pdftopng-macos fetch-pdftopng-windows fetch-easyocr-models sqlc migrate tidy seed-sample reset-data
 
 PANDOC_VERSION  := 3.6.4
 PANDOC_ARCH     := $(shell uname -m)
 XPDF_VERSION    := 4.06
 APP_BUNDLE      := build/bin/GnJ.app/Contents/MacOS
 WAILS           := $(HOME)/go/bin/wails
+
+# Use .venv/bin/pyinstaller if the venv exists, otherwise fall back to system pyinstaller.
+# Uses absolute path so cd .. in sidecar targets doesn't break the relative path.
+PYINSTALLER     := $(or $(wildcard $(CURDIR)/../.venv/bin/pyinstaller),pyinstaller)
 
 # Run from this directory (backend = Wails module root).
 dev:
@@ -44,17 +48,94 @@ fetch-pdftotext-windows:
 	rm /tmp/xpdf-win.zip
 	@echo "pdftotext (XPDF $(XPDF_VERSION)) ready at bin/pdftotext.exe"
 
+# Download pdftopng (XPDF, macOS universal) into bin/pdftopng-mac.
+# Same XPDF archive as pdftotext — extract the pdftopng binary.
+# Used for OCR: renders PDF pages to PNG for Tesseract.
+fetch-pdftopng-macos:
+	mkdir -p bin
+	curl -sL "https://dl.xpdfreader.com/xpdf-tools-mac-$(XPDF_VERSION).tar.gz" \
+		-o /tmp/xpdf-mac.tar.gz
+	tar -xzf /tmp/xpdf-mac.tar.gz -C /tmp "xpdf-tools-mac-$(XPDF_VERSION)/bin64/pdftopng"
+	mv "/tmp/xpdf-tools-mac-$(XPDF_VERSION)/bin64/pdftopng" bin/pdftopng-mac
+	chmod +x bin/pdftopng-mac
+	rm -rf /tmp/xpdf-mac.tar.gz "/tmp/xpdf-tools-mac-$(XPDF_VERSION)"
+	@echo "pdftopng (XPDF $(XPDF_VERSION)) ready at bin/pdftopng-mac"
+
+# Download pdftopng.exe (XPDF, Windows 64-bit) into bin/pdftopng.exe.
+fetch-pdftopng-windows:
+	mkdir -p bin
+	curl -sL "https://dl.xpdfreader.com/xpdf-tools-win-$(XPDF_VERSION).zip" \
+		-o /tmp/xpdf-win.zip
+	unzip -p /tmp/xpdf-win.zip "xpdf-tools-win-$(XPDF_VERSION)/bin64/pdftopng.exe" > bin/pdftopng.exe
+	rm /tmp/xpdf-win.zip
+	@echo "pdftopng (XPDF $(XPDF_VERSION)) ready at bin/pdftopng.exe"
+
+# Copy EasyOCR model files from the build machine's cache into bin/easyocr_models/.
+# Models are downloaded automatically on first run of the sidecar in dev mode
+# (stored in ~/.EasyOCR/model/).  This target copies them into the bin/ tree so
+# they get bundled into the production .app alongside the sidecar binary.
+#
+# Models required (vi + en):
+#   craft_mlt_25k.pth  (~79 MB)  — CRAFT text detector
+#   latin_g2.pth       (~15 MB)  — CRNN recogniser for Latin-script languages (incl. Vietnamese)
+#
+# Run once after models have been downloaded by the dev sidecar:
+#   make fetch-easyocr-models
+EASYOCR_MODEL_CACHE := $(HOME)/.EasyOCR/model
+EASYOCR_MODELS      := craft_mlt_25k.pth latin_g2.pth
+
+fetch-easyocr-models:
+	@missing=""; \
+	for m in $(EASYOCR_MODELS); do \
+		if [ ! -f "$(EASYOCR_MODEL_CACHE)/$$m" ]; then \
+			missing="$$missing $$m"; \
+		fi; \
+	done; \
+	if [ -n "$$missing" ]; then \
+		echo "ERROR: Missing EasyOCR models in $(EASYOCR_MODEL_CACHE):$$missing"; \
+		echo "  Fix: run the dev sidecar once so it auto-downloads the models:"; \
+		echo "    .venv/bin/python3 ocr_sidecar.py <any-page.png>"; \
+		exit 1; \
+	fi
+	mkdir -p bin/easyocr_models
+	@for m in $(EASYOCR_MODELS); do \
+		cp "$(EASYOCR_MODEL_CACHE)/$$m" bin/easyocr_models/$$m; \
+		echo "  copied $$m"; \
+	done
+	@echo "EasyOCR models ready at bin/easyocr_models/"
+
 # Build macOS .app (auto-fetches binaries if missing).
-build build-macos: bin/pandoc bin/pdftotext-mac
+# For a fully self-contained build with PDF OCR:
+#   1. pip install -r ../requirements.txt pyinstaller
+#   2. make sidecar-mac
+#   3. make build
+build build-macos: bin/pandoc bin/pdftotext-mac bin/pdftopng-mac
 	$(WAILS) build
 	cp bin/pandoc "$(APP_BUNDLE)/pandoc"
 	chmod +x "$(APP_BUNDLE)/pandoc"
 	cp bin/pdftotext-mac "$(APP_BUNDLE)/pdftotext"
 	chmod +x "$(APP_BUNDLE)/pdftotext"
+	cp bin/pdftopng-mac "$(APP_BUNDLE)/pdftopng"
+	chmod +x "$(APP_BUNDLE)/pdftopng"
+	@if [ -f bin/paddleocr-darwin-arm64 ]; then \
+		cp bin/paddleocr-darwin-arm64 "$(APP_BUNDLE)/paddleocr-darwin-arm64"; \
+		chmod +x "$(APP_BUNDLE)/paddleocr-darwin-arm64"; \
+		echo "OCR sidecar (paddleocr-darwin-arm64) bundled"; \
+	else \
+		echo "WARN: bin/paddleocr-darwin-arm64 not found — PDF OCR disabled"; \
+		echo "  Fix: make sidecar-mac then rebuild"; \
+	fi
+	@if [ -d bin/easyocr_models ]; then \
+		cp -r bin/easyocr_models "$(APP_BUNDLE)/easyocr_models"; \
+		echo "EasyOCR models bundled into app"; \
+	else \
+		echo "WARN: bin/easyocr_models not found — OCR will fail at runtime"; \
+		echo "  Fix: make fetch-easyocr-models then rebuild"; \
+	fi
 
 # Build Windows NSIS installer (cross-compile from Mac, requires mingw-w64).
 # brew install mingw-w64  ← cài một lần nếu chưa có
-build-windows: bin/pandoc.exe bin/pdftotext.exe
+build-windows: bin/pandoc.exe bin/pdftotext.exe bin/pdftopng.exe
 	CC=x86_64-w64-mingw32-gcc $(WAILS) build --platform windows/amd64 -nsis
 
 bin/pandoc:
@@ -66,11 +147,39 @@ bin/pdftotext-mac:
 bin/pdftotext.exe:
 	$(MAKE) fetch-pdftotext-windows
 
+bin/pdftopng-mac:
+	$(MAKE) fetch-pdftopng-macos
+
+bin/pdftopng.exe:
+	$(MAKE) fetch-pdftopng-windows
+
 bin/pandoc.exe:
 	@echo "bin/pandoc.exe not found — download the Windows pandoc binary manually:"
 	@echo "  https://github.com/jgm/pandoc/releases/download/$(PANDOC_VERSION)/pandoc-$(PANDOC_VERSION)-windows-x86_64.zip"
 	@echo "  Extract pandoc.exe → bin/pandoc.exe"
 	@exit 1
+
+# Build OCR sidecar binary for macOS arm64.
+# Run from the backend/ directory.
+# Requires:
+#   1. python3 -m venv ../.venv && ../.venv/bin/pip install -r ../requirements.txt
+#   2. EasyOCR models present: make fetch-easyocr-models
+sidecar-mac: fetch-easyocr-models
+	cd .. && $(PYINSTALLER) --clean paddleocr-darwin-arm64.spec
+	mkdir -p bin
+	cp ../dist/paddleocr-darwin-arm64 bin/paddleocr-darwin-arm64
+	chmod +x bin/paddleocr-darwin-arm64
+	@echo "Sidecar binary ready at bin/paddleocr-darwin-arm64"
+	@echo "EasyOCR models ready at bin/easyocr_models/"
+
+# Build OCR sidecar binary for Windows AMD64.
+# Must be run on Windows (AMD64 native, or ARM64 VM with AMD64 MSYS2 toolchain).
+# Requires: pip install -r ..\requirements.txt pyinstaller
+sidecar-win:
+	cd .. && $(PYINSTALLER) --clean paddleocr-windows-amd64.spec
+	mkdir -p bin
+	cp ../dist/paddleocr-windows-amd64.exe bin/paddleocr-windows-amd64.exe
+	@echo "Sidecar ready at bin/paddleocr-windows-amd64.exe"
 
 sqlc:
 	sqlc generate

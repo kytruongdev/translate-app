@@ -18,11 +18,13 @@ type StreamEvent struct {
 type AIProvider interface {
 	// TranslateStream streams translated text. preserveMarkdown adds §9.1 Markdown preservation when true (e.g. displayMode bilingual).
 	TranslateStream(ctx context.Context, text, from, to, style string, preserveMarkdown bool, events chan<- StreamEvent) error
+	// TranslateStreamWithSystem streams translated text using a pre-built system prompt.
+	// Used by the PDF pipeline to inject document-context-aware prompts.
+	TranslateStreamWithSystem(ctx context.Context, system, text string, events chan<- StreamEvent) error
 	// TranslateBatchStream streams a DOCX paragraph batch translation using a dedicated system prompt
 	// that explicitly preserves <<<N>>> markers without conflicting "output-only" instructions.
 	TranslateBatchStream(ctx context.Context, text, from, to, style string, events chan<- StreamEvent) error
-	// MaxBatchConcurrency returns how many DOCX batches can run in parallel.
-	// Local providers (Ollama) return 1; cloud providers return higher values.
+	// MaxBatchConcurrency returns how many concurrent batches can run in parallel.
 	MaxBatchConcurrency() int
 }
 
@@ -39,18 +41,6 @@ func New(settings *model.Settings, keys *config.APIKeys) (AIProvider, error) {
 // ForProvider builds a provider by name (global or per-request override).
 func ForProvider(providerName, modelName string, keys *config.APIKeys) (AIProvider, error) {
 	switch providerName {
-	case "gemini":
-		m := modelName
-		if m == "" {
-			m = "gemini-2.0-flash"
-		}
-		return newGeminiProvider(keys.GeminiKey, m), nil
-	case "ollama":
-		m := modelName
-		if m == "" {
-			m = "qwen2.5:7b"
-		}
-		return newOllamaProvider(m), nil
 	case "openai":
 		m := modelName
 		if m == "" {

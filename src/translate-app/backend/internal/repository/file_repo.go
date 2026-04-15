@@ -13,7 +13,7 @@ type FileRepo interface {
 	Insert(ctx context.Context, f *model.File) error
 	UpdateStatus(ctx context.Context, id, status, errMsg string) error
 	UpdateExtracted(ctx context.Context, id, sourcePath string, charCount, pageCount int) error
-	UpdateTranslated(ctx context.Context, id, sourcePath, translatedPath string, charCount, pageCount int, modelUsed string) error
+	UpdateTranslated(ctx context.Context, id, sourcePath, translatedPath string, charCount, pageCount int, modelUsed, outputFormat string) error
 	GetByID(ctx context.Context, id string) (*model.File, error)
 	DeleteByID(ctx context.Context, id string) error
 	ListCancelledIDsBySession(ctx context.Context, sessionID string) ([]string, error)
@@ -40,6 +40,7 @@ func (r *fileRepo) Insert(ctx context.Context, f *model.File) error {
 		ModelUsed:      sqlNullStr(f.ModelUsed),
 		Status:         f.Status,
 		ErrorMsg:       sqlNullStr(f.ErrorMsg),
+		OutputFormat:   f.OutputFormat,
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	})
@@ -64,7 +65,7 @@ func (r *fileRepo) UpdateExtracted(ctx context.Context, id, sourcePath string, c
 	})
 }
 
-func (r *fileRepo) UpdateTranslated(ctx context.Context, id, sourcePath, translatedPath string, charCount, pageCount int, modelUsed string) error {
+func (r *fileRepo) UpdateTranslated(ctx context.Context, id, sourcePath, translatedPath string, charCount, pageCount int, modelUsed, outputFormat string) error {
 	return r.q.UpdateFileTranslated(ctx, sqlcgen.UpdateFileTranslatedParams{
 		SourcePath:     sqlNullStr(sourcePath),
 		TranslatedPath: sqlNullStr(translatedPath),
@@ -72,6 +73,7 @@ func (r *fileRepo) UpdateTranslated(ctx context.Context, id, sourcePath, transla
 		CharCount:      sqlNullInt64(charCount),
 		PageCount:      sqlNullInt64(pageCount),
 		ModelUsed:      sqlNullStr(modelUsed),
+		OutputFormat:   outputFormat,
 		UpdatedAt:      time.Now().UTC().Format(time.RFC3339),
 		ID:             id,
 	})

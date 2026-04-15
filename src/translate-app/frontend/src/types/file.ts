@@ -24,6 +24,7 @@ export interface FileResult {
   fileId: string
   fileName: string
   fileType: 'pdf' | 'docx' | 'xlsx'
+  outputFormat?: 'docx' | 'html' | 'xlsx'
   charCount: number
   pageCount: number
   tokensUsed: number
@@ -33,4 +34,5 @@ export interface FileProgress {
   chunk: number
   total: number
   percent: number
+  phase?: 'ocr' | 'glossary' | 'translating'
 }

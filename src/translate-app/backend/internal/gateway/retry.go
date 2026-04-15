@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/sashabaranov/go-openai"
-	"google.golang.org/genai"
 )
 
 const (
@@ -50,7 +49,7 @@ func powFloat(mul float64, exp int) float64 {
 	return out
 }
 
-// IsConnectionRefused reports whether err is a local connection refused (e.g. Ollama not running).
+// IsConnectionRefused reports whether err is a local connection refused.
 func IsConnectionRefused(err error) bool {
 	if err == nil {
 		return false
@@ -65,7 +64,7 @@ func IsConnectionRefused(err error) bool {
 	return strings.Contains(s, "connection refused")
 }
 
-// IsRetryableOpenAI returns true for 429, 500, 502, 503 (OpenAI / Ollama-compatible API).
+// IsRetryableOpenAI returns true for 429, 500, 502, 503 (OpenAI-compatible API).
 func IsRetryableOpenAI(err error) bool {
 	if err == nil || IsConnectionRefused(err) {
 		return false
@@ -89,38 +88,4 @@ func IsRetryableOpenAI(err error) bool {
 		}
 	}
 	return false
-}
-
-// IsRetryableGemini is true only for lỗi phía server có thể hết sau vài giây (5xx).
-// Không retry 429/quota: user cần billing, đợi reset quota, hoặc đổi project/key — retry trong app chỉ tốn quota và log.
-func IsRetryableGemini(err error) bool {
-	if err == nil {
-		return false
-	}
-	var ce genai.ClientError
-	if errors.As(err, &ce) {
-		return false
-	}
-	var se genai.ServerError
-	if errors.As(err, &se) {
-		if se.Code >= 500 && se.Code < 600 {
-			return true
-		}
-		msg := strings.ToLower(se.Error() + se.Message)
-		return strings.Contains(msg, "unavailable") || strings.Contains(msg, "timeout")
-	}
-	return false
-}
-
-// IsGeminiNoFallbackError: stream đã lỗi rõ (4xx gồm 429 quota) — gọi thêm generateContent không giúp, chỉ nhân đôi request.
-func IsGeminiNoFallbackError(err error) bool {
-	if err == nil {
-		return false
-	}
-	var ce genai.ClientError
-	if errors.As(err, &ce) {
-		return ce.Code >= 400 && ce.Code < 500
-	}
-	s := strings.ToLower(err.Error())
-	return strings.Contains(s, "resource_exhausted") || strings.Contains(s, "quota exceeded")
 }

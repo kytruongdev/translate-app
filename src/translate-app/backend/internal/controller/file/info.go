@@ -89,6 +89,7 @@ func readPDFInfo(path, name string, size int64) (*bridge.FileInfo, error) {
 	const samplePages = 10
 	sampleCount := min(pages, samplePages)
 	var charCount int
+	isScanned := false
 	if p := findPDFToText(); p != "" {
 		sampleText, sampleErr := extractPDFSample(p, path, sampleCount)
 		if sampleErr == nil {
@@ -99,11 +100,16 @@ func readPDFInfo(path, name string, size int64) (*bridge.FileInfo, error) {
 				avgCharsPerPage = sampleChars / sampleCount
 			}
 			if avgCharsPerPage < 50 {
-				return nil, errors.New("Ứng dụng chưa hỗ trợ dịch thuật từ văn bản scan")
-			}
-			charCount = sampleChars
-			if pages > sampleCount {
-				charCount = avgCharsPerPage * pages
+				if !ocrAvailable() {
+					return nil, errors.New("Ứng dụng chưa hỗ trợ dịch thuật từ văn bản scan")
+				}
+				isScanned = true
+				charCount = pages * 2000 // OCR will extract actual text; rough estimate for UI
+			} else {
+				charCount = sampleChars
+				if pages > sampleCount {
+					charCount = avgCharsPerPage * pages
+				}
 			}
 		} else {
 			// pdftotext ran but failed (e.g. path encoding on Windows, AcroForm edge case).
@@ -111,19 +117,25 @@ func readPDFInfo(path, name string, size int64) (*bridge.FileInfo, error) {
 			// Modern iText/AcroForm PDFs have 0 Tj/TJ operators yet contain real text,
 			// so only reject when we have strong evidence of a scan (very large file, 0 operators).
 			if isLikelyScanned(path, pages) {
-				return nil, errors.New("Ứng dụng chưa hỗ trợ dịch thuật từ văn bản scan")
+				if !ocrAvailable() {
+					return nil, errors.New("Ứng dụng chưa hỗ trợ dịch thuật từ văn bản scan")
+				}
+				isScanned = true
 			}
 			charCount = pages * 2000
 		}
 	} else {
 		// pdftotext unavailable: use operator heuristic (same tolerant check).
 		if isLikelyScanned(path, pages) {
-			return nil, errors.New("Ứng dụng chưa hỗ trợ dịch thuật từ văn bản scan")
+			if !ocrAvailable() {
+				return nil, errors.New("Ứng dụng chưa hỗ trợ dịch thuật từ văn bản scan")
+			}
+			isScanned = true
 		}
 		charCount = pages * 2000 // rough estimate for UI preview
 	}
 
-	return buildFileInfo(name, "pdf", size, pages, charCount, false), nil
+	return buildFileInfo(name, "pdf", size, pages, charCount, isScanned), nil
 }
 
 func readDocxInfo(path, name string, size int64) (*bridge.FileInfo, error) {

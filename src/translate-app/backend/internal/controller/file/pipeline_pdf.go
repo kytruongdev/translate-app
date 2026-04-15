@@ -34,6 +34,58 @@ func (c *controller) runPDFTranslate(ctx context.Context, p fileTranslateParams,
 		fail(err.Error())
 		return
 	}
+
+	// OCR fallback / hybrid extraction:
+	//   • Fully scanned (avg < 50 chars/page): OCR every page via ocrPDFText.
+	//   • Mixed (avg ≥ 50 but some pages sparse): per-page hybrid via extractPDFHybrid —
+	//     pdftotext for digital pages, Tesseract only for sparse (scanned) pages.
+	//   • Fully digital: no OCR, use pdftotext result as-is.
+	ocrRan := false
+	if ocrAvailable() {
+		avgCharsPerPage := utf8.RuneCountInString(strings.TrimSpace(raw)) / max(p.PageCount, 1)
+		var lastOCRPct int
+		ocrProgressFn := func(done, total int) {
+			if total < 1 {
+				return
+			}
+			pct := (done * 50) / total // OCR occupies 0–50%; translation gets 50–100%
+			if pct-lastOCRPct < 5 {
+				return
+			}
+			lastOCRPct = pct
+			runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{
+				Chunk:   done,
+				Total:   total,
+				Percent: pct,
+			})
+		}
+
+		if avgCharsPerPage < sparsePageThreshold {
+			// Fully scanned: OCR all pages.
+			runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{Chunk: 0, Total: max(p.PageCount, 1), Percent: 0})
+			ocrRaw, ocrErr := ocrPDFText(ctx, p.FilePath, ocrProgressFn)
+			if ocrErr != nil {
+				fail(ocrErr.Error())
+				return
+			}
+			raw = ocrRaw
+			ocrRan = true
+		} else {
+			// Possibly mixed: extractPDFHybrid detects sparse pages and OCRs only those.
+			// If no sparse pages are found it returns immediately (fast path, no OCR).
+			hybridRaw, didOCR, hybridErr := extractPDFHybrid(ctx, p.FilePath, ocrProgressFn)
+			if hybridErr == nil && strings.TrimSpace(hybridRaw) != "" {
+				raw = hybridRaw
+				ocrRan = didOCR
+				if didOCR {
+					// Emit starting-OCR event so FE shows the progress ring.
+					runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{Chunk: 0, Total: max(p.PageCount, 1), Percent: 0})
+				}
+			}
+			// If hybrid extraction fails or returns empty, continue with original pdftotext result.
+		}
+	}
+
 	if strings.TrimSpace(raw) == "" {
 		fail("không trích xuất được văn bản từ PDF")
 		return
@@ -92,11 +144,17 @@ func (c *controller) runPDFTranslate(ctx context.Context, p fileTranslateParams,
 		return
 	}
 
-	// Emit initial progress so FE shows determinate ring at 0% instead of spinning indefinitely.
+	// Progress base: if OCR ran, it occupied 0–50%; translation gets 50–100%.
+	progressBase := 0
+	if ocrRan {
+		progressBase = 50
+	}
+
+	// Emit initial progress so FE shows determinate ring instead of spinning indefinitely.
 	runtime.EventsEmit(ctx, "file:progress", bridge.FileProgress{
 		Chunk:   0,
 		Total:   total,
-		Percent: 0,
+		Percent: progressBase,
 	})
 
 	// Step 3: Translate chunks concurrently (preserveMarkdown=true keeps ## headings and - bullets).
@@ -104,9 +162,9 @@ func (c *controller) runPDFTranslate(ctx context.Context, p fileTranslateParams,
 	var lastEmittedPct int
 	translated, totalTokens, err := c.translatePlainChunks(ctx, chunks, srcLang, p.TargetLang, p.Style, p.Provider, true,
 		func(completed, total int) {
-			pct := 0
+			pct := progressBase
 			if total > 0 {
-				pct = (completed * 100) / total
+				pct = progressBase + (completed*(100-progressBase))/total
 			}
 			if pct-lastEmittedPct < 5 {
 				return
@@ -147,7 +205,7 @@ func (c *controller) runPDFTranslate(ctx context.Context, p fileTranslateParams,
 		fail(err.Error())
 		return
 	}
-	if err := c.reg.File().UpdateTranslated(ctx, p.FileID, sourcePath, translatedPath, charCount, pageCount, p.ModelUsed); err != nil {
+	if err := c.reg.File().UpdateTranslated(ctx, p.FileID, sourcePath, translatedPath, charCount, pageCount, p.ModelUsed, "docx"); err != nil {
 		fail(err.Error())
 		return
 	}
@@ -165,11 +223,12 @@ func (c *controller) runPDFTranslate(ctx context.Context, p fileTranslateParams,
 
 	runtime.EventsEmit(ctx, "translation:done", *msg)
 	runtime.EventsEmit(ctx, "file:done", bridge.FileResult{
-		FileID:    p.FileID,
-		FileName:  filepath.Base(p.FilePath),
-		FileType:  "pdf",
-		CharCount: charCount,
-		PageCount: pageCount,
+		FileID:       p.FileID,
+		FileName:     filepath.Base(p.FilePath),
+		FileType:     "pdf",
+		OutputFormat: "docx",
+		CharCount:    charCount,
+		PageCount:    pageCount,
 	})
 }
 

@@ -133,7 +133,7 @@ func (c *controller) retranslateDocx(ctx context.Context, p RetranslateContentPa
 
 	if err := c.reg.File().UpdateTranslated(ctx, p.FileID,
 		fileRec.SourcePath, translatedPath,
-		fileRec.CharCount, fileRec.PageCount, fileRec.ModelUsed,
+		fileRec.CharCount, fileRec.PageCount, fileRec.ModelUsed, fileRec.OutputFormat,
 	); err != nil {
 		fail(err.Error())
 		return
@@ -152,11 +152,12 @@ func (c *controller) retranslateDocx(ctx context.Context, p RetranslateContentPa
 	runtime.EventsEmit(ctx, "translation:done", *msg)
 
 	runtime.EventsEmit(ctx, "file:done", bridge.FileResult{
-		FileID:    p.FileID,
-		FileName:  filepath.Base(fileRec.OriginalPath),
-		FileType:  "docx",
-		CharCount: fileRec.CharCount,
-		PageCount: fileRec.PageCount,
+		FileID:       p.FileID,
+		FileName:     filepath.Base(fileRec.OriginalPath),
+		FileType:     fileRec.FileType,
+		OutputFormat: fileRec.OutputFormat,
+		CharCount:    fileRec.CharCount,
+		PageCount:    fileRec.PageCount,
 	})
 }
 

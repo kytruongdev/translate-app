@@ -1,12 +1,5 @@
--- Trang đầu (cursor=0): N tin mới nhất. cursor>0: display_order < cursor → các tin cũ hơn, vẫn DESC.
--- name: GetMessagesBySessionCursor :many
-SELECT m.*, COALESCE(f.file_size, 0) AS file_size
-FROM messages m
-LEFT JOIN files f ON f.id = m.file_id
-WHERE m.session_id = sqlc.arg(session_id)
-  AND (sqlc.arg(cursor) = 0 OR m.display_order < sqlc.arg(cursor_before))
-ORDER BY m.display_order DESC
-LIMIT sqlc.arg(row_limit);
+-- NOTE: GetMessagesBySessionCursor uses dynamic cursor logic and is implemented
+-- as raw SQL in message_repo.go - not generated via SQLC.
 
 -- name: GetMaxDisplayOrder :one
 SELECT COALESCE(MAX(display_order), 0) AS max_order FROM messages WHERE session_id = ?;
@@ -30,6 +23,9 @@ WHERE id = ?;
 
 -- name: UpdateMessageSourceLang :exec
 UPDATE messages SET source_lang = ?, updated_at = ? WHERE id = ?;
+
+-- name: DeleteMessagesByFileID :exec
+DELETE FROM messages WHERE file_id = ?;
 
 -- name: GetMessageById :one
 SELECT m.*, COALESCE(f.file_size, 0) AS file_size

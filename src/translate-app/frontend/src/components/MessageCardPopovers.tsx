@@ -33,7 +33,7 @@ export function CardExportPopover({
   fileType: 'pdf' | 'docx' | 'xlsx'
 }) {
   const [pos, setPos] = useState<PopoverPos | null>(null)
-  const exportLabel = fileType === 'xlsx' ? 'Excel (.xlsx)' : 'Word (.docx)'
+  const exportLabel = fileType === 'xlsx' ? 'Excel (.xlsx)' : fileType === 'pdf' ? 'HTML (.html)' : 'Word (.docx)'
 
   useLayoutEffect(() => {
     if (!open || !anchorRef.current) {
